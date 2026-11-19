@@ -16,9 +16,9 @@ requests (PRs). It lives in `src/second_source/packs/coding/`.
 
 | Claim type | Example text | Key attributes | Checks |
 |---|---|---|---|
-| `TESTS_PASS` | "All tests pass", "- [x] Tests pass", "CI is green" | `ref` | `coding.tests_pass` |
-| `BUILD_OK` | "Build succeeds", "compiles cleanly" | `ref` | `coding.build_ok` |
-| `LINT_OK` | "Lint passes", "no lint errors" | `ref` | `coding.lint_ok` |
+| `TESTS_PASS` | "All tests pass", "- [x] Tests pass", "CI is green" | `ref` | `coding.ci_result` |
+| `BUILD_OK` | "Build succeeds", "compiles cleanly" | `ref` | `coding.ci_result` |
+| `LINT_OK` | "Lint passes", "no lint errors" | `ref` | `coding.ci_result` |
 | `TESTS_ADDED` | "Added unit tests for the parser" | (none) | `coding.tests_added` |
 | `FIXES_ISSUE` | "Fixes #123", "Closes owner/repo#45" | `issue`, `repo` | `coding.fixes_issue`, `coding.fixes_issue_durable` |
 | `DOCS_UPDATED` | "Updated the README" | (none) | `coding.docs_updated` |
@@ -69,7 +69,9 @@ detected agent, `opened_at`, `closed_at`, and these attributes:
 - `base_branch`.
 
 **Missing values.** Attributes with no value are omitted, never set to null. Checks test them
-with `has()`. Environment names in `deployment_status` are lower-cased by the source.
+with `has()`. Repository and environment names may use any case: checks compare repositories
+case-insensitively (`same_repo`) and normalise environment aliases on both sides
+(`env_matches`, e.g. `prod` = `production`).
 
 
 Every record is an `Evidence` with the `record_type`, `external_ref` and attributes below.
@@ -77,15 +79,19 @@ Timestamps are timezone-aware UTC.
 
 | record_type | external_ref | Attributes | Notes |
 |---|---|---|---|
-| `check_result` | check id (or `context@sha` for statuses) | `ref`, `name`, `status` (`queued` / `in_progress` / `completed`), `conclusion` (`success` / `failure` / `neutral` / `cancelled` / `timed_out` / `action_required` / `skipped` / `stale` / null), `source` (`check_run` / `status`) | `version` = attempt number, so de-duplication keeps the latest re-run |
+| `check_result` | `<ref>/<job name>` (one key per job per commit) | `ref`, `name`, `status` (`queued` / `in_progress` / `completed`), `conclusion` (`success` / `failure` / `neutral` / `cancelled` / `timed_out` / `action_required` / `skipped` / `stale`; omitted while running), `source` (`check_run` / `status`) | `version` = the run's numeric id (or a timestamp for statuses). A GitHub re-run gets a new, larger id, so de-duplication keeps only the newest run of each job |
 | `changed_file` | path | `path`, `status` (`added` / `modified` / `removed` / `renamed`), `additions`, `deletions` | No patches or code are ever stored |
-| `issue_state` | `repo#number` | `repo`, `number`, `state` (`open` / `closed`), `closed_at`, `last_reopened_at` | |
+| `issue_state` | `repo#number` | `repo`, `number`, `state` (`open` / `closed`), `closed_at` (required when closed), `last_reopened_at` | `closed_at` lets checks reject issues that were closed before the PR merged |
 | `pr_state` | PR number | `state` (`open` / `closed`), `merged`, `merged_at`, `merge_sha` | One record per episode |
 | `revert` | reverting commit sha | `reverted_sha`, `at` | Found by scanning the default branch after merge |
 | `deployment_status` | deployment id | `ref`, `environment`, `state` (`success` / `failure` / `error` / `in_progress` / `queued` / `pending` / `inactive`), `at` | |
 
 Sources report record types they could not refresh in `stale`. Checks then return
 `UNVERIFIABLE` with reason `SOURCE_STALE`.
+
+**Command status lines.** A line such as `- ✅ pytest -q` counts as a claim only if the inline
+code starts with a known test, build or lint runner (pytest, npm, cargo, ruff, ...). File
+paths and identifiers in inline code never produce claims.
 
 ## 5. Agent detection
 
@@ -110,6 +116,9 @@ Helper functions that checks can call:
 
 | Function | Purpose |
 |---|---|
+| `job_matches(claim_type, name)` | Picks the CI jobs that verify a claim type (test jobs for `TESTS_PASS`, build jobs for `BUILD_OK`, lint jobs for `LINT_OK`) |
+| `same_repo(a, b)` | Case-insensitive repository comparison |
+| `env_matches(evidence, claimed)` | Environment match after alias normalisation on both sides |
 | `is_test_check(name)` | Matches CI job names for test runs: test, pytest, jest, vitest, mocha, spec, unit, integration, e2e, rspec, junit, … |
 | `is_build_check(name)` | Matches build, compile and bundle jobs |
 | `is_lint_check(name)` | Matches lint, eslint, ruff, flake8, pylint, clippy, golangci, prettier, format and typecheck jobs |
