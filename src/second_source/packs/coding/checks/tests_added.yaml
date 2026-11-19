@@ -1,0 +1,19 @@
+# L4: "Added tests" — does the PR actually add or change test files?
+# A test file counts if it was added or modified with at least one added line.
+id: coding.tests_added
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [TESTS_ADDED]
+evidence:
+  files:
+    record_type: changed_file
+derive:
+  test_files: "files.filter(f, f.status != 'removed' && f.additions > 0 && is_test_path(f.path))"
+  test_file_count: "size(test_files)"
+outcomes:
+  - {when: "'changed_file' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "size(files) == 0", result: UNVERIFIABLE, reason: NO_FILE_LIST}
+  - {when: "test_file_count > 0", result: VERIFIED, reason: TEST_FILES_CHANGED}
+  - {otherwise: true, result: CONTRADICTED, reason: NO_TEST_FILES_CHANGED}
+explain: "{test_file_count} test file(s) added or changed"
