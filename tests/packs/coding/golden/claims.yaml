@@ -1,0 +1,208 @@
+# Golden set for coding-pack claim extraction (seed version).
+#
+# Each case is a PR text written in the style coding agents commonly use, labelled with the
+# claim types a careful human reader would say it asserts. The test computes precision and
+# recall per claim type and fails below the targets (precision >= 0.95, recall >= 0.90).
+#
+# Honesty note: this seed set was written by the same author as the extraction rules, so it
+# catches regressions but overstates real-world accuracy. Milestone M3 replaces it with
+# labelled samples from real agent pull requests (AIDev dataset).
+#
+# Labelling rules:
+# - Label what the text asserts as done, not what it plans, hopes or asks.
+# - "Ran the tests" without saying they passed is NOT a TESTS_PASS claim.
+# - FIXES_ISSUE appears once per referenced issue.
+# - Other claim types count once per text: the same type at the same commit is one claim.
+# - Quote any text containing " #": in YAML an unquoted " #" starts a comment.
+
+cases:
+  - name: copilot summary with tests and issue
+    text: |
+      Fixes #45.
+
+      This PR adds input validation to the signup form.
+
+      Changes:
+      - Validate email format before submit
+      - Added unit tests for the validator
+
+      All existing tests pass.
+    expected: [FIXES_ISSUE, TESTS_ADDED, TESTS_PASS]
+
+  - name: codex testing section with emoji statuses
+    text: |
+      ## Summary
+      - handle empty config files gracefully
+
+      ## Testing
+      - ✅ `pytest -q`
+      - ✅ `ruff check .`
+    expected: [TESTS_PASS, LINT_OK]
+
+  - name: codex testing section with a failure
+    text: |
+      ## Summary
+      - bump parser version
+
+      ## Testing
+      - ❌ `npm test` (fails: snapshot mismatch)
+      - ✅ `npm run lint`
+    expected: [LINT_OK]
+
+  - name: codex warning that tests could not run
+    text: |
+      ## Testing
+      - ⚠️ `pytest` *(could not run: missing dependency in sandbox)*
+    expected: []
+
+  - name: claude code test plan with checked and unchecked items
+    text: |
+      ## Summary
+      - Refactor the cache layer to use an LRU policy
+
+      ## Test plan
+      - [x] All tests pass
+      - [x] Lint passes
+      - [ ] Manual QA on staging
+
+      🤖 Generated with Claude Code
+    expected: [TESTS_PASS, LINT_OK]
+
+  - name: test plan that only says tests were run
+    text: |
+      ## Test plan
+      - [x] Run unit tests
+      - [x] Run the linter
+    expected: []
+
+  - name: devin style report with build and docs
+    text: |
+      I've implemented the export feature.
+
+      - The build succeeds
+      - Updated the README with usage instructions
+      - Closes #210
+    expected: [BUILD_OK, DOCS_UPDATED, FIXES_ISSUE]
+
+  - name: two issues closed
+    text: "Fixes #12 and also resolves #19."
+    expected: [FIXES_ISSUE, FIXES_ISSUE]
+
+  - name: cross repository issue
+    text: "Resolves octo/infra#88 by updating the deploy script."
+    expected: [FIXES_ISSUE]
+
+  - name: partial fix is not a closing claim
+    text: "Partially fixes #300; the remaining cases need a follow-up."
+    expected: []
+
+  - name: related issue is not a fix claim
+    text: "Related to #77. Adds logging around the retry loop."
+    expected: []
+
+  - name: plans and expectations
+    text: |
+      Tests should pass once the new fixtures land.
+      I will add documentation in a follow-up PR.
+    expected: []
+
+  - name: question about tests
+    text: Do the integration tests pass on Windows?
+    expected: []
+
+  - name: negated claims
+    text: |
+      Tests are not passing yet because of a flaky network call.
+      The build doesn't work on Node 16.
+    expected: []
+
+  - name: quoted reviewer comment
+    text: |
+      > All tests pass on my machine
+      Thanks for checking! I've addressed your feedback.
+    expected: []
+
+  - name: claims inside a code block are ignored
+    text: |
+      Example output:
+      ```
+      All tests pass
+      Build succeeded
+      ```
+    expected: []
+
+  - name: html comment template
+    text: |
+      <!-- Describe how you tested: e.g. "All tests pass" -->
+      Adds a timeout to the HTTP client.
+    expected: []
+
+  - name: deployment claim
+    text: Deployed to staging and verified the health check.
+    expected: [DEPLOYED]
+
+  - name: production deployment alias
+    text: Shipped to prod after approval.
+    expected: [DEPLOYED]
+
+  - name: ci green wording
+    text: CI is green and the docs are updated.
+    expected: [TESTS_PASS, DOCS_UPDATED]
+
+  - name: tests added and passing in one sentence
+    text: Added regression tests and they are all passing.
+    expected: [TESTS_ADDED, TESTS_PASS]
+
+  - name: lint wording variants
+    text: |
+      - No lint errors
+      - Type checking passes
+    expected: [LINT_OK]  # same type at the same commit is one claim
+
+  - name: compile wording
+    text: The crate compiles cleanly with no warnings.
+    expected: [BUILD_OK]
+
+  - name: test suite wording
+    text: The full test suite passes on Python 3.12 and 3.13.
+    expected: [TESTS_PASS]
+
+  - name: tests pass locally
+    text: Tests pass locally.
+    expected: [TESTS_PASS]
+
+  - name: new tests covering a function
+    text: New tests covering the date parsing edge cases.
+    expected: [TESTS_ADDED]
+
+  - name: changelog update
+    text: Updated the CHANGELOG for the 2.3 release.
+    expected: [DOCS_UPDATED]
+
+  - name: plain change description without claims
+    text: |
+      This PR renames `getUser` to `fetchUser` across the codebase and updates call sites.
+    expected: []
+
+  - name: words that only look like claims
+    text: Refactors the attestation service and the latest-build cache.
+    expected: []
+
+  - name: failure report
+    text: Two tests are failing on CI; investigating.
+    expected: []
+
+  - name: checkbox list fully checked
+    text: |
+      - [x] Tests pass
+      - [x] Build succeeds
+      - [x] Docs updated
+    expected: [TESTS_PASS, BUILD_OK, DOCS_UPDATED]
+
+  - name: pytest command result sentence
+    text: Ran pytest and it passes with 214 tests.
+    expected: [TESTS_PASS]
+
+  - name: hedged expectation
+    text: "This is expected to fix #501."
+    expected: []
