@@ -1,0 +1,31 @@
+# L4: "Build succeeds" — do the CI build checks on the referenced commit agree?
+# Same decision logic as coding.tests_pass, using build jobs (see is_build_check).
+id: coding.build_ok
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [BUILD_OK]
+params:
+  timeout_hours: {type: int, default: 6, min: 1, max: 48}
+evidence:
+  checks:
+    record_type: check_result
+    where: "has(claim.attributes.ref) && e.ref == claim.attributes.ref"
+derive:
+  relevant: "checks.filter(c, is_build_check(c.name))"
+  running: "relevant.filter(c, c.status != 'completed')"
+  failed: "relevant.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion in ['failure', 'timed_out'])"
+  passed: "relevant.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion == 'success')"
+  total: "size(relevant)"
+  passed_count: "size(passed)"
+  deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
+outcomes:
+  - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
+  - {when: "size(failed) > 0", result: CONTRADICTED, reason: BUILD_CHECK_FAILED}
+  - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}
+  - {when: "total == 0", result: UNVERIFIABLE, reason: NO_BUILD_CHECKS}
+  - {when: "size(running) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}
+  - {when: "passed_count == 0", result: UNVERIFIABLE, reason: NO_BUILD_RESULTS}
+  - {otherwise: true, result: VERIFIED, reason: ALL_BUILD_CHECKS_PASSED}
+explain: "{passed_count} of {total} build checks passed"
