@@ -58,6 +58,8 @@ def types(text):
         ("Fixes #123", [FIXES_ISSUE]),
         ("Deployed to staging", [DEPLOYED]),
         ("Added tests and all tests pass", [TESTS_ADDED, TESTS_PASS]),
+        ("CI is green and the docs are updated", [TESTS_PASS, DOCS_UPDATED]),
+        ("Added regression tests and they are all passing", [TESTS_ADDED, TESTS_PASS]),
     ],
 )
 def test_finds_claims(text, expected):
