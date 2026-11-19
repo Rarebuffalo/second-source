@@ -2,8 +2,9 @@
 # show success in GitHub's deployment records?
 #
 # Repositories that do not use GitHub deployments give UNVERIFIABLE, never CONTRADICTED.
+# Environment names are normalised on both sides (env_matches), so "prod" meets "production".
 id: coding.deployed
-version: 1.0.0
+version: 1.1.0
 kind: state
 level: L4
 applies_to: [DEPLOYED]
@@ -14,7 +15,7 @@ evidence:
     record_type: deployment_status
     where: >-
       has(claim.attributes.ref) && e.ref == claim.attributes.ref &&
-      e.environment.startsWith(claim.attributes.environment)
+      env_matches(e.environment, claim.attributes.environment)
 derive:
   succeeded: "deployments.exists(d, d.state == 'success')"
   failed: "deployments.exists(d, d.state in ['failure', 'error'])"
