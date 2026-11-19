@@ -10,6 +10,9 @@ dependencies = [
     "httpx>=0.27",
 ]
 
+[project.scripts]
+second-source = "second_source.cli.main:run"
+
 [dependency-groups]
 dev = [
     "pytest>=8",
