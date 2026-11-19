@@ -71,7 +71,12 @@ def to_cel(value: Any) -> Any:
         nanos = value.microseconds * 1000 if value.total_seconds() >= 0 else 0
         return celtypes.DurationType(seconds=whole_seconds, nanos=nanos)
     if isinstance(value, Mapping):
-        return celtypes.MapType({celtypes.StringType(str(k)): to_cel(v) for k, v in value.items()})
+        # Keys whose value is None are left out. cel-python does not compare null reliably
+        # (e.g. `x == null` can be false for a null x), so "no value" is expressed as a missing
+        # key and checks test for it with `has(x.field)`.
+        return celtypes.MapType(
+            {celtypes.StringType(str(k)): to_cel(v) for k, v in value.items() if v is not None}
+        )
     if isinstance(value, (list, tuple, set, frozenset)):
         items = sorted(value) if isinstance(value, (set, frozenset)) else value
         return celtypes.ListType([to_cel(v) for v in items])
