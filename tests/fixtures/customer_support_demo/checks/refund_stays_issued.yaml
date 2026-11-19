@@ -1,0 +1,24 @@
+# L5 check: did the refund stay done, i.e. was it not reversed during the finality window?
+id: customer_support_demo.refund_stays_issued
+version: 1.0.0
+kind: temporal
+level: L5
+applies_to: [REFUND_ISSUED]
+params:
+  finality_days: {type: int, default: 7, min: 1, max: 90}
+evidence:
+  refunds:
+    record_type: refund
+    where: "e.order_id == claim.attributes.order_id"
+derive:
+  reversed: "refunds.exists(r, r.status == 'REVERSED')"
+  succeeded: "refunds.exists(r, r.status == 'SUCCESS')"
+  final_at: "claim.made_at + duration(string(params.finality_days * 24) + 'h')"
+outcomes:
+  - {when: "'refund' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "reversed", result: CONTRADICTED, reason: REFUND_REVERSED}
+  # Until the window closes we cannot say the refund stayed in place.
+  - {when: "now < final_at", result: PENDING, reason: IN_FINALITY_WINDOW}
+  - {when: "succeeded", result: VERIFIED, reason: REFUND_STAYED}
+  - {otherwise: true, result: UNVERIFIABLE, reason: NOTHING_TO_TRACK}
+explain: "Reversed: {reversed}; final at {final_at}"
