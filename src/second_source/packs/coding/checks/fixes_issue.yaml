@@ -1,30 +1,44 @@
-# L4: "Fixes #123" — once the PR is merged, is the issue actually closed?
+# L4: "Fixes #123" — once the PR is merged, was the issue closed by that merge?
 #
 # An issue reference without a repository ("#123") means the PR's own repository.
+# Repository names are compared case-insensitively (same_repo).
+# An issue that was already closed before the merge proves nothing about this PR, so it is
+# UNVERIFIABLE rather than VERIFIED.
 id: coding.fixes_issue
-version: 1.0.0
+version: 1.1.0
 kind: state
 level: L4
 applies_to: [FIXES_ISSUE]
+params:
+  # Allowed clock difference between the merge and the issue closing (GitHub closes linked
+  # issues right after the merge, but timestamps can differ slightly).
+  tolerance_minutes: {type: int, default: 5, min: 0, max: 60}
 evidence:
   issues:
     record_type: issue_state
     where: >-
       e.number == claim.attributes.issue &&
-      e.repo == (claim.attributes.repo != '' ? claim.attributes.repo : episode.attributes.repo)
+      same_repo(e.repo, claim.attributes.repo != '' ? claim.attributes.repo : episode.attributes.repo)
   prs:
     record_type: pr_state
 derive:
   merged: "prs.exists(p, p.merged)"
   closed_unmerged: "prs.exists(p, p.state == 'closed' && !p.merged)"
-  issue_closed: "issues.exists(i, i.state == 'closed')"
+  merge_times: "prs.filter(p, p.merged && has(p.merged_at)).map(p, p.merged_at)"
+  issue_open: "issues.exists(i, i.state == 'open')"
+  tolerance: "duration(string(params.tolerance_minutes) + 'm')"
 outcomes:
   - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(prs) == 0", result: UNVERIFIABLE, reason: NO_PR_STATE}
-  # A PR closed without merging never claimed to land its fix.
+  # A PR closed without merging never landed its fix.
   - {when: "closed_unmerged", result: UNVERIFIABLE, reason: PR_NOT_MERGED}
   - {when: "!merged", result: PENDING, reason: NOT_MERGED_YET}
+  - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NO_MERGE_TIME}
   - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
-  - {when: "issue_closed", result: VERIFIED, reason: ISSUE_CLOSED}
-  - {otherwise: true, result: CONTRADICTED, reason: ISSUE_STILL_OPEN}
-explain: "Merged: {merged}; issue closed: {issue_closed}"
+  - {when: "issue_open", result: CONTRADICTED, reason: ISSUE_STILL_OPEN}
+  - when: "issues.exists(i, has(i.closed_at) && i.closed_at >= merge_times[0] - tolerance)"
+    result: VERIFIED
+    reason: ISSUE_CLOSED_BY_MERGE
+  - {when: "issues.exists(i, has(i.closed_at))", result: UNVERIFIABLE, reason: ISSUE_ALREADY_CLOSED}
+  - {otherwise: true, result: UNVERIFIABLE, reason: NO_CLOSE_TIME}
+explain: "Merged: {merged}; issue still open: {issue_open}"
