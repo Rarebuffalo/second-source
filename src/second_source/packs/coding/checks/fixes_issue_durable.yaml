@@ -1,6 +1,7 @@
 # L5: "Fixes #123" stays true — the issue is not reopened within a window after the merge.
+# Repository names are compared case-insensitively (same_repo).
 id: coding.fixes_issue_durable
-version: 1.0.0
+version: 1.1.0
 kind: temporal
 level: L5
 applies_to: [FIXES_ISSUE]
@@ -11,7 +12,7 @@ evidence:
     record_type: issue_state
     where: >-
       e.number == claim.attributes.issue &&
-      e.repo == (claim.attributes.repo != '' ? claim.attributes.repo : episode.attributes.repo)
+      same_repo(e.repo, claim.attributes.repo != '' ? claim.attributes.repo : episode.attributes.repo)
   prs:
     record_type: pr_state
 derive:
