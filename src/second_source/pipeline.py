@@ -1,0 +1,87 @@
+"""Application pipeline: check one pull request end to end.
+
+    load PR  ->  detect agent  ->  extract claims (+ implicit merge claim)
+             ->  fetch only the evidence those claims need  ->  verify  ->  report
+
+Used by the CLI, the GitHub Action and the benchmark, so all three give identical verdicts
+for the same pull request.
+"""
+
+from __future__ import annotations
+
+from collections.abc import Sequence
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from functools import lru_cache
+
+from second_source.core.engine import Engine
+from second_source.core.model import Claim, Episode, Verdict
+from second_source.packs import coding
+from second_source.packs.coding.detection import AgentMatch, detect_agent
+from second_source.packs.coding.extract import extract_claims, merge_claim
+from second_source.sources.github import mappers
+from second_source.sources.github.source import GitHubSource
+from second_source.sources.github.urls import PullRequestRef
+
+UNKNOWN_AGENT = "unknown"
+
+
+@dataclass(frozen=True)
+class PullRequestReport:
+    ref: PullRequestRef
+    episode: Episode
+    agent: AgentMatch | None  # None when no agent signal was found (likely a human PR)
+    claims: Sequence[Claim]
+    verdicts: Sequence[Verdict]
+    stale: frozenset[str]
+    errors: Sequence[str]
+    checked_at: datetime
+    api_requests: int
+
+    def verdict_for(self, claim: Claim) -> Verdict:
+        return next(v for v in self.verdicts if v.claim_id == claim.id)
+
+
+@lru_cache(maxsize=1)
+def default_engine() -> Engine:
+    """The engine with the bundled coding pack (built once per process)."""
+    return Engine.from_packs([coding.load()])
+
+
+def check_pull_request(
+    ref: PullRequestRef,
+    source: GitHubSource,
+    *,
+    engine: Engine | None = None,
+    now: datetime | None = None,
+) -> PullRequestReport:
+    """Verify every claim in a pull request. Raises PullRequestNotFound for missing PRs."""
+    engine = engine or default_engine()
+    checked_at = now or datetime.now(UTC)
+
+    loaded = source.load(ref)
+    agent = detect_agent(loaded.signals)
+    episode = mappers.episode_from_pull(loaded.pull, agent.agent if agent else UNKNOWN_AGENT)
+
+    claims = extract_claims(episode.id, loaded.texts, repo=ref.full_name)
+    merged_at = mappers.parse_time(loaded.pull.get("merged_at"))
+    merge_sha = loaded.pull.get("merge_commit_sha")
+    if merged_at and merge_sha:
+        # Merging asserts the change is good; durability checks verify it over time.
+        claims.append(merge_claim(episode.id, merged_at, merge_sha))
+
+    evidence = source.fetch_evidence(loaded, claims, engine.evidence_types_for(claims))
+    verdicts = engine.verify(
+        episode, claims, evidence.records, now=checked_at, stale=frozenset(evidence.stale)
+    )
+    return PullRequestReport(
+        ref=ref,
+        episode=episode,
+        agent=agent,
+        claims=claims,
+        verdicts=verdicts,
+        stale=frozenset(evidence.stale),
+        errors=tuple(evidence.errors),
+        checked_at=checked_at,
+        api_requests=source.client.stats.requests,
+    )
