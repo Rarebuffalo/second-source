@@ -1,0 +1,30 @@
+# L4: "Fixes #123" — once the PR is merged, is the issue actually closed?
+#
+# An issue reference without a repository ("#123") means the PR's own repository.
+id: coding.fixes_issue
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [FIXES_ISSUE]
+evidence:
+  issues:
+    record_type: issue_state
+    where: >-
+      e.number == claim.attributes.issue &&
+      e.repo == (claim.attributes.repo != '' ? claim.attributes.repo : episode.attributes.repo)
+  prs:
+    record_type: pr_state
+derive:
+  merged: "prs.exists(p, p.merged)"
+  closed_unmerged: "prs.exists(p, p.state == 'closed' && !p.merged)"
+  issue_closed: "issues.exists(i, i.state == 'closed')"
+outcomes:
+  - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "size(prs) == 0", result: UNVERIFIABLE, reason: NO_PR_STATE}
+  # A PR closed without merging never claimed to land its fix.
+  - {when: "closed_unmerged", result: UNVERIFIABLE, reason: PR_NOT_MERGED}
+  - {when: "!merged", result: PENDING, reason: NOT_MERGED_YET}
+  - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
+  - {when: "issue_closed", result: VERIFIED, reason: ISSUE_CLOSED}
+  - {otherwise: true, result: CONTRADICTED, reason: ISSUE_STILL_OPEN}
+explain: "Merged: {merged}; issue closed: {issue_closed}"
