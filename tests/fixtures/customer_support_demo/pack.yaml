@@ -1,0 +1,14 @@
+# Non-coding fixture pack.
+#
+# It exists to prove the core engine is domain-neutral: a customer-support agent claims it
+# issued a refund, and the checks verify that against payment-system records. Nothing in
+# `second_source.core` may need to change for this pack to work.
+id: customer_support_demo
+version: 0.1.0
+kind: agent_type
+description: Refund claims made by customer-support agents (test fixture).
+claim_types:
+  - REFUND_ISSUED
+checks:
+  - checks/refund_issued.yaml
+  - checks/refund_stays_issued.yaml
