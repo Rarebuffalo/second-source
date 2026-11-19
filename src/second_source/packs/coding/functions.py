@@ -109,6 +109,61 @@ def is_doc_path(path: str) -> bool:
     return bool(_DOC_PATH.search(path.lower()))
 
 
+# Matching a claim to CI jobs ------------------------------------------------------------------
+
+# Which job classifier verifies which claim type. One shared CI check uses this, so the
+# decision logic for tests, builds and linting lives in a single place.
+_JOB_CLASSIFIERS = {
+    "TESTS_PASS": is_test_check,
+    "BUILD_OK": is_build_check,
+    "LINT_OK": is_lint_check,
+}
+
+
+def job_matches(claim_type: str, job_name: str) -> bool:
+    """True if a CI job with this name is relevant evidence for this claim type."""
+    classifier = _JOB_CLASSIFIERS.get(claim_type)
+    return classifier is not None and classifier(job_name)
+
+
+# Repositories and environments ----------------------------------------------------------------
+
+
+def same_repo(first: str, second: str) -> bool:
+    """GitHub repository names are case-insensitive: "Octo/Infra" is "octo/infra"."""
+    return first.strip().lower() == second.strip().lower()
+
+
+# Common short names for deployment environments. Applied to both the claim ("deployed to
+# prod") and the evidence (an environment named "prod"), so they always meet in the middle.
+ENVIRONMENT_ALIASES = {
+    "prod": "production",
+    "prd": "production",
+    "dev": "development",
+    "stg": "staging",
+    "stage": "staging",
+}
+
+
+def normalise_environment(name: str) -> str:
+    """Lower-case an environment name and expand a known short form at its start.
+
+    "Prod-EU" -> "production-eu"; "staging" -> "staging".
+    """
+    lowered = name.strip().lower()
+    head, separator, tail = lowered.partition("-")
+    return ENVIRONMENT_ALIASES.get(head, head) + separator + tail
+
+
+def env_matches(evidence_env: str, claimed_env: str) -> bool:
+    """True if a deployment environment satisfies the environment the agent named.
+
+    Both sides are normalised, then the evidence must start with the claim, so a claim of
+    "staging" is satisfied by "staging" or "staging-eu" but not by "production".
+    """
+    return normalise_environment(evidence_env).startswith(normalise_environment(claimed_env))
+
+
 # Registration ---------------------------------------------------------------------------------
 
 _FUNCTIONS = {
@@ -117,14 +172,17 @@ _FUNCTIONS = {
     "is_lint_check": is_lint_check,
     "is_test_path": is_test_path,
     "is_doc_path": is_doc_path,
+    "job_matches": job_matches,
+    "same_repo": same_repo,
+    "env_matches": env_matches,
 }
 
 
 def register(registry: FunctionRegistry) -> None:
     """Make the helpers available to expressions (referenced from pack.yaml).
 
-    Each helper receives a CEL string and must return a CEL boolean, so wrap the plain
-    Python functions above.
+    Helpers receive CEL strings and must return CEL booleans, so each plain Python function
+    above is wrapped: arguments are converted to str, the result back to a CEL value.
     """
     for name, function in _FUNCTIONS.items():
-        registry.register(name, lambda value, f=function: to_cel(f(str(value))))
+        registry.register(name, lambda *args, f=function: to_cel(f(*(str(arg) for arg in args))))
