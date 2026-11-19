@@ -32,7 +32,9 @@ class CheckKind(StrEnum):
 
 
 # Kinds whose results may decide a verdict on their own. Judge checks are shadow-only in v1.
-DETERMINISTIC_KINDS = frozenset({CheckKind.RULE, CheckKind.STATE, CheckKind.TEMPORAL, CheckKind.HUMAN})
+DETERMINISTIC_KINDS = frozenset(
+    {CheckKind.RULE, CheckKind.STATE, CheckKind.TEMPORAL, CheckKind.HUMAN}
+)
 
 
 class Level(StrEnum):
