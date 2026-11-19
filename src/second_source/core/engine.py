@@ -14,6 +14,7 @@ from second_source.core.aggregate import aggregate
 from second_source.core.checks import CheckDefinition, CompiledChecks, evaluate_check
 from second_source.core.expr import Evaluator, FunctionRegistry
 from second_source.core.model import Claim, Episode, Evidence, Verdict
+from second_source.core.pack import Pack, build_function_registry
 
 
 class Engine:
@@ -30,6 +31,12 @@ class Engine:
     ) -> None:
         self._evaluator = Evaluator(functions)
         self._checks = CompiledChecks.build(definitions, self._evaluator)
+
+    @classmethod
+    def from_packs(cls, packs: Sequence[Pack]) -> Engine:
+        """Build an engine from loaded packs: all their checks and helper functions."""
+        definitions = [check for pack in packs for check in pack.checks]
+        return cls(definitions, build_function_registry(packs))
 
     def checks_for(self, claim_type: str) -> list[CheckDefinition]:
         """The checks that apply to a claim type (useful for deciding what evidence to fetch)."""
