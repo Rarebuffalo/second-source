@@ -1,1 +1,4 @@
-"""Domain-neutral verification engine. Nothing here may refer to a specific agent type or industry."""
+"""Domain-neutral verification engine.
+
+Nothing in this package may refer to a specific agent type or industry.
+"""
