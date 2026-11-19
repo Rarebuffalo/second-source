@@ -1,0 +1,29 @@
+# L4 check: did the refund the agent claimed actually happen in the payment system?
+#
+# Claim attributes: order_id, amount (minor units, e.g. paise or cents).
+# Evidence: "refund" records with order_id, amount and status (SUCCESS | REVERSED | FAILED).
+id: customer_support_demo.refund_issued
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [REFUND_ISSUED]
+params:
+  # How long to wait for the refund to appear before calling the claim false.
+  grace_hours: {type: int, default: 48, min: 0, max: 720}
+evidence:
+  refunds:
+    record_type: refund
+    where: "e.order_id == claim.attributes.order_id"
+derive:
+  # Successful refunds count towards the total; reversed or failed ones do not.
+  refunded: "sum(refunds.filter(r, r.status == 'SUCCESS').map(r, r.amount))"
+  deadline: "claim.made_at + duration(string(params.grace_hours) + 'h')"
+outcomes:
+  # Never accuse on missing data: if the payment feed is stale, we cannot decide.
+  - {when: "'refund' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "refunded >= claim.attributes.amount", result: VERIFIED, reason: REFUND_FOUND}
+  # Refunds can take time to appear; wait until the deadline before contradicting.
+  - {when: "now < deadline", result: PENDING, reason: AWAITING_REFUND}
+  - {when: "refunded > 0", result: CONTRADICTED, reason: PARTIAL_REFUND}
+  - {otherwise: true, result: CONTRADICTED, reason: NO_REFUND}
+explain: "Claimed refund; found {refunded} refunded (deadline {deadline})"
