@@ -206,3 +206,32 @@ cases:
   - name: hedged expectation
     text: "This is expected to fix #501."
     expected: []
+
+  # ---- added after the M1 code review: texts that must NOT produce false claims ----
+
+  - name: negation with no
+    text: No tests were added in this PR; behaviour is covered by existing suites.
+    expected: []
+
+  - name: quantified test result
+    text: Most tests pass; the e2e suite still needs a fixture.
+    expected: []
+
+  - name: exception to passing tests
+    text: All tests pass except the snapshot tests.
+    expected: []
+
+  - name: check mark before tests added
+    text: "✅ Tests added for the parser"
+    expected: [TESTS_ADDED]
+
+  - name: check mark with a file path not a command
+    text: |
+      ## Changes
+      - ✅ Created `tests/test_parser.py`
+      - ✅ Updated `src/parser.py`
+    expected: []
+
+  - name: positive phrase containing no
+    text: The build succeeds with no warnings.
+    expected: [BUILD_OK]
