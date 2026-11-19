@@ -24,6 +24,8 @@ packages = ["src/second_source"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# importlib mode lets test files share a name in different folders (e.g. two test_checks.py).
+addopts = "--import-mode=importlib"
 
 [tool.ruff]
 line-length = 100
