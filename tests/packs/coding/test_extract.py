@@ -50,6 +50,7 @@ def types(text):
         ("✅ Tests", [TESTS_PASS]),
         ("Build succeeds", [BUILD_OK]),
         ("The project compiles cleanly", [BUILD_OK]),
+        ("Compiles cleanly with no warnings", [BUILD_OK]),  # "no" in a positive phrase
         ("Lint passes", [LINT_OK]),
         ("No lint errors", [LINT_OK]),
         ("Added unit tests for the parser", [TESTS_ADDED]),
@@ -87,6 +88,13 @@ def test_finds_claims(text, expected):
         "<!-- all tests pass -->",  # HTML comment
         "Refactor the attestation module",  # 'test' inside another word
         "Adds a retry loop to the client",  # no claim
+        # Review findings: negations with "no"/"without", quantifiers and exceptions.
+        "No tests were added in this PR",
+        "No docs updated",
+        "Merged without tests passing",
+        "Most tests pass; one integration test is pending a fixture",
+        "Some tests pass",
+        "Tests pass except the e2e suite",
     ],
 )
 def test_ignores_non_claims(text):
@@ -114,6 +122,24 @@ def test_ignores_non_claims(text):
 )
 def test_command_status_lines(text, expected):
     assert types(text) == sorted(expected)
+
+
+def test_check_mark_before_tests_added_is_not_a_passing_claim():
+    # Review finding: "✅ Tests added" means tests were added, not that they pass.
+    assert types("✅ Tests added for the parser") == [TESTS_ADDED]
+    assert types("✅ Tests") == [TESTS_PASS]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "- ✅ Created `tests/test_parser.py`",  # a file path, not a command
+        "- ✅ Renamed `test_utils` to `helpers`",  # identifiers, not commands
+    ],
+)
+def test_inline_code_that_is_not_a_command_is_ignored(text):
+    # Review finding: only command lines (pytest, npm, cargo, ...) count as test runs.
+    assert types(text) == []
 
 
 def test_command_claims_merge_with_prose_claims_at_the_same_commit():
@@ -159,6 +185,22 @@ def test_same_claim_at_same_commit_is_kept_once_from_the_earliest_source():
     earlier = body("Tests pass", origin="body", at=T0)
     (claim,) = extract_claims("pr-1", [later, earlier])
     assert claim.origin == "body"
+
+
+def test_qualifier_does_not_create_a_duplicate_claim():
+    # Review finding: "tests pass" and "tests pass locally" at one commit are one claim.
+    claims = extract_claims("pr-1", [body("All tests pass. Tests pass locally.")])
+    assert [c.type for c in claims] == [TESTS_PASS]
+
+
+def test_own_repo_issue_reference_is_the_same_claim_as_a_plain_reference():
+    claims = extract_claims("pr-1", [body("Fixes #12. Fixes Octo/App#12.")], repo="Octo/App")
+    assert [(c.type, c.attributes["repo"]) for c in claims] == [(FIXES_ISSUE, "")]
+
+
+def test_other_repo_issue_reference_stays_separate():
+    claims = extract_claims("pr-1", [body("Fixes #12. Fixes octo/lib#12.")], repo="octo/app")
+    assert sorted(c.attributes["repo"] for c in claims) == ["", "octo/lib"]
 
 
 def test_same_claim_at_different_commits_is_kept_twice():
