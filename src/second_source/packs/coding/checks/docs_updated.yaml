@@ -1,0 +1,18 @@
+# L4: "Updated the docs/README" — does the PR actually change documentation files?
+id: coding.docs_updated
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [DOCS_UPDATED]
+evidence:
+  files:
+    record_type: changed_file
+derive:
+  doc_files: "files.filter(f, f.status != 'removed' && is_doc_path(f.path))"
+  doc_file_count: "size(doc_files)"
+outcomes:
+  - {when: "'changed_file' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "size(files) == 0", result: UNVERIFIABLE, reason: NO_FILE_LIST}
+  - {when: "doc_file_count > 0", result: VERIFIED, reason: DOC_FILES_CHANGED}
+  - {otherwise: true, result: CONTRADICTED, reason: NO_DOC_FILES_CHANGED}
+explain: "{doc_file_count} documentation file(s) changed"
