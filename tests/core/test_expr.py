@@ -39,6 +39,14 @@ def test_round_trip_preserves_value(value):
     assert from_cel(to_cel(value)) == value
 
 
+def test_none_values_in_maps_become_missing_keys():
+    # Checks test "no value" with has(), which only works if the key is absent.
+    evaluator = Evaluator()
+    activation = {"m": to_cel({"present": 1, "absent": None})}
+    assert evaluator.evaluate_bool("has(m.present)", activation)
+    assert not evaluator.evaluate_bool("has(m.absent)", activation)
+
+
 def test_bool_is_not_converted_to_int():
     # bool subclasses int in Python; the converter must keep it a boolean.
     assert from_cel(to_cel(True)) is True
