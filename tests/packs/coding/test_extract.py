@@ -91,6 +91,34 @@ def test_ignores_non_claims(text):
     assert types(text) == []
 
 
+# ---- command status lines (e.g. Codex "Testing" sections) ------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("## Testing\n- ✅ `pytest -q`", [TESTS_PASS]),
+        (
+            "- ✅ `npm test`\n- ✅ `npm run lint`\n- ✅ `npm run build`",
+            [BUILD_OK, LINT_OK, TESTS_PASS],
+        ),
+        ("- `cargo test` ✔", [TESTS_PASS]),
+        ("- ❌ `pytest` (fails: missing fixture)", []),  # failure report
+        ("- ⚠️ `npm test` *(could not run: no network)*", []),  # warning, not success
+        ("- ✅ `pytest` (not run: missing dependency)", []),  # prose says it did not run
+        ("- ✅ `git status`", []),  # not a test, lint or build command
+        ("```\n- ✅ `pytest`\n```", []),  # inside a code block
+    ],
+)
+def test_command_status_lines(text, expected):
+    assert types(text) == sorted(expected)
+
+
+def test_command_claims_merge_with_prose_claims_at_the_same_commit():
+    # "All tests pass" and "✅ `pytest`" at the same commit are one claim, not two.
+    assert types("All tests pass.\n- ✅ `pytest -q`") == [TESTS_PASS]
+
+
 # ---- attributes ------------------------------------------------------------------------------
 
 
