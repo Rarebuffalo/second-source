@@ -128,6 +128,10 @@ evidence record types the source reports as stale), each named evidence set, and
 derived value. Each evidence item is exposed as a map with `record_type`, `external_ref`,
 `observed_at`, `occurred_at` and its attributes.
 
+**Missing values:** fields whose value is `None` are left out of maps, so expressions test for
+them with `has(x.field)`. Do not compare with `null`; cel-python does not handle null
+comparisons reliably.
+
 Evaluation rules:
 
 - Evidence is de-duplicated before evaluation.
