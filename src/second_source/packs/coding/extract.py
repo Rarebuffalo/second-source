@@ -127,7 +127,10 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\b(pytest|jest|vitest|npm test|yarn test|go test|cargo test|mocha|rspec)\b"
             r"[^.]{0,40}\b(pass|passes|passed|passing|green)\b"
         ),
-        re.compile(r"\btests?\b[^.]{0,30}\band\s+(are\s+)?(all\s+)?(pass|passing|passed)\b"),
+        re.compile(
+            r"\btests?\b[^.]{0,30}\band\s+(they\s+|these\s+|both\s+)?(are\s+|all\s+)*"
+            r"(pass|passing|passed)\b"
+        ),
         re.compile(r"✅\s*(all\s+)?tests?\b"),
     ),
     BUILD_OK: (
@@ -164,7 +167,10 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\b(updated|updates|update|added|adds|wrote|improved|improves)\s+(the\s+)?"
             r"(docs|documentation|readme|changelog)\b"
         ),
-        re.compile(r"\b(docs|documentation|readme)\s+(updated|added)\b"),
+        re.compile(
+            r"\b(docs|documentation|readme|changelog)\s+"
+            r"(are\s+|is\s+|was\s+|were\s+|have been\s+|has been\s+)?(updated|added)\b"
+        ),
     ),
 }
 
