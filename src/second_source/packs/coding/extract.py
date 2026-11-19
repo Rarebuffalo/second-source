@@ -23,6 +23,7 @@ from typing import Any
 
 from second_source.core.hashing import sha256_hex
 from second_source.core.model import Claim
+from second_source.packs.coding.functions import is_build_check, is_lint_check, is_test_check
 
 # Claim type names (kept as constants so typos fail loudly in tests and code).
 TESTS_PASS = "TESTS_PASS"
@@ -197,11 +198,55 @@ def _match_clause(clause: str) -> Iterator[tuple[str, dict[str, Any]]]:
 
 
 # --------------------------------------------------------------------------------------------
+# Step 4b: command status lines, e.g. "- ✅ `pytest -q`".
+#
+# Some agents (notably Codex) report checks as a list of commands with a status emoji. The
+# command is inline code, which `clean` removes, so these lines are read separately from text
+# that still contains inline code. A ✅/✔ next to a command claims it succeeded; lines with
+# ❌, ⚠️ or ✗ are failure or warning reports and never produce a claim.
+# --------------------------------------------------------------------------------------------
+
+_SUCCESS_MARK = re.compile(r"✅|✔")
+_FAILURE_MARK = re.compile(r"❌|⚠|✗|✖|🚫")
+_INLINE_COMMAND = re.compile(r"`([^`\n]+)`")
+
+
+def _command_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Yield (claim type, attributes, span) for each successful command status line."""
+    without_blocks = _QUOTED_LINE.sub(" ", _HTML_COMMENT.sub(" ", _FENCED_CODE.sub(" ", text)))
+    for line in without_blocks.splitlines():
+        if not _SUCCESS_MARK.search(line) or _FAILURE_MARK.search(line):
+            continue
+        # The prose around the command must itself be a plain assertion
+        # ("✅ `pytest` (not run: missing deps)" is not).
+        if not is_assertion(_INLINE_COMMAND.sub(" ", line)):
+            continue
+        for command in _INLINE_COMMAND.findall(line):
+            # Lint and build are tested first: "npm run lint" also contains no test word,
+            # but "npm run test:lint" should count as lint, not tests.
+            if is_lint_check(command):
+                yield LINT_OK, {}, line.strip()
+            elif is_build_check(command):
+                yield BUILD_OK, {}, line.strip()
+            elif is_test_check(command):
+                yield TESTS_PASS, {}, line.strip()
+
+
+# --------------------------------------------------------------------------------------------
 # Step 5: build Claim objects.
 # --------------------------------------------------------------------------------------------
 
 # Claim types whose verification depends on the commit the claim refers to.
 _REF_TYPES = frozenset({TESTS_PASS, BUILD_OK, LINT_OK, DEPLOYED})
+
+
+def _candidates(source: TextSource) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Every (claim type, attributes, span) found in one text source, in reading order."""
+    for clause in clauses(clean(source.text)):
+        if is_assertion(clause):
+            for claim_type, attributes in _match_clause(clause):
+                yield claim_type, attributes, clause
+    yield from _command_claims(source.text)
 
 
 def extract_claims(episode_id: str, sources: Sequence[TextSource]) -> list[Claim]:
@@ -213,27 +258,24 @@ def extract_claims(episode_id: str, sources: Sequence[TextSource]) -> list[Claim
     claims: list[Claim] = []
     seen: set[str] = set()
     for source in sorted(sources, key=lambda s: s.written_at):
-        for clause in clauses(clean(source.text)):
-            if not is_assertion(clause):
+        for claim_type, attributes, span in _candidates(source):
+            if claim_type in _REF_TYPES:
+                attributes["ref"] = source.ref
+            key = sha256_hex([episode_id, claim_type, attributes])
+            if key in seen:
                 continue
-            for claim_type, attributes in _match_clause(clause):
-                if claim_type in _REF_TYPES:
-                    attributes["ref"] = source.ref
-                key = sha256_hex([episode_id, claim_type, attributes])
-                if key in seen:
-                    continue
-                seen.add(key)
-                claims.append(
-                    Claim(
-                        id=f"clm_{key[:16]}",
-                        episode_id=episode_id,
-                        type=claim_type,
-                        made_at=source.written_at,
-                        attributes=attributes,
-                        origin=source.origin,
-                        span=clause[:MAX_SPAN],
-                    )
+            seen.add(key)
+            claims.append(
+                Claim(
+                    id=f"clm_{key[:16]}",
+                    episode_id=episode_id,
+                    type=claim_type,
+                    made_at=source.written_at,
+                    attributes=attributes,
+                    origin=source.origin,
+                    span=span[:MAX_SPAN],
                 )
+            )
     return claims
 
 
