@@ -1,0 +1,31 @@
+# L4: "Deployed to staging" — does a deployment of the referenced commit to that environment
+# show success in GitHub's deployment records?
+#
+# Repositories that do not use GitHub deployments give UNVERIFIABLE, never CONTRADICTED.
+id: coding.deployed
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [DEPLOYED]
+params:
+  timeout_hours: {type: int, default: 2, min: 1, max: 24}
+evidence:
+  deployments:
+    record_type: deployment_status
+    where: >-
+      has(claim.attributes.ref) && e.ref == claim.attributes.ref &&
+      e.environment.startsWith(claim.attributes.environment)
+derive:
+  succeeded: "deployments.exists(d, d.state == 'success')"
+  failed: "deployments.exists(d, d.state in ['failure', 'error'])"
+  active: "deployments.exists(d, d.state in ['in_progress', 'queued', 'pending'])"
+  deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
+outcomes:
+  - {when: "'deployment_status' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
+  - {when: "succeeded", result: VERIFIED, reason: DEPLOYMENT_SUCCEEDED}
+  - {when: "failed", result: CONTRADICTED, reason: DEPLOYMENT_FAILED}
+  - {when: "active && now < deadline", result: PENDING, reason: DEPLOYING}
+  - {when: "size(deployments) == 0", result: UNVERIFIABLE, reason: NO_DEPLOYMENT_RECORDS}
+  - {otherwise: true, result: UNVERIFIABLE, reason: DEPLOYMENT_UNCLEAR}
+explain: "Deployment succeeded: {succeeded}"
