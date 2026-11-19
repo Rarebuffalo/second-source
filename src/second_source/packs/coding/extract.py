@@ -94,19 +94,34 @@ def clauses(text: str) -> Iterator[str]:
 # Step 3: drop clauses that are not plain assertions.
 # --------------------------------------------------------------------------------------------
 
-# Plans, hedges, conditions and negations. Matching any of these disqualifies the clause.
+# Plans, hedges, quantifiers, conditions and negations. Any of these disqualifies the clause.
 _NOT_AN_ASSERTION = re.compile(
+    # plans and conditions
     r"\b(will|would|should|could|might|may|need to|needs to|todo|to do|not yet|once|unless|"
-    r"until|not|never|no longer|fail|fails|failing|failed|failure|broken|cannot|can't|wip|"
-    r"pending|partially|partial|related|hopefully|probably|expected to|supposed to)\b"
+    r"until|hopefully|probably|expected to|supposed to|wip|pending|"
+    # negations
+    r"not|no|none|nothing|without|never|no longer|cannot|can't|"
+    # failure words
+    r"fail|fails|failing|failed|failure|broken|flaky|"
+    # partial or quantified statements ("most tests pass" is not "tests pass")
+    r"partially|partial|related|most|mostly|some|several|few|majority|except|excluding|"
+    r"apart from)\b"
     r"|n't\b"
+)
+
+# "No lint errors" or "compiles with no warnings" are positive claims even though they contain
+# "no"; these exact phrases are removed before the negation test so claim patterns can still
+# match them.
+_POSITIVE_NO = re.compile(
+    r"\bno\s+((lint|linting|linter|eslint|type)\s+)?(errors|warnings|issues)\b"
 )
 
 
 def is_assertion(clause: str) -> bool:
     if clause.rstrip().endswith("?"):
         return False
-    return not _NOT_AN_ASSERTION.search(clause.lower())
+    lowered = _POSITIVE_NO.sub(" ", clause.lower())
+    return not _NOT_AN_ASSERTION.search(lowered)
 
 
 # --------------------------------------------------------------------------------------------
@@ -131,7 +146,8 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\btests?\b[^.]{0,30}\band\s+(they\s+|these\s+|both\s+)?(are\s+|all\s+)*"
             r"(pass|passing|passed)\b"
         ),
-        re.compile(r"✅\s*(all\s+)?tests?\b"),
+        # "✅ Tests" or "✅ Tests pass" as a whole clause; not "✅ Tests added for X".
+        re.compile(r"✅\s*(all\s+)?tests?(\s+(pass|passes|passed|passing|green))?\s*[.!]?$"),
     ),
     BUILD_OK: (
         re.compile(
@@ -216,6 +232,25 @@ _SUCCESS_MARK = re.compile(r"✅|✔")
 _FAILURE_MARK = re.compile(r"❌|⚠|✗|✖|🚫")
 _INLINE_COMMAND = re.compile(r"`([^`\n]+)`")
 
+# Programs that run tests, builds or linters. Inline code only counts as a command if it
+# starts with one of these; otherwise "✅ Created `tests/test_x.py`" would look like a test run.
+_KNOWN_RUNNERS = frozenset(
+    {
+        "pytest", "py.test", "python", "python3", "uv", "poetry", "pipenv", "tox", "nox",
+        "hatch", "npm", "npx", "yarn", "pnpm", "bun", "deno", "node", "jest", "vitest", "mocha",
+        "go", "cargo", "make", "just", "mvn", "gradle", "./gradlew", "gradlew", "dotnet",
+        "bundle", "rake", "rspec", "mix", "ruff", "eslint", "flake8", "pylint", "mypy", "black",
+        "prettier", "tsc", "golangci-lint", "pre-commit", "bazel", "swift", "xcodebuild",
+        "composer", "phpunit",
+    }
+)  # fmt: skip
+
+
+def _looks_like_command(code: str) -> bool:
+    """True if inline code is a command line (``pytest -q``), not a file path or identifier."""
+    tokens = code.strip().removeprefix("$").split()
+    return bool(tokens) and tokens[0].lower() in _KNOWN_RUNNERS
+
 
 def _command_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Yield (claim type, attributes, span) for each successful command status line."""
@@ -227,7 +262,7 @@ def _command_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
         # ("✅ `pytest` (not run: missing deps)" is not).
         if not is_assertion(_INLINE_COMMAND.sub(" ", line)):
             continue
-        for command in _INLINE_COMMAND.findall(line):
+        for command in filter(_looks_like_command, _INLINE_COMMAND.findall(line)):
             # Lint and build are tested first: "npm run lint" also contains no test word,
             # but "npm run test:lint" should count as lint, not tests.
             if is_lint_check(command):
@@ -255,11 +290,20 @@ def _candidates(source: TextSource) -> Iterator[tuple[str, dict[str, Any], str]]
     yield from _command_claims(source.text)
 
 
-def extract_claims(episode_id: str, sources: Sequence[TextSource]) -> list[Claim]:
+# Attributes that describe *how* something was said, not *what* was claimed. They are kept on
+# the claim but ignored when deciding whether two claims are the same.
+_DESCRIPTIVE_ATTRIBUTES = frozenset({"qualifier"})
+
+
+def extract_claims(
+    episode_id: str, sources: Sequence[TextSource], *, repo: str | None = None
+) -> list[Claim]:
     """Extract claims from all text sources of one episode, in source order.
 
-    Identical claims (same type, same attributes, same commit) are kept once, using the
-    earliest text that made them.
+    Identical claims (same type, same substance, same commit) are kept once, using the
+    earliest text that made them. ``repo`` is the PR's own repository (``owner/name``); issue
+    references that name it explicitly are treated like plain ``#123`` references, so
+    "Fixes #12" and "Fixes owner/name#12" are one claim.
     """
     claims: list[Claim] = []
     seen: set[str] = set()
@@ -267,7 +311,10 @@ def extract_claims(episode_id: str, sources: Sequence[TextSource]) -> list[Claim
         for claim_type, attributes, span in _candidates(source):
             if claim_type in _REF_TYPES:
                 attributes["ref"] = source.ref
-            key = sha256_hex([episode_id, claim_type, attributes])
+            if claim_type == FIXES_ISSUE and repo and attributes["repo"] == repo.lower():
+                attributes["repo"] = ""
+            substance = {k: v for k, v in attributes.items() if k not in _DESCRIPTIVE_ATTRIBUTES}
+            key = sha256_hex([episode_id, claim_type, substance])
             if key in seen:
                 continue
             seen.add(key)
