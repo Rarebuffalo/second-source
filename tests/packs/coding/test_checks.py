@@ -51,14 +51,14 @@ def claim(claim_type, **attributes):
     )
 
 
-def check_result(
-    name, conclusion="success", *, status="completed", ref=SHA, attempt=1, check_id=None
-):
+def check_result(name, conclusion="success", *, status="completed", ref=SHA, run_id=1):
+    """A CI job result keyed as the contract requires: by commit and job name, with the
+    run id as the version, so only the newest run of a job survives de-duplication."""
     attributes = {"ref": ref, "name": name, "status": status, "source": "check_run"}
     if conclusion is not None:
         attributes["conclusion"] = conclusion
     return Evidence(
-        "check_result", check_id or name, T0 + timedelta(minutes=10), attributes, version=attempt
+        "check_result", f"{ref}/{name}", T0 + timedelta(minutes=10), attributes, version=run_id
     )
 
 
@@ -78,8 +78,16 @@ def pr_state(*, merged, state="closed", merged_at=T0 + timedelta(hours=1), merge
     return Evidence("pr_state", "7", T0 + timedelta(hours=2), attributes)
 
 
-def issue_state(number=12, state="closed", repo="octo/app", reopened_at=None):
+def issue_state(
+    number=12,
+    state="closed",
+    repo="octo/app",
+    reopened_at=None,
+    closed_at=T0 + timedelta(hours=1, seconds=5),  # just after the default merge time
+):
     attributes = {"repo": repo, "number": number, "state": state}
+    if state == "closed" and closed_at:
+        attributes["closed_at"] = closed_at
     if reopened_at:
         attributes["last_reopened_at"] = reopened_at
     return Evidence("issue_state", f"{repo}#{number}", T0 + timedelta(hours=2), attributes)
@@ -102,10 +110,10 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
             [check_result("pytest"), check_result("lint", "failure")],
             1,
             Result.VERIFIED,
-            "ALL_TEST_CHECKS_PASSED",
+            "ALL_MATCHING_CI_JOBS_PASSED",
         ),  # a failing non-test check does not matter here
-        ([check_result("pytest", "failure")], 1, Result.CONTRADICTED, "TEST_CHECK_FAILED"),
-        ([check_result("pytest", "timed_out")], 1, Result.CONTRADICTED, "TEST_CHECK_FAILED"),
+        ([check_result("pytest", "failure")], 1, Result.CONTRADICTED, "CI_JOB_FAILED"),
+        ([check_result("pytest", "timed_out")], 1, Result.CONTRADICTED, "CI_JOB_FAILED"),
         ([check_result("pytest", None, status="in_progress")], 1, Result.PENDING, "AWAITING_CI"),
         (
             [check_result("pytest", None, status="in_progress")],
@@ -114,10 +122,10 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
             "CI_TIMEOUT",
         ),
         ([], 1, Result.PENDING, "AWAITING_CI"),
-        ([check_result("build")], 12, Result.UNVERIFIABLE, "NO_TEST_CHECKS"),
-        ([check_result("pytest", "skipped")], 12, Result.UNVERIFIABLE, "NO_TEST_RESULTS"),
-        ([check_result("pytest", "cancelled")], 12, Result.UNVERIFIABLE, "NO_TEST_RESULTS"),
-        ([check_result("pytest", ref="other")], 12, Result.UNVERIFIABLE, "NO_TEST_CHECKS"),
+        ([check_result("build")], 12, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
+        ([check_result("pytest", "skipped")], 12, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
+        ([check_result("pytest", "cancelled")], 12, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
+        ([check_result("pytest", ref="other")], 12, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
     ],
     ids=[
         "pass",
@@ -138,12 +146,21 @@ def test_tests_pass(engine, evidence, hours, expected, reason):
 
 
 def test_latest_rerun_wins(engine):
-    # Attempt 1 failed (flaky), attempt 2 passed: the latest attempt counts.
+    # Review finding: a GitHub re-run gets a new run id. Keyed by commit and job name with the
+    # run id as version, the newer passing run replaces the older failed one.
     evidence = [
-        check_result("pytest", "failure", attempt=1),
-        check_result("pytest", "success", attempt=2),
+        check_result("pytest", "failure", run_id=100),
+        check_result("pytest", "success", run_id=205),
     ]
     assert verdict(engine, claim(TESTS_PASS, ref=SHA), evidence).result is Result.VERIFIED
+
+
+def test_newest_run_wins_even_when_it_fails(engine):
+    evidence = [
+        check_result("pytest", "success", run_id=100),
+        check_result("pytest", "failure", run_id=205),
+    ]
+    assert verdict(engine, claim(TESTS_PASS, ref=SHA), evidence).result is Result.CONTRADICTED
 
 
 def test_missing_commit_reference_is_unverifiable(engine):
@@ -159,8 +176,8 @@ def test_stale_checks_are_unverifiable(engine):
 @pytest.mark.parametrize(
     ("claim_type", "job", "ok_reason", "fail_reason"),
     [
-        (BUILD_OK, "build (ubuntu)", "ALL_BUILD_CHECKS_PASSED", "BUILD_CHECK_FAILED"),
-        (LINT_OK, "eslint", "ALL_LINT_CHECKS_PASSED", "LINT_CHECK_FAILED"),
+        (BUILD_OK, "build (ubuntu)", "ALL_MATCHING_CI_JOBS_PASSED", "CI_JOB_FAILED"),
+        (LINT_OK, "eslint", "ALL_MATCHING_CI_JOBS_PASSED", "CI_JOB_FAILED"),
     ],
 )
 def test_build_and_lint(engine, claim_type, job, ok_reason, fail_reason):
@@ -232,7 +249,7 @@ def test_fixes_issue_closed_and_stays_closed(engine):
 
 def test_fixes_issue_in_window_is_pending(engine):
     result = verdict(engine, fixes_claim(), [pr_state(merged=True), issue_state()], hours=24)
-    assert runs_by_check(result)["coding.fixes_issue"] == (Result.VERIFIED, "ISSUE_CLOSED")
+    assert runs_by_check(result)["coding.fixes_issue"] == (Result.VERIFIED, "ISSUE_CLOSED_BY_MERGE")
     assert result.result is Result.PENDING  # durability still being watched
 
 
@@ -272,6 +289,35 @@ def test_cross_repo_issue_reference(engine):
     assert result.result is Result.VERIFIED
 
 
+def test_issue_closed_before_the_merge_proves_nothing(engine):
+    # Review finding: an issue closed long before the merge must not count as fixed by it.
+    already_closed = issue_state(closed_at=T0 - timedelta(days=30))
+    result = verdict(engine, fixes_claim(), [pr_state(merged=True), already_closed])
+    assert runs_by_check(result)["coding.fixes_issue"] == (
+        Result.UNVERIFIABLE,
+        "ISSUE_ALREADY_CLOSED",
+    )
+
+
+def test_issue_closed_moments_before_merge_timestamp_still_counts(engine):
+    # GitHub timestamps can differ by seconds; the tolerance absorbs that.
+    nearly = issue_state(closed_at=T0 + timedelta(minutes=58))  # merge is at T0 + 1h
+    result = verdict(engine, fixes_claim(), [pr_state(merged=True), nearly])
+    assert runs_by_check(result)["coding.fixes_issue"][0] is Result.VERIFIED
+
+
+def test_repo_names_match_case_insensitively(engine):
+    # Review finding: extraction lower-cases "Octo/Lib"; sources report canonical case.
+    canonical_case = issue_state(number=4, repo="Octo/Lib")
+    result = verdict(
+        engine,
+        fixes_claim(issue=4, repo="octo/lib"),
+        [pr_state(merged=True), canonical_case],
+        hours=24 * 40,
+    )
+    assert result.result is Result.VERIFIED
+
+
 def test_inaccessible_issue_is_unverifiable(engine):
     result = verdict(engine, fixes_claim(), [pr_state(merged=True)])
     assert runs_by_check(result)["coding.fixes_issue"] == (
@@ -300,12 +346,20 @@ def deployment(state, environment="staging", ref=SHA, dep_id="d1"):
         ([deployment("failure")], 1, Result.CONTRADICTED),
         ([deployment("in_progress")], 1, Result.PENDING),
         ([deployment("success", environment="production")], 1, Result.UNVERIFIABLE),
+        ([deployment("success", environment="Staging-EU")], 1, Result.VERIFIED),
         ([], 1, Result.UNVERIFIABLE),  # repo without GitHub deployments: never an accusation
     ],
 )
 def test_deployed(engine, evidence, hours, expected):
     result = verdict(engine, claim(DEPLOYED, ref=SHA, environment="staging"), evidence, hours=hours)
     assert result.result is expected
+
+
+def test_deployed_aliases_apply_to_evidence_too(engine):
+    # Review finding: "Deployed to prod" must match an environment literally named "prod".
+    the_claim = claim(DEPLOYED, ref=SHA, environment="production")  # extraction normalised it
+    result = verdict(engine, the_claim, [deployment("success", environment="prod")])
+    assert result.result is Result.VERIFIED
 
 
 # ---- merge holds (not reverted) --------------------------------------------------------------
