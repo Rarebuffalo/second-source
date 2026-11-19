@@ -59,6 +59,19 @@ and recall ≥ 90%.
 
 ## 4. Evidence contract (what a source must provide)
 
+**Episode attributes.** A source builds one `Episode` per PR with `kind="pull_request"`, the
+detected agent, `opened_at`, `closed_at`, and these attributes:
+
+- `repo`: `owner/name`;
+- `number`;
+- `url`;
+- `head_branch`;
+- `base_branch`.
+
+**Missing values.** Attributes with no value are omitted, never set to null. Checks test them
+with `has()`. Environment names in `deployment_status` are lower-cased by the source.
+
+
 Every record is an `Evidence` with the `record_type`, `external_ref` and attributes below.
 Timestamps are timezone-aware UTC.
 
