@@ -1,0 +1,30 @@
+# L5: "Fixes #123" stays true — the issue is not reopened within a window after the merge.
+id: coding.fixes_issue_durable
+version: 1.0.0
+kind: temporal
+level: L5
+applies_to: [FIXES_ISSUE]
+params:
+  window_days: {type: int, default: 30, min: 7, max: 90}
+evidence:
+  issues:
+    record_type: issue_state
+    where: >-
+      e.number == claim.attributes.issue &&
+      e.repo == (claim.attributes.repo != '' ? claim.attributes.repo : episode.attributes.repo)
+  prs:
+    record_type: pr_state
+derive:
+  merge_times: "prs.filter(p, p.merged && has(p.merged_at)).map(p, p.merged_at)"
+  window: "duration(string(params.window_days * 24) + 'h')"
+outcomes:
+  - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NOT_MERGED}
+  - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
+  - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0])"
+    result: CONTRADICTED
+    reason: ISSUE_REOPENED
+  - {when: "issues.exists(i, i.state == 'open')", result: CONTRADICTED, reason: ISSUE_OPEN}
+  - {when: "now < merge_times[0] + window", result: PENDING, reason: IN_WINDOW}
+  - {otherwise: true, result: VERIFIED, reason: ISSUE_STAYED_CLOSED}
+explain: "Watched for {window_days} days after merge"
