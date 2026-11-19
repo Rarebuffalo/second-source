@@ -21,7 +21,8 @@ def _normalise(value: Any) -> Any:
             raise ValueError("naive datetimes are not allowed; use timezone-aware UTC times")
         return {"$ts": value.isoformat()}
     if isinstance(value, timedelta):
-        return {"$dur": value.total_seconds()}
+        # Normalise the number too, so 120 s and 120.0 s hash identically.
+        return {"$dur": _normalise(value.total_seconds())}
     if isinstance(value, Mapping):
         return {str(k): _normalise(v) for k, v in value.items()}
     if isinstance(value, (list, tuple)):
