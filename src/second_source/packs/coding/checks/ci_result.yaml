@@ -1,0 +1,41 @@
+# L4: "All tests pass" / "Build succeeds" / "Lint passes" — do the CI jobs on the referenced
+# commit agree?
+#
+# One definition serves all three claim types; job_matches(claim.type, name) picks the jobs
+# that count (test jobs for TESTS_PASS, build jobs for BUILD_OK, lint jobs for LINT_OK).
+#
+# Re-runs: the source keys each result by commit and job name and uses the run id as the
+# version, so de-duplication keeps only the newest run of every job. A flaky job that failed
+# and then passed on re-run counts as passed.
+# Cancelled, skipped and neutral results are neither passes nor failures.
+id: coding.ci_result
+version: 1.0.0
+kind: state
+level: L4
+applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
+params:
+  # How long to wait for CI before giving up on a running or missing job.
+  timeout_hours: {type: int, default: 6, min: 1, max: 48}
+evidence:
+  checks:
+    record_type: check_result
+    where: "has(claim.attributes.ref) && e.ref == claim.attributes.ref"
+derive:
+  relevant: "checks.filter(c, job_matches(claim.type, c.name))"
+  running: "relevant.filter(c, c.status != 'completed')"
+  failed: "relevant.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion in ['failure', 'timed_out'])"
+  passed: "relevant.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion == 'success')"
+  total: "size(relevant)"
+  passed_count: "size(passed)"
+  deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
+outcomes:
+  - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
+  - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
+  - {when: "size(failed) > 0", result: CONTRADICTED, reason: CI_JOB_FAILED}
+  # CI may not have started yet, or may still be running.
+  - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}
+  - {when: "total == 0", result: UNVERIFIABLE, reason: NO_MATCHING_CI_JOBS}
+  - {when: "size(running) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}
+  - {when: "passed_count == 0", result: UNVERIFIABLE, reason: NO_CI_RESULTS}
+  - {otherwise: true, result: VERIFIED, reason: ALL_MATCHING_CI_JOBS_PASSED}
+explain: "{passed_count} of {total} matching CI jobs passed"
