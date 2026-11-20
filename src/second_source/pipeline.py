@@ -59,6 +59,9 @@ def check_pull_request(
     """Verify every claim in a pull request. Raises PullRequestNotFound for missing PRs."""
     engine = engine or default_engine()
     checked_at = now or datetime.now(UTC)
+    # The client may be shared across many PRs (benchmark runs), so count this PR's requests
+    # as a difference rather than reading the client's running total.
+    requests_before = source.client.stats.requests
 
     loaded = source.load(ref)
     agent = detect_agent(loaded.signals)
@@ -84,6 +87,6 @@ def check_pull_request(
         stale=frozenset(evidence.stale),
         errors=tuple(evidence.errors),
         checked_at=checked_at,
-        api_requests=source.client.stats.requests,
+        api_requests=source.client.stats.requests - requests_before,
         rate_limited=evidence.rate_limited,
     )
