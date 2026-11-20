@@ -9,12 +9,14 @@ from second_source.benchmark.golden import (
     TEST,
     GoldenCase,
     Metrics,
+    RuleMetrics,
     in_split,
     load_cases,
     merge_labels,
     rules_report,
     score,
     score_rules,
+    select_trusted,
     split_for,
 )
 
@@ -101,3 +103,13 @@ def test_command_rules_are_scored_per_claim_type():
     rules = score_rules(cases)
     assert rules[("TESTS_PASS", "command.marked")].correct == 1
     assert rules[("LINT_OK", "command.marked")].wrong == 1
+
+
+def test_select_trusted_needs_enough_hits_and_precision():
+    metrics = {
+        ("TESTS_PASS", "a"): RuleMetrics("TESTS_PASS", correct=10, wrong=0),
+        ("TESTS_PASS", "b"): RuleMetrics("TESTS_PASS", correct=3, wrong=0),  # too few hits
+        ("LINT_OK", "c"): RuleMetrics("LINT_OK", correct=9, wrong=1),  # 0.90 < 0.95
+    }
+    chosen = select_trusted(metrics, min_hits=5, min_precision=0.95)
+    assert [(c["type"], c["rule"]) for c in chosen] == [("TESTS_PASS", "a")]
