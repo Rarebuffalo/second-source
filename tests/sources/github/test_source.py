@@ -111,3 +111,12 @@ def test_reverts_are_not_looked_up_for_unmerged_pulls(fake_github):
     fake.requested.clear()
     assert source.fetch_evidence(loaded, [], {"revert"}).records == []
     assert fake.requested == []
+
+
+def test_revert_scan_is_limited_to_the_durability_window(fake_github):
+    fake = fake_github()
+    source = make_source(fake)
+    source.fetch_evidence(source.load(REF), [], {"revert"})
+    (request,) = [r for r in fake.requests if r.url.path == "/repos/Octo/App/commits"]
+    assert request.url.params["since"] == "2026-11-20T12:00:00Z"
+    assert request.url.params["until"] == "2026-12-20T12:00:00Z"  # merge + 30 days
