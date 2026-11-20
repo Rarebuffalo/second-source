@@ -74,6 +74,9 @@ class EvidenceResult:
     records: list[Evidence] = field(default_factory=list)
     stale: set[str] = field(default_factory=set)
     errors: list[str] = field(default_factory=list)  # human-readable, for the report
+    # True when the rate limit cut fetching short. Batch callers stop and retry the PR later
+    # instead of recording verdicts that are unverifiable only for lack of quota.
+    rate_limited: bool = False
 
 
 class GitHubSource:
@@ -129,6 +132,7 @@ class GitHubSource:
                 remaining = pending[index:]
                 result.stale |= set(remaining)
                 result.errors.append(f"GitHub rate limit reached; not fetched: {remaining}")
+                result.rate_limited = True
                 break
             except GitHubError as error:  # includes PageLimitReached
                 result.stale.add(kind)
