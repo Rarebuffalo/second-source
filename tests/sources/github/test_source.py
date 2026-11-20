@@ -82,6 +82,7 @@ def test_rate_limit_marks_this_and_all_later_types_stale(fake_github):
     assert [r.record_type for r in result.records] == ["pr_state"]  # fetched before the limit
     assert result.stale == {"check_result", "changed_file"}
     assert "rate limit" in result.errors[0]
+    assert result.rate_limited
 
 
 def test_other_errors_mark_only_their_own_type_stale(fake_github):
@@ -93,6 +94,7 @@ def test_other_errors_mark_only_their_own_type_stale(fake_github):
     )
     assert result.stale == {"changed_file"}
     assert any(r.record_type == "check_result" for r in result.records)
+    assert not result.rate_limited  # stale, but not for lack of quota
 
 
 def test_unknown_evidence_types_are_stale(fake_github):
