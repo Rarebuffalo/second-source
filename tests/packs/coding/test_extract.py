@@ -329,3 +329,20 @@ def test_changed_files_named_in_inline_code(text, expected):
 )
 def test_negations_only_cancel_their_own_part_of_a_sentence(text, expected):
     assert types(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("All new and existing unit tests for the filters plugin passed.", [TESTS_PASS]),
+        ("All 28 existing RWS tests continue passing.", [TESTS_PASS]),
+        ("7 proxy integration tests added (all passing)", [TESTS_ADDED, TESTS_PASS]),
+        ("Local self-test passed.", []),  # a script testing itself, not the project's tests
+        ("Repo checks pass.", []),  # too vague to say which checks
+        ("All CI checks are green.", [TESTS_PASS]),
+        ("Docs formatting, markdown lint and link audit pass.", [LINT_OK]),
+        ("Changes have been verified with lint checks.", [LINT_OK]),
+    ],
+)
+def test_real_agent_phrasings_for_checks(text, expected):
+    assert sorted(types(text)) == sorted(expected)
