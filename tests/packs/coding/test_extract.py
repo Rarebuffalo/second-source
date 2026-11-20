@@ -132,15 +132,15 @@ def test_check_mark_before_tests_added_is_not_a_passing_claim():
 
 
 @pytest.mark.parametrize(
-    "text",
+    ("text", "expected"),
     [
-        "- ✅ Created `tests/test_parser.py`",  # a file path, not a command
-        "- ✅ Renamed `test_utils` to `helpers`",  # identifiers, not commands
+        ("- ✅ Created `tests/test_parser.py`", [TESTS_ADDED]),  # a new test file, not a run
+        ("- ✅ Renamed `test_utils` to `helpers`", []),  # identifiers, not commands
     ],
 )
-def test_inline_code_that_is_not_a_command_is_ignored(text):
+def test_inline_code_that_is_not_a_command_is_not_a_test_run(text, expected):
     # Review finding: only command lines (pytest, npm, cargo, ...) count as test runs.
-    assert types(text) == []
+    assert types(text) == expected
 
 
 def test_command_claims_merge_with_prose_claims_at_the_same_commit():
@@ -277,3 +277,39 @@ def test_merge_claim_is_implicit_and_deterministic():
     assert claim.type == MERGE_HOLDS
     assert claim.attributes == {"merge_sha": "cafe"}
     assert claim.id == merge_claim("pr-1", T0, "cafe").id
+
+
+# ---- sentences with inline code (real agent phrasings) -------------------------------------
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Ran `pnpm tsc --noEmit` and it completed successfully.", [LINT_OK]),
+        ("- `pytest tests/test_api.py`: 201 passed", [TESTS_PASS]),
+        ("- `cargo build` ✅", [BUILD_OK]),
+        ("Ran `pnpm build` which failed due to a network error.", []),
+        # A ✅ used as a section emoji is not a result for the commands after it.
+        ("- **✅ Verification:** ran `npm test` to make sure nothing broke", []),
+        # Purpose clauses say why a command ran, not what happened.
+        ("Ran `npm test` to ensure the build succeeds", []),
+    ],
+)
+def test_command_results_in_prose(text, expected):
+    assert types(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("- Created `tests/test_cache.py` to cover expiry", [TESTS_ADDED]),
+        ("- **`docs/setup.md`**: Updated the install steps", [DOCS_UPDATED]),
+        ("Added a section to `frame/rws/README.md`", [DOCS_UPDATED]),
+        ("- Fixed `tests/test_cache.py` imports", []),  # editing a test file is not new tests
+        ("Implemented the API as described in `docs/api.md`", []),  # a reference, not a change
+        ("### New files\n- `tests/unit/CacheTests.cs` - unit tests", [TESTS_ADDED]),
+        ("- [ ] Update `README.md`", []),  # unchecked to-do
+    ],
+)
+def test_changed_files_named_in_inline_code(text, expected):
+    assert types(text) == expected

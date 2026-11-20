@@ -226,11 +226,12 @@ cases:
     expected: [TESTS_ADDED]
 
   - name: check mark with a file path not a command
+    # Creating a test file is adding tests; it is not a test run (no TESTS_PASS).
     text: |
       ## Changes
       - ✅ Created `tests/test_parser.py`
       - ✅ Updated `src/parser.py`
-    expected: []
+    expected: [TESTS_ADDED]
 
   - name: positive phrase containing no
     text: The build succeeds with no warnings.
