@@ -108,3 +108,17 @@ def test_header_must_come_first(viewer, tmp_path):
     )
     with pytest.raises(ValueError, match="header must be the first record"):
         read_sample(path)
+
+
+def test_excluded_urls_are_skipped_and_replaced(viewer):
+    first = draw_sample(client_for(viewer()), per_agent=4, seed=11, agents=["devin"])
+    grown = draw_sample(
+        client_for(viewer()),
+        per_agent=4,
+        seed=11,
+        agents=["devin"],
+        exclude=[row.url for row in first.rows],
+    )
+    assert len(grown.rows) == 4
+    assert not {row.url for row in first.rows} & {row.url for row in grown.rows}
+    assert grown.header["excluded"] == 4
