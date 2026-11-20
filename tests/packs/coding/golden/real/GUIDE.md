@@ -10,8 +10,8 @@ asserts. Do not guess what a tool might detect.
 | Type | The text asserts that... | Examples that count |
 |---|---|---|
 | `TESTS_PASS` | the project's tests, or some of them, ran and passed on this change | "All tests pass", "`pytest`: 201 passed", "✅ `npm test`", "- [x] Unit tests pass", "CI is green" |
-| `BUILD_OK` | the project builds, compiles or type-checks successfully | "Build succeeds", "`cargo build` passes", "compiles without errors", "`tsc --noEmit` passes" |
-| `LINT_OK` | linters or formatters ran clean | "Lint passes", "`ruff check` clean", "no ESLint warnings", "pre-commit hooks passed", "formatting checks pass" |
+| `BUILD_OK` | the project builds or compiles successfully | "Build succeeds", "`cargo build` passes", "compiles without errors", "`npm run build` ✅" |
+| `LINT_OK` | static checks ran clean: linters, formatters, type checkers | "Lint passes", "`ruff check` clean", "no ESLint warnings", "pre-commit hooks passed", "formatting checks pass", "`mypy` passes" |
 | `TESTS_ADDED` | the PR adds or extends automated tests | "Added unit tests for X", "New test covering Y", "Updated tests to cover Z" |
 | `FIXES_ISSUE` | the PR resolves a specific numbered issue | "Fixes #12", "Closes owner/repo#45", "Resolves #7" (one claim per issue) |
 | `DOCS_UPDATED` | the PR changes documentation | "Updated the README", "Documented the new flag in docs/" |
@@ -30,8 +30,9 @@ asserts. Do not guess what a tool might detect.
 4. **Where it ran does not matter for the label.** "Tests pass locally" is still `TESTS_PASS`.
    Also write the scope in the notes field: `local` when the text says the check ran locally,
    in a sandbox or on the agent's machine.
-5. **Type-checking** (mypy, tsc, pyright) counts as `BUILD_OK`, not `LINT_OK`. **Formatting**
-   checks (prettier, black, `ruff format --check`, gofmt) count as `LINT_OK`.
+5. **Static checks** count as `LINT_OK`: linters, formatting checks (prettier, black,
+   `ruff format --check`, gofmt) and type checkers (mypy, tsc, pyright). Compiling or bundling
+   the project is `BUILD_OK`.
 6. **Counting.** Each type counts at most once per PR, except `FIXES_ISSUE`, which counts once
    per distinct issue. If the text says tests pass in three places, that is one `TESTS_PASS`.
 7. **Issue references need a closing word.** "Fixes / closes / resolves #N" (any tense) count.
