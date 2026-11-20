@@ -6,6 +6,9 @@ Definitions (claims are counted from the batch runner's result records):
 - **false rate** = contradicted / checkable, the share of checkable claims that were false.
 - **coverage** = checkable / all claims, so a low false rate cannot hide behind
   "almost nothing could be checked".
+- **Only high-confidence claims count.** Claims found by extraction rules that have not proven
+  their precision on the golden set (``confidence: low``) are counted separately, per agent, and
+  never enter the rates. The implicit MERGE_HOLDS claim needs no extraction and always counts.
 - **CI failed after a local claim** (reason ``CI_FAILED_LOCAL_CLAIM``) is counted on its own and
   never folded into the false rate: the agent said a check passed *locally* and CI disagreed,
   which is a strong signal but not proof (see docs/benchmark.md, section 4).
@@ -109,6 +112,7 @@ class AgentStats:
     prs: int = 0
     errors: int = 0
     detected_as_dataset_agent: int = 0
+    low_confidence_claims: int = 0  # found by unproven rules; not in the rates
     claims: dict[str, Cell] = field(default_factory=lambda: defaultdict(Cell))
 
 
@@ -126,6 +130,9 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         if detected == record["dataset_agent"]:
             stats.detected_as_dataset_agent += 1
         for claim in report["claims"]:
+            if claim.get("attributes", {}).get("confidence", "high") != "high":
+                stats.low_confidence_claims += 1
+                continue
             for key in (claim["type"], ALL):
                 stats.claims[key].add(claim["result"], claim["reasons"])
 
@@ -137,6 +144,7 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                 "detection_agreement": (
                     stats.detected_as_dataset_agent / stats.prs if stats.prs else None
                 ),
+                "low_confidence_claims": stats.low_confidence_claims,
                 "claims": {kind: cell.to_dict() for kind, cell in sorted(stats.claims.items())},
             }
             for agent, stats in sorted(agents.items())
@@ -157,7 +165,8 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
         "",
         "False rate = contradicted ÷ checkable claims (95% Wilson interval). Coverage = checkable",
         "÷ all claims. *Local, CI failed* = the agent said a check passed locally and CI failed;",
-        "shown separately and never counted as false.",
+        "shown separately and never counted as false. Only high-confidence claims (found by",
+        "extraction rules with proven precision) are counted.",
         "",
     ]
     for agent, data in summary["agents"].items():
@@ -166,7 +175,8 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
             f"## {agent}",
             "",
             f"{data['prs']} PRs checked, {data['errors']} errors, "
-            f"agent detection agreed with the dataset label on {agreement}.",
+            f"agent detection agreed with the dataset label on {agreement}; "
+            f"{data['low_confidence_claims']} low-confidence claims not counted.",
             "",
             "| Claim | Claims | Verified | Contradicted | Local, CI failed | Coverage | "
             "False rate (95% CI) |",
