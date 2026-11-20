@@ -176,12 +176,26 @@ _PASS_WORDS = r"(pass|passes|passed|passing|green|succeed|succeeds|succeeded|suc
 
 _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     TESTS_PASS: (
+        # "(?<!-)" keeps "self-test passed" (a script checking itself) out.
         re.compile(
-            r"\b(all\s+)?(the\s+)?(existing\s+|new\s+)?(unit\s+|integration\s+|e2e\s+)?tests?\s+"
+            r"\b(all\s+)?(the\s+)?(existing\s+|new\s+)?(unit\s+|integration\s+|e2e\s+)?"
+            r"(?<!-)tests?\s+"
             rf"(are\s+|is\s+|now\s+|still\s+|all\s+)*{_PASS_WORDS}\b"
         ),
+        # Quantified subjects with words in between: "All new and existing unit tests for the
+        # filters plugin passed", "All 28 existing RWS tests continue passing".
+        re.compile(
+            r"\b(all|new|existing)\b[^.]{0,40}?(?<!-)\btests?\b[^.]{0,40}?"
+            r"\b(passed|pass|passing|continue\s+(to\s+)?pass(ing)?)\b"
+        ),
+        # "7 tests added (all passing)".
+        re.compile(r"(?<!-)\btests?\b[^.]{0,40}\(\s*all\s+(pass|passing|passed|green)\s*\)"),
         re.compile(rf"\b(test suite|test run|tests? run)\s+(is\s+)?(now\s+)?{_PASS_WORDS}\b"),
-        re.compile(r"\b(ci|checks|all checks)\s+(is\s+|are\s+)?(now\s+)?(green|passing|pass)\b"),
+        # CI as a whole. Bare "checks pass" is too vague ("repo checks pass" may be lint).
+        re.compile(
+            r"\b(ci|all checks|all ci checks|ci checks)\s+(is\s+|are\s+)?(now\s+)?"
+            r"(green|passing|pass|passed)\b"
+        ),
         re.compile(
             r"\b(pytest|jest|vitest|npm test|yarn test|go test|cargo test|mocha|rspec)\b"
             r"[^.]{0,40}\b(pass|passes|passed|passing|green)\b"
@@ -209,6 +223,12 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             r"(checks?\s+)?(is\s+|are\s+|now\s+)*(passes|passed|passing|clean|green|happy|ok)\b"
         ),
         re.compile(r"\bno\s+(lint|linting|linter|eslint|type)\s+(errors|warnings|issues)\b"),
+        # "Docs formatting, markdown lint, link audit, and repo checks pass".
+        re.compile(
+            r"\b(lint|linting|linters?|formatting|format checks?)\b[^.]{0,50}?"
+            r"\b(pass|passes|passed|passing|clean)\b"
+        ),
+        re.compile(r"\bverified\s+(with|by|using)\s+(the\s+)?(lint|linting|linters?)\b"),
         re.compile(r"\b(type ?check(ing)?|mypy|tsc)\s+(passes|passed|clean)\b"),
     ),
     TESTS_ADDED: (
