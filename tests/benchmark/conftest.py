@@ -3,16 +3,37 @@
 import httpx
 import pytest
 
-# Agent labels as AIDev writes them; the fake table cycles through these in order,
-# with Jules rare (one row in ten) to mimic the real skew.
-LABELS = ["Claude_Code"] * 4 + ["Copilot"] * 2 + ["OpenAI_Codex", "Cursor", "Devin", "Google_Jules"]
+# Like the real table, the fake one stores each agent's rows as one contiguous block,
+# with Jules rare to mimic the real skew. (label, number of rows), in table order.
+BLOCKS = [
+    ("OpenAI_Codex", 200),
+    ("Claude_Code", 400),
+    ("Cursor", 100),
+    ("Devin", 100),
+    ("Google_Jules", 50),
+    ("Copilot", 150),
+]
+TOTAL = sum(size for _label, size in BLOCKS)
 
 
-def fake_row(index):
+def grouped_label(index):
+    for label, size in BLOCKS:
+        if index < size:
+            return label
+        index -= size
+    raise IndexError(index)
+
+
+def interleaved_label(index):
+    """A table where agents are mixed row by row (not grouped)."""
+    return [label for label, _size in BLOCKS][index % len(BLOCKS)]
+
+
+def fake_row(index, label_for=grouped_label):
     """Row ``index`` of the fake table. Every third row is unmerged; every seventh has no body."""
     return {
         "html_url": f"https://github.com/org/repo{index % 13}/pull/{index}",
-        "agent": LABELS[index % len(LABELS)],
+        "agent": label_for(index),
         "title": f"PR {index}",
         "body": "" if index % 7 == 0 else f"Body of PR {index}. All tests pass.",
         "state": "closed",
@@ -24,8 +45,13 @@ def fake_row(index):
 class FakeViewer:
     """Serves /rows from a synthetic table and /api/datasets for the revision."""
 
-    def __init__(self, total=1000, failures=0):
+    # Exposed for tests (tests cannot import conftest under --import-mode=importlib).
+    BLOCKS = BLOCKS
+    interleaved = staticmethod(interleaved_label)
+
+    def __init__(self, total=TOTAL, failures=0, label_for=grouped_label):
         self.total = total
+        self.label_for = label_for
         self.failures = failures  # how many requests fail with 500 before succeeding
         self.requests = []
 
@@ -39,7 +65,7 @@ class FakeViewer:
         offset = int(request.url.params["offset"])
         length = int(request.url.params["length"])
         rows = [
-            {"row_idx": i, "row": fake_row(i)}
+            {"row_idx": i, "row": fake_row(i, self.label_for)}
             for i in range(offset, min(offset + length, self.total))
         ]
         return httpx.Response(200, json={"rows": rows, "num_rows_total": self.total})

@@ -14,19 +14,11 @@ def client_for(handler, retries=3):
 
 def test_page_maps_rows_and_agent_names(viewer):
     fake = viewer()
-    page = client_for(fake).page(0, 10)
+    page = client_for(fake).page(195, 10)  # crosses the Codex → Claude Code boundary
     assert page.total == 1000
     assert len(page.rows) == 10
-    first = page.rows[0]
-    assert first.agent == "claude_code"  # "Claude_Code" mapped to our detection name
-    assert {row.agent for row in page.rows} == {
-        "claude_code",
-        "copilot",
-        "codex",
-        "cursor",
-        "devin",
-        "jules",
-    }
+    # AIDev labels are mapped to our detection names.
+    assert [row.agent for row in page.rows] == ["codex"] * 5 + ["claude_code"] * 5
     params = fake.requests[0].url.params
     assert params["dataset"] == "hao-li/AIDev" and params["config"] == "pull_request"
 
