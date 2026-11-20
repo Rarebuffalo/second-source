@@ -366,3 +366,15 @@ def test_real_agent_phrasings_for_checks(text, expected):
 )
 def test_real_agent_phrasings_for_changes(text, expected):
     assert types(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("This PR fixes bug #12, where the plugin would misapply filters.", [FIXES_ISSUE]),
+        ("Update the Cursor Cloud instructions in AGENTS.md", [DOCS_UPDATED]),
+        ("Implemented the parser as specified in SPEC.md", []),  # no edit verb
+    ],
+)
+def test_relative_clauses_and_plain_doc_file_names(text, expected):
+    assert types(text) == expected
