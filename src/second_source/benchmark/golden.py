@@ -13,7 +13,7 @@ from __future__ import annotations
 import hashlib
 import json
 from collections import Counter
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from pathlib import Path
@@ -131,3 +131,58 @@ def _case(record: dict[str, Any]) -> GoldenCase:
 
 def in_split(cases: Sequence[GoldenCase], split: str) -> list[GoldenCase]:
     return [case for case in cases if case.split == split]
+
+
+# ---- building a golden set from two independent labellers ---------------------------------
+
+
+@dataclass
+class MergeResult:
+    """Merged golden records plus what a reader needs to judge the labels."""
+
+    records: list[dict[str, Any]]
+    exact_agreement: int  # PRs where both labellers gave the same multiset of claims
+    total: int
+    unresolved: list[dict[str, Any]]  # disagreements without an adjudication yet
+
+
+def merge_labels(
+    rows: Sequence[Mapping[str, Any]],
+    labels_a: Mapping[str, Mapping[str, Any]],
+    labels_b: Mapping[str, Mapping[str, Any]],
+    adjudications: Mapping[str, Mapping[str, Any]],
+) -> MergeResult:
+    """Combine two labellers' labels for sampled PRs (rows have url, agent and body).
+
+    Where the labellers agree, their label is ``expected``. Where they disagree, an
+    adjudication ``{"expected": [...], "reason": "..."}`` decides; without one the case is
+    reported as unresolved and left out, so nothing is ever guessed.
+    """
+    urls = {row["url"] for row in rows}
+    if set(labels_a) != urls or set(labels_b) != urls:
+        raise ValueError("both labellers must label exactly the sampled PRs")
+
+    records, unresolved, agreed = [], [], 0
+    for row in rows:
+        url = row["url"]
+        a, b = sorted(labels_a[url]["expected"]), sorted(labels_b[url]["expected"])
+        record: dict[str, Any] = {
+            "url": url,
+            "agent": row["agent"],
+            "body": row["body"],
+            "labeller_a": a,
+            "labeller_b": b,
+            "notes_a": labels_a[url].get("notes", ""),
+            "notes_b": labels_b[url].get("notes", ""),
+        }
+        if a == b:
+            agreed += 1
+            record["expected"] = a
+        elif url in adjudications:
+            record["expected"] = sorted(adjudications[url]["expected"])
+            record["adjudication"] = adjudications[url]["reason"]
+        else:
+            unresolved.append(record)
+            continue
+        records.append(record)
+    return MergeResult(records, agreed, len(rows), unresolved)
