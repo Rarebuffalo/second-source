@@ -358,7 +358,7 @@ def test_real_agent_phrasings_for_checks(text, expected):
         ("Added support for tests in the plugin loader.", []),  # a feature, not new tests
         ("Updates the source-clickhouse user documentation.", [DOCS_UPDATED]),
         ("Updated the docs for the CLI.", [DOCS_UPDATED]),
-        ("Added logging to the documentation builder.", []),  # a preposition breaks the phrase
+        ("Added logging to the documentation builder.", []),  # docs tooling, not docs
         ("This PR fixes issue #2351 for long names.", [FIXES_ISSUE]),
         ("Fixes bug #11832.", [FIXES_ISSUE]),
         ("1. **New Files**:\n   - `tests/Cache/DiskCacheTests.cs` - Unit tests", [TESTS_ADDED]),
@@ -378,3 +378,38 @@ def test_real_agent_phrasings_for_changes(text, expected):
 )
 def test_relative_clauses_and_plain_doc_file_names(text, expected):
     assert types(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        # Check lists and counts.
+        ("- [x] Manual testing completed (depcheck, lint, compile all pass)", [LINT_OK]),
+        ("- [x] `dotnet test -c Release` — 211 pass, 0 fail", [TESTS_PASS]),
+        ("- [x] `dotnet build` — zero warnings", [BUILD_OK]),
+        ("Verified compilation and tests for all affected crates.", [BUILD_OK, TESTS_PASS]),
+        ("TypeScript checks pass.", [LINT_OK]),
+        ("19/22 tests passing in the local environment", []),  # a partial count is a hedge
+        # New tests and docs.
+        ("Significantly improved test coverage.", [TESTS_ADDED]),
+        ("Added rawEnergy assertions to existing tests.", [TESTS_ADDED]),
+        ("Add test metadata for better filtering.", []),
+        ("Created test scripts to try the feature by hand.", []),
+        ("I've included tests if applicable.", []),  # conditional checklist item
+        ("- update progress in TypeScript README", [DOCS_UPDATED]),
+        ("- new README and TASKS for the C transpiler", [DOCS_UPDATED]),
+        ("README.md updated with the new flag.", [DOCS_UPDATED]),
+        ("Fixed the docs build pipeline.", []),
+    ],
+)
+def test_second_round_real_phrasings(text, expected):
+    assert sorted(types(text)) == sorted(expected)
+
+
+def test_review_bot_sections_are_ignored():
+    text = (
+        "Small fix.\n<!-- This is an auto-generated comment: release notes by coderabbit.ai -->\n"
+        "* **Tests**\n  * Added tests for edge cases.\n"
+        "<!-- end of auto-generated comment: release notes by coderabbit.ai -->"
+    )
+    assert types(text) == []
