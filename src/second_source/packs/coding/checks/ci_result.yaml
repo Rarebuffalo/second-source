@@ -8,8 +8,12 @@
 # version, so de-duplication keeps only the newest run of every job. A flaky job that failed
 # and then passed on re-run counts as passed.
 # Cancelled, skipped and neutral results are neither passes nor failures.
+#
+# Local claims ("tests pass locally", scope=local): passing CI corroborates them, but failing
+# CI does not prove them false, because local and CI environments differ. They get the
+# distinct UNVERIFIABLE reason CI_FAILED_LOCAL_CLAIM, which the benchmark reports separately.
 id: coding.ci_result
-version: 1.0.0
+version: 1.1.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -27,10 +31,12 @@ derive:
   passed: "relevant.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion == 'success')"
   total: "size(relevant)"
   passed_count: "size(passed)"
+  local: "has(claim.attributes.scope) && claim.attributes.scope == 'local'"
   deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
 outcomes:
   - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
+  - {when: "size(failed) > 0 && local", result: UNVERIFIABLE, reason: CI_FAILED_LOCAL_CLAIM}
   - {when: "size(failed) > 0", result: CONTRADICTED, reason: CI_JOB_FAILED}
   # CI may not have started yet, or may still be running.
   - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}
