@@ -26,6 +26,8 @@ ROWS_URL = "https://datasets-server.huggingface.co/rows"
 INFO_URL = f"https://huggingface.co/api/datasets/{DATASET}"
 MAX_PAGE = 100  # the dataset viewer returns at most 100 rows per request
 USER_AGENT = f"second-source/{__version__}"
+SERVER_ERROR_BACKOFF = 2.0  # seconds before the first retry; doubles on each retry
+RATE_LIMIT_BACKOFF = 30.0  # HTTP 429 comes without a Retry-After header, so wait longer
 
 # AIDev's agent labels mapped to the names our detection rules use (packs/coding/detection.py).
 AGENT_NAMES = {
@@ -94,22 +96,31 @@ class Page:
 class AidevClient:
     """Thin client for the dataset viewer ``/rows`` endpoint.
 
-    The transport and sleep function are injectable so tests never touch the network or wait.
+    The dataset viewer is a free shared service that answers bursts with HTTP 429 and no
+    rate-limit headers, so the client paces itself (``min_interval`` seconds between requests)
+    and backs off for longer after a 429 than after a server error.
+
+    The transport, sleep and clock are injectable so tests never touch the network or wait.
     """
 
     def __init__(
         self,
         *,
         transport: httpx.BaseTransport | None = None,
-        retries: int = 3,
+        retries: int = 4,
+        min_interval: float = 1.0,
         sleep: Callable[[float], None] = time.sleep,
+        clock: Callable[[], float] = time.monotonic,
         timeout: float = 30.0,
     ) -> None:
         self._http = httpx.Client(
             transport=transport, headers={"User-Agent": USER_AGENT}, timeout=timeout
         )
         self._retries = retries
+        self._min_interval = min_interval
         self._sleep = sleep
+        self._clock = clock
+        self._last_request: float | None = None
 
     def __enter__(self) -> AidevClient:
         return self
@@ -151,21 +162,39 @@ class AidevClient:
         # The dataset viewer answers with an "index is loading" error while it warms up,
         # which is also worth waiting for.
         last_problem = ""
+        backoff = 0.0
         for attempt in range(self._retries + 1):
             if attempt:
-                self._sleep(2.0**attempt)
+                self._sleep(backoff * 2.0 ** (attempt - 1))
+            self._pace()
             try:
                 response = self._http.get(url, params=params)
             except httpx.TransportError as error:
                 last_problem = f"network error: {error.__class__.__name__}"
+                backoff = SERVER_ERROR_BACKOFF
                 continue
             if response.status_code == 200:
                 data = response.json()
                 if isinstance(data, dict) and "error" in data:
                     last_problem = str(data["error"])
+                    backoff = SERVER_ERROR_BACKOFF
                     continue
                 return data
             last_problem = f"HTTP {response.status_code}"
-            if response.status_code < 500 and response.status_code != 429:
+            if response.status_code == 429:
+                backoff = RATE_LIMIT_BACKOFF
+            elif response.status_code >= 500:
+                backoff = SERVER_ERROR_BACKOFF
+            else:
                 break  # a client error will not fix itself
         raise AidevError(f"dataset viewer request failed: {last_problem}")
+
+    def _pace(self) -> None:
+        """Wait until at least ``min_interval`` seconds have passed since the last request."""
+        now = self._clock()
+        if self._last_request is not None:
+            wait = self._last_request + self._min_interval - now
+            if wait > 0:
+                self._sleep(wait)
+                now += wait
+        self._last_request = now
