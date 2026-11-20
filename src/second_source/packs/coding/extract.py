@@ -74,10 +74,28 @@ _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!;])\s+")
 
 
+# A Markdown heading ("## Local testing") or a line that is only bold text ("**Testing:**").
+_HEADING = re.compile(r"^\s*(?:#{1,6}\s+(?P<hash>.+?)|\*\*(?P<bold>[^*]+)\*\*:?)\s*$")
+
+
+def heading_of(line: str) -> str | None:
+    """The heading text if ``line`` is a heading, else None."""
+    found = _HEADING.match(line)
+    return None if found is None else (found.group("hash") or found.group("bold")).strip()
+
+
 def clauses(text: str) -> Iterator[str]:
-    """Yield candidate clauses. Unchecked checklist items are dropped here: ``- [ ] Tests pass``
-    is a to-do, not a claim."""
+    """Yield candidate clauses (see ``clauses_in_sections``)."""
+    for clause, _heading in clauses_in_sections(text):
+        yield clause
+
+
+def clauses_in_sections(text: str) -> Iterator[tuple[str, str]]:
+    """Yield (clause, heading of the section it is in). Unchecked checklist items are dropped
+    here: ``- [ ] Tests pass`` is a to-do, not a claim."""
+    heading = ""
     for line in text.splitlines():
+        heading = heading_of(line) or heading
         box = _CHECKBOX.match(line)
         if box:
             if box.group(1) == " ":
@@ -87,7 +105,7 @@ def clauses(text: str) -> Iterator[str]:
         for part in _SENTENCE_END.split(line):
             part = part.strip(" \t-*#:|")
             if part:
-                yield part
+                yield part, heading
 
 
 # --------------------------------------------------------------------------------------------
@@ -202,14 +220,32 @@ _DEPLOY = re.compile(
 _ENVIRONMENT_ALIASES = {"prod": "production", "dev": "development"}
 
 
-def _match_clause(clause: str) -> Iterator[tuple[str, dict[str, Any]]]:
+# Phrases saying a check ran on the agent's own machine or sandbox rather than in CI.
+# Matched on the clause and on the heading of its section ("## Local verification").
+_LOCAL_SCOPE = re.compile(
+    r"\blocally\b"
+    r"|\blocal\s+(run|runs|testing|tests?|verification|validation|checks?|build|environment|"
+    r"machine|setup)\b"
+    r"|\b(on|in)\s+(my|the|a)\s+(local\s+)?(machine|sandbox|container|dev environment)\b"
+    r"|\bsandbox\b"
+)
+
+# Claim types that can say where they ran.
+_SCOPED_TYPES = frozenset({TESTS_PASS, BUILD_OK, LINT_OK})
+
+
+def is_local(*texts: str) -> bool:
+    """True if any of the texts says the check ran locally (see ``_LOCAL_SCOPE``)."""
+    return any(_LOCAL_SCOPE.search(text.lower()) for text in texts)
+
+
+def _match_clause(clause: str, local: bool) -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (claim type, attributes) for every claim found in one clause."""
     lowered = clause.lower()
-    qualifier = {"qualifier": "locally"} if re.search(r"\blocally\b", lowered) else {}
 
     for claim_type, patterns in _PATTERNS.items():
         if any(pattern.search(lowered) for pattern in patterns):
-            yield claim_type, dict(qualifier)
+            yield claim_type, ({"scope": "local"} if local and claim_type in _SCOPED_TYPES else {})
 
     for found in _ISSUE_REF.finditer(lowered):
         yield FIXES_ISSUE, {"issue": int(found.group("number")), "repo": found.group("repo") or ""}
@@ -255,22 +291,25 @@ def _looks_like_command(code: str) -> bool:
 def _command_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Yield (claim type, attributes, span) for each successful command status line."""
     without_blocks = _QUOTED_LINE.sub(" ", _HTML_COMMENT.sub(" ", _FENCED_CODE.sub(" ", text)))
+    heading = ""
     for line in without_blocks.splitlines():
+        heading = heading_of(line) or heading
         if not _SUCCESS_MARK.search(line) or _FAILURE_MARK.search(line):
             continue
         # The prose around the command must itself be a plain assertion
         # ("✅ `pytest` (not run: missing deps)" is not).
         if not is_assertion(_INLINE_COMMAND.sub(" ", line)):
             continue
+        attributes = {"scope": "local"} if is_local(line, heading) else {}
         for command in filter(_looks_like_command, _INLINE_COMMAND.findall(line)):
             # Lint and build are tested first: "npm run lint" also contains no test word,
             # but "npm run test:lint" should count as lint, not tests.
             if is_lint_check(command):
-                yield LINT_OK, {}, line.strip()
+                yield LINT_OK, dict(attributes), line.strip()
             elif is_build_check(command):
-                yield BUILD_OK, {}, line.strip()
+                yield BUILD_OK, dict(attributes), line.strip()
             elif is_test_check(command):
-                yield TESTS_PASS, {}, line.strip()
+                yield TESTS_PASS, dict(attributes), line.strip()
 
 
 # --------------------------------------------------------------------------------------------
@@ -283,16 +322,17 @@ _REF_TYPES = frozenset({TESTS_PASS, BUILD_OK, LINT_OK, DEPLOYED})
 
 def _candidates(source: TextSource) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Every (claim type, attributes, span) found in one text source, in reading order."""
-    for clause in clauses(clean(source.text)):
+    for clause, heading in clauses_in_sections(clean(source.text)):
         if is_assertion(clause):
-            for claim_type, attributes in _match_clause(clause):
+            for claim_type, attributes in _match_clause(clause, is_local(clause, heading)):
                 yield claim_type, attributes, clause
     yield from _command_claims(source.text)
 
 
 # Attributes that describe *how* something was said, not *what* was claimed. They are kept on
 # the claim but ignored when deciding whether two claims are the same.
-_DESCRIPTIVE_ATTRIBUTES = frozenset({"qualifier"})
+# "Tests pass" and "tests pass locally" are one claim; the first statement made is kept.
+_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope"})
 
 
 def extract_claims(
