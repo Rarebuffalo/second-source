@@ -204,92 +204,154 @@ def is_assertion(clause: str) -> bool:
 
 _PASS_WORDS = r"(pass|passes|passed|passing|green|succeed|succeeds|succeeded|successful)"
 
-_PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
+# Every rule has a stable name. Claims record the rule that produced them, so precision can be
+# measured per rule on the golden set (``second-source bench rules``) and only rules that hold
+# the precision target are trusted (see TRUSTED_RULES below).
+Rule = tuple[str, re.Pattern[str]]
+
+
+def _rule(name: str, pattern: str) -> Rule:
+    return name, re.compile(pattern)
+
+
+_PATTERNS: dict[str, tuple[Rule, ...]] = {
     TESTS_PASS: (
         # "(?<!-)" keeps "self-test passed" (a script checking itself) out.
-        re.compile(
+        _rule(
+            "tests_pass.plain",
             r"\b(all\s+)?(the\s+)?(existing\s+|new\s+)?(unit\s+|integration\s+|e2e\s+)?"
             r"(?<!-)tests?\s+"
-            rf"(are\s+|is\s+|now\s+|still\s+|all\s+)*{_PASS_WORDS}\b"
+            rf"(are\s+|is\s+|now\s+|still\s+|all\s+)*{_PASS_WORDS}\b",
         ),
         # Quantified subjects with words in between: "All new and existing unit tests for the
         # filters plugin passed", "All 28 existing RWS tests continue passing".
-        re.compile(
+        _rule(
+            "tests_pass.quantified",
             r"\b(all|new|existing)\b[^.]{0,40}?(?<!-)\btests?\b[^.]{0,40}?"
-            r"\b(passed|pass|passing|continue\s+(to\s+)?pass(ing)?)\b"
+            r"\b(passed|pass|passing|continue\s+(to\s+)?pass(ing)?)\b",
         ),
         # "7 tests added (all passing)", "27 tests, all passing".
-        re.compile(r"(?<!-)\btests?\b[^.]{0,40}\ball\s+(pass|passing|passed|green)\b"),
+        _rule(
+            "tests_pass.all_passing",
+            r"(?<!-)\btests?\b[^.]{0,40}\ball\s+(pass|passing|passed|green)\b",
+        ),
         # "Verified compilation and tests", "verified with existing unit tests".
-        re.compile(r"\bverified\b[^.]{0,40}?\b(tests?|test suite)\b"),
-        re.compile(rf"\b(test suite|test run|tests? run)\s+(is\s+)?(now\s+)?{_PASS_WORDS}\b"),
+        _rule("tests_pass.verified", r"\bverified\b[^.]{0,40}?\b(tests?|test suite)\b"),
+        _rule(
+            "tests_pass.suite",
+            rf"\b(test suite|test run|tests? run)\s+(is\s+)?(now\s+)?{_PASS_WORDS}\b",
+        ),
         # CI as a whole. Bare "checks pass" is too vague ("repo checks pass" may be lint).
-        re.compile(
+        _rule(
+            "tests_pass.ci",
             r"\b(ci|all checks|all ci checks|ci checks)\s+(is\s+|are\s+)?(now\s+)?"
-            r"(green|passing|pass|passed)\b"
+            r"(green|passing|pass|passed)\b",
         ),
-        re.compile(
+        _rule(
+            "tests_pass.runner_prose",
             r"\b(pytest|jest|vitest|npm test|yarn test|go test|cargo test|mocha|rspec)\b"
-            r"[^.]{0,40}\b(pass|passes|passed|passing|green)\b"
+            r"[^.]{0,40}\b(pass|passes|passed|passing|green)\b",
         ),
-        re.compile(
+        _rule(
+            "tests_pass.tests_and_pass",
             r"\btests?\b[^.]{0,30}\band\s+(they\s+|these\s+|both\s+)?(are\s+|all\s+)*"
-            r"(pass|passing|passed)\b"
+            r"(pass|passing|passed)\b",
         ),
         # "✅ Tests" or "✅ Tests pass" as a whole clause; not "✅ Tests added for X".
-        re.compile(r"✅\s*(all\s+)?tests?(\s+(pass|passes|passed|passing|green))?\s*[.!]?$"),
+        _rule(
+            "tests_pass.check_mark",
+            r"✅\s*(all\s+)?tests?(\s+(pass|passes|passed|passing|green))?\s*[.!]?$",
+        ),
     ),
     BUILD_OK: (
-        re.compile(
+        _rule(
+            "build_ok.plain",
             r"\b(the\s+)?build\s+(is\s+|now\s+)*"
-            r"(passes|passed|passing|succeeds|succeeded|successful|green|ok|works)\b"
+            r"(passes|passed|passing|succeeds|succeeded|successful|green|ok|works)\b",
         ),
-        re.compile(r"\bbuilds\s+(successfully|cleanly|fine|without errors)\b"),
-        re.compile(
-            r"\b(compiles|compiled)\s+(successfully|cleanly|fine|without (errors|warnings))\b"
+        _rule("build_ok.builds", r"\bbuilds\s+(successfully|cleanly|fine|without errors)\b"),
+        _rule(
+            "build_ok.compiles",
+            r"\b(compiles|compiled)\s+(successfully|cleanly|fine|without (errors|warnings))\b",
         ),
-        re.compile(rf"\b(compilation|cargo check)\s+(is\s+|now\s+)*{_PASS_WORDS}\b"),
-        re.compile(r"\b(clean|successful)\s+build\b|\bverified\b[^.]{0,30}?\bcompilation\b"),
+        _rule(
+            "build_ok.compilation", rf"\b(compilation|cargo check)\s+(is\s+|now\s+)*{_PASS_WORDS}\b"
+        ),
+        _rule(
+            "build_ok.clean_or_verified",
+            r"\b(clean|successful)\s+build\b|\bverified\b[^.]{0,30}?\bcompilation\b",
+        ),
     ),
     LINT_OK: (
-        re.compile(
+        _rule(
+            "lint_ok.plain",
             r"\b(lint|linting|linter|linters|eslint|ruff|flake8|pylint|clippy)\s+"
-            r"(checks?\s+)?(is\s+|are\s+|now\s+)*(passes|passed|passing|clean|green|happy|ok)\b"
+            r"(checks?\s+)?(is\s+|are\s+|now\s+)*(passes|passed|passing|clean|green|happy|ok)\b",
         ),
-        re.compile(r"\bno\s+(lint|linting|linter|eslint|type)\s+(errors|warnings|issues)\b"),
+        _rule(
+            "lint_ok.no_errors",
+            r"\bno\s+(lint|linting|linter|eslint|type)\s+(errors|warnings|issues)\b",
+        ),
         # "Docs formatting, markdown lint, link audit, and repo checks pass".
-        re.compile(
+        _rule(
+            "lint_ok.lint_list",
             r"\b(lint|linting|linters?|formatting|format checks?)\b[^.]{0,50}?"
-            r"\b(pass|passes|passed|passing|clean)\b"
+            r"\b(pass|passes|passed|passing|clean)\b",
         ),
-        re.compile(r"\bverified\s+(with|by|using)\s+(the\s+)?(lint|linting|linters?)\b"),
-        re.compile(r"\b(type ?check(ing)?|mypy|tsc)\s+(passes|passed|clean)\b"),
-        re.compile(rf"\b(typescript|type)\s+checks?\s+(are\s+|now\s+)*{_PASS_WORDS}\b"),
-        re.compile(r"\b(zero|0)\s+(lint|linter|linting)\s+(errors|warnings|issues)\b"),
+        _rule(
+            "lint_ok.verified", r"\bverified\s+(with|by|using)\s+(the\s+)?(lint|linting|linters?)\b"
+        ),
+        _rule(
+            "lint_ok.type_check_tool", r"\b(type ?check(ing)?|mypy|tsc)\s+(passes|passed|clean)\b"
+        ),
+        _rule(
+            "lint_ok.type_checks",
+            rf"\b(typescript|type)\s+checks?\s+(are\s+|now\s+)*{_PASS_WORDS}\b",
+        ),
+        _rule(
+            "lint_ok.zero_errors",
+            r"\b(zero|0)\s+(lint|linter|linting)\s+(errors|warnings|issues)\b",
+        ),
     ),
     TESTS_ADDED: (
         # "Added 3 new unit tests", "Added comprehensive unit tests", "Added a new E2E test".
         # Up to three describing words may sit between the verb and "tests", but not a
         # preposition: "added support for tests" is not adding tests.
-        re.compile(
+        _rule(
+            "tests_added.verb",
             r"\b(added|adds|add|wrote|writes|created|creates|includes|included|introduced|"
             r"introduces)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)[\w-]+\s+){0,3}?"
             r"(tests?|test cases?|test coverage|specs?|assertions|regression coverage)\b"
             # "test metadata", "test scripts", "test data" are not new automated tests.
-            r"(?!\s+(metadata|data|fixtures?|utilities|utils|helpers?|scripts?|ids?|names?|plans?))"
+            r"(?!\s+(metadata|data|fixtures?|utilities|utils|helpers?|scripts?|ids?|names?|plans?))",
         ),
-        re.compile(
-            r"\bnew\s+(unit\s+|integration\s+|regression\s+)?tests?\s+(for|covering|to cover)\b"
+        _rule(
+            "tests_added.new_for",
+            r"\bnew\s+(unit\s+|integration\s+|regression\s+)?tests?\s+(for|covering|to cover)\b",
         ),
-        re.compile(r"\bnew\W{1,6}\d+\s+(new\s+)?(unit\s+)?tests?\b"),  # "**New**: 4 tests"
-        re.compile(r"\b(improved|increased|expanded|extended)\s+(\w+\s+)?test\s+coverage\b"),
-        re.compile(r"\btests?\s+(were\s+|have been\s+)?(extended|expanded)\b"),
-        re.compile(r"\btests?\s+(were\s+|have been\s+)?added\b"),
+        _rule(
+            "tests_added.new_count", r"\bnew\W{1,6}\d+\s+(new\s+)?(unit\s+)?tests?\b"
+        ),  # "**New**: 4 tests"
+        _rule(
+            "tests_added.coverage",
+            r"\b(improved|increased|expanded|extended)\s+(\w+\s+)?test\s+coverage\b",
+        ),
+        _rule(
+            "tests_added.extended_passive",
+            r"\btests?\s+(were\s+|have been\s+)?(extended|expanded)\b",
+        ),
+        _rule("tests_added.added_passive", r"\btests?\s+(were\s+|have been\s+)?added\b"),
         # "11 tests covering all include patterns", "7 proxy integration tests added".
-        re.compile(r"\b\d+\s+(?:[\w-]+\s+){0,3}?(tests?|test cases)\s+(added|covering|to cover)\b"),
-        re.compile(r"\b(extended|expanded)\s+(the\s+)?(tests?|test suite|test coverage)\b"),
+        _rule(
+            "tests_added.count",
+            r"\b\d+\s+(?:[\w-]+\s+){0,3}?(tests?|test cases)\s+(added|covering|to cover)\b",
+        ),
+        _rule(
+            "tests_added.extended",
+            r"\b(extended|expanded)\s+(the\s+)?(tests?|test suite|test coverage)\b",
+        ),
         # Changed assertions check new behaviour; plain "updated tests" may be a refactor.
-        re.compile(r"\bupdated\s+(the\s+)?test\s+assertions\b"),
+        _rule("tests_added.assertions", r"\bupdated\s+(the\s+)?test\s+assertions\b"),
     ),
     DOCS_UPDATED: (
         # "Updates the source-clickhouse user documentation", "Improves the Entity Cache
@@ -297,25 +359,28 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         # "Updates the source-clickhouse user documentation", "update progress in TypeScript
         # README", "add a baseline doc": a change verb, then within five words a documentation
         # noun that is not docs tooling ("added logging to the documentation builder").
-        re.compile(
+        _rule(
+            "docs_updated.verb",
             r"\b(updated|updates|update|added|adds|add|wrote|write|improved|improves|improve|"
             r"corrected|corrects|correct|rewrote|rewrites|rewrite|expanded|expands|expand|"
             r"refreshed|refreshes|refresh|created|creates|create)\s+(?:[\w-]+\s+){0,5}?"
             r"(docs|documentation|readme|changelog|doc)\b"
-            r"(?!\s+(builder|build|builds|generator|generation|site|tooling|pipeline|workflow))"
+            r"(?!\s+(builder|build|builds|generator|generation|site|tooling|pipeline|workflow))",
         ),
-        re.compile(r"\bnew\s+(readme|docs|documentation|design doc|guide)\b"),
+        _rule("docs_updated.new", r"\bnew\s+(readme|docs|documentation|design doc|guide)\b"),
         # Documentation files named in plain text: "Update the instructions in AGENTS.md".
-        re.compile(
+        _rule(
+            "docs_updated.file",
             r"\b(updated|updates|update|added|adds|created|creates|edited|edits|rewrote|"
             r"rewrites|corrected|corrects|expanded|expands)\b[^.]{0,60}?"
-            r"(?<![\w/.-])[\w/.-]+\.(md|mdx|rst|adoc)\b"
+            r"(?<![\w/.-])[\w/.-]+\.(md|mdx|rst|adoc)\b",
         ),
         # "README.md updated", "API docs updated", "documentation and examples updated".
-        re.compile(
+        _rule(
+            "docs_updated.passive",
             r"\b(docs|documentation|readme(\.md)?|changelog(\.md)?|news)\b[^.]{0,30}?"
             r"\b(are\s+|is\s+|was\s+|were\s+|have been\s+|has been\s+)?"
-            r"(updated|added|improved|refreshed|expanded)\b"
+            r"(updated|added|improved|refreshed|expanded)\b",
         ),
     ),
 }
@@ -352,20 +417,47 @@ def is_local(*texts: str) -> bool:
     return any(_LOCAL_SCOPE.search(text.lower()) for text in texts)
 
 
-def _match_clause(clause: str, local: bool) -> Iterator[tuple[str, dict[str, Any]]]:
-    """Yield (claim type, attributes) for every claim found in one clause."""
+ISSUE_RULE = "fixes_issue.closing_ref"
+DEPLOY_RULE = "deployed.phrase"
+CODE_SENTENCE_RULES = (
+    "command.marked",
+    "command.prose",
+    "changed_file.test",
+    "changed_file.doc",
+)
+
+
+def rule_names() -> list[str]:
+    """Every extraction rule name, in definition order."""
+    clause_rules = [name for rules in _PATTERNS.values() for name, _pattern in rules]
+    return [*clause_rules, ISSUE_RULE, DEPLOY_RULE, *CODE_SENTENCE_RULES]
+
+
+def _match_clause(
+    clause: str, local: bool, *, all_rules: bool = False
+) -> Iterator[tuple[str, dict[str, Any]]]:
+    """Yield (claim type, attributes) for every claim found in one clause.
+
+    Normally one claim per type, from the first rule that matches. With ``all_rules`` every
+    matching rule yields, which is what per-rule scoring needs.
+    """
     lowered = clause.lower()
 
-    for claim_type, patterns in _PATTERNS.items():
-        if any(pattern.search(lowered) for pattern in patterns):
-            yield claim_type, ({"scope": "local"} if local and claim_type in _SCOPED_TYPES else {})
+    for claim_type, rules in _PATTERNS.items():
+        matched = [name for name, pattern in rules if pattern.search(lowered)]
+        for name in matched if all_rules else matched[:1]:
+            attributes: dict[str, Any] = {"rule": name}
+            if local and claim_type in _SCOPED_TYPES:
+                attributes["scope"] = "local"
+            yield claim_type, attributes
 
     for found in _ISSUE_REF.finditer(lowered):
-        yield FIXES_ISSUE, {"issue": int(found.group("number")), "repo": found.group("repo") or ""}
+        issue = int(found.group("number"))
+        yield FIXES_ISSUE, {"issue": issue, "repo": found.group("repo") or "", "rule": ISSUE_RULE}
 
     for found in _DEPLOY.finditer(lowered):
         env = found.group("env")
-        yield DEPLOYED, {"environment": _ENVIRONMENT_ALIASES.get(env, env)}
+        yield DEPLOYED, {"environment": _ENVIRONMENT_ALIASES.get(env, env), "rule": DEPLOY_RULE}
 
 
 # --------------------------------------------------------------------------------------------
@@ -455,7 +547,7 @@ def _command_type(command: str) -> str | None:
 
 
 def _changed_file_claims(sentence: str, prose: str, heading: str) -> Iterator[str]:
-    """Claim types for files the sentence says were changed."""
+    """Claim types for files the sentence says were changed (rules ``changed_file.*``)."""
     in_added_section = bool(_ADDED_SECTION.search(heading.lower()))
     added = in_added_section or bool(_ADD_VERB.search(prose))
     edited = in_added_section or bool(_EDIT_VERB.search(prose))
@@ -488,17 +580,21 @@ def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]
             span = sentence.strip()
             attributes = {"scope": "local"} if is_local(sentence, heading) else {}
 
-            succeeded = bool(_MARKED_CODE.search(sentence)) or bool(
-                _SUCCESS_PROSE.search(asserted_part(prose))
-            )
-            if succeeded:
+            if _MARKED_CODE.search(sentence):
+                rule = "command.marked"  # ✅ right next to the command
+            elif _SUCCESS_PROSE.search(asserted_part(prose)):
+                rule = "command.prose"  # "`pytest`: 201 passed"
+            else:
+                rule = None
+            if rule:
                 for command in filter(_looks_like_command, _INLINE_COMMAND.findall(sentence)):
                     claim_type = _command_type(command)
                     if claim_type:
-                        yield claim_type, dict(attributes), span
+                        yield claim_type, {**attributes, "rule": rule}, span
 
             for claim_type in _changed_file_claims(sentence, prose, heading):
-                yield claim_type, {}, span
+                name = "changed_file.test" if claim_type == TESTS_ADDED else "changed_file.doc"
+                yield claim_type, {"rule": name}, span
 
 
 # --------------------------------------------------------------------------------------------
@@ -509,20 +605,36 @@ def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]
 _REF_TYPES = frozenset({TESTS_PASS, BUILD_OK, LINT_OK, DEPLOYED})
 
 
-def _candidates(source: TextSource) -> Iterator[tuple[str, dict[str, Any], str]]:
+def _candidates(
+    source: TextSource, *, all_rules: bool = False
+) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Every (claim type, attributes, span) found in one text source, in reading order."""
     for clause, heading in clauses_in_sections(clean(source.text)):
         if is_assertion(clause):
             local = is_local(clause, heading)
-            for claim_type, attributes in _match_clause(asserted_part(clause), local):
+            matches = _match_clause(asserted_part(clause), local, all_rules=all_rules)
+            for claim_type, attributes in matches:
                 yield claim_type, attributes, clause
     yield from _code_sentence_claims(source.text)
+
+
+def rule_hits(text: str) -> set[tuple[str, str]]:
+    """Every (claim type, rule name) that fires anywhere in ``text``.
+
+    Unlike ``extract_claims`` this keeps all matching rules, not just the first per clause, so
+    each rule can be scored on its own against a golden set.
+    """
+    source = TextSource(origin="body", text=text, written_at=datetime.min)
+    return {
+        (kind, attributes["rule"]) for kind, attributes, _ in _candidates(source, all_rules=True)
+    }
 
 
 # Attributes that describe *how* something was said, not *what* was claimed. They are kept on
 # the claim but ignored when deciding whether two claims are the same.
 # "Tests pass" and "tests pass locally" are one claim; the first statement made is kept.
-_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope"})
+# "rule" records which extraction rule found the claim; it is not part of what was claimed.
+_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule"})
 
 
 def extract_claims(
