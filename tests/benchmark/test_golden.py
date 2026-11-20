@@ -1,0 +1,57 @@
+"""Tests for golden-set scoring (benchmark/golden.py)."""
+
+import json
+
+from second_source.benchmark.golden import (
+    DEV,
+    TEST,
+    GoldenCase,
+    Metrics,
+    in_split,
+    load_cases,
+    score,
+    split_for,
+)
+
+
+def test_split_is_deterministic_and_roughly_even():
+    urls = [f"https://github.com/o/r/pull/{n}" for n in range(400)]
+    splits = [split_for(url) for url in urls]
+    assert splits == [split_for(url) for url in urls]
+    assert 150 < splits.count(DEV) < 250
+    assert set(splits) == {DEV, TEST}
+
+
+def test_metrics_handle_empty_counts():
+    empty = Metrics()
+    assert empty.precision == 1.0 and empty.recall == 1.0 and empty.support == 0
+    m = Metrics(true_positive=3, false_positive=1, false_negative=2)
+    assert m.precision == 0.75 and m.recall == 0.6 and m.support == 5
+
+
+def test_score_counts_per_type_as_multisets():
+    cases = [
+        GoldenCase("hit", "All tests pass.", ("TESTS_PASS",)),
+        GoldenCase("miss", "Nothing here.", ("LINT_OK",)),
+        GoldenCase("extra", "Build succeeds.", ()),
+        GoldenCase("two issues", "Fixes #1. Fixes #2.", ("FIXES_ISSUE", "FIXES_ISSUE")),
+    ]
+    result = score(cases)
+    assert result.per_type["TESTS_PASS"].true_positive == 1
+    assert result.per_type["LINT_OK"].false_negative == 1
+    assert result.per_type["BUILD_OK"].false_positive == 1
+    assert result.per_type["FIXES_ISSUE"].true_positive == 2
+    assert len(result.mistakes) == 2
+    assert "LINT_OK" in result.report() and "Mismatched cases" in result.report()
+
+
+def test_load_cases_and_split(tmp_path):
+    path = tmp_path / "cases.jsonl"
+    records = [
+        {"url": f"https://github.com/o/r/pull/{n}", "agent": "codex", "body": "x", "expected": []}
+        for n in range(10)
+    ]
+    path.write_text("\n".join(json.dumps(r) for r in records) + "\n\n")
+    cases = load_cases(path)
+    assert len(cases) == 10 and cases[0].agent == "codex"
+    assert len(in_split(cases, DEV)) + len(in_split(cases, TEST)) == 10
