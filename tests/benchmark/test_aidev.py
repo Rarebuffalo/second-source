@@ -6,9 +6,13 @@ import pytest
 from second_source.benchmark.aidev import AidevClient, AidevError, AidevPullRequest
 
 
-def client_for(handler, retries=3):
+def client_for(handler, retries=3, sleeps=None, clock=lambda: 0.0, min_interval=1.0):
     return AidevClient(
-        transport=httpx.MockTransport(handler), retries=retries, sleep=lambda _s: None
+        transport=httpx.MockTransport(handler),
+        retries=retries,
+        min_interval=min_interval,
+        sleep=(sleeps.append if sleeps is not None else lambda _s: None),
+        clock=clock,
     )
 
 
@@ -75,3 +79,23 @@ def test_unexpected_shape_is_an_error():
 
 def test_revision(viewer):
     assert client_for(viewer()).revision() == "abc123"
+
+
+def test_rate_limits_back_off_longer_than_server_errors():
+    answers = [httpx.Response(429), httpx.Response(429), httpx.Response(500)]
+    answers.append(httpx.Response(200, json={"rows": [], "num_rows_total": 0}))
+    sleeps = []
+    client = client_for(lambda _request: answers.pop(0), sleeps=sleeps, min_interval=0)
+    client.page(0)
+    # 429 waits 30s then doubles; the following server error restarts from 2s (third retry: 8s).
+    assert sleeps == [30.0, 60.0, 8.0]
+
+
+def test_requests_are_paced(viewer):
+    times = iter([0.0, 0.25, 5.0])
+    sleeps = []
+    client = client_for(viewer(), sleeps=sleeps, clock=lambda: next(times))
+    client.page(0, 1)  # first request: no wait
+    client.page(1, 1)  # 0.25s later: waits the remaining 0.75s
+    client.page(2, 1)  # long after: no wait
+    assert sleeps == [0.75]
