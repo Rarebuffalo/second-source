@@ -84,15 +84,18 @@ ROUTES = {
 
 
 class FakeGitHub:
-    """Serves ROUTES (plus overrides); unknown paths return 404. Records requested paths."""
+    """Serves ROUTES (plus overrides); unknown paths return 404. Records requested paths and the
+    full requests (for tests that check query parameters)."""
 
     def __init__(self, overrides=None):
         self.routes = {**ROUTES, **(overrides or {})}
         self.requested = []
+        self.requests = []
 
     def __call__(self, request):
         path = request.url.path
         self.requested.append(path)
+        self.requests.append(request)
         response = self.routes.get(path)
         if isinstance(response, httpx.Response):
             return response
