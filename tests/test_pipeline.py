@@ -99,6 +99,14 @@ def test_reports_api_usage(fake_github):
     assert run(fake_github(), DAY_AFTER).api_requests > 0
 
 
+def test_api_usage_is_per_pull_request_when_the_client_is_shared(fake_github):
+    client = GitHubClient(transport=httpx.MockTransport(fake_github()), sleep=lambda _s: None)
+    source = GitHubSource(client)
+    first = check_pull_request(PullRequestRef("Octo", "App", 7), source, now=DAY_AFTER)
+    second = check_pull_request(PullRequestRef("Octo", "App", 7), source, now=DAY_AFTER)
+    assert first.api_requests == second.api_requests > 0
+
+
 def test_missing_pull_request(fake_github):
     client = GitHubClient(transport=httpx.MockTransport(fake_github()), sleep=lambda _s: None)
     with pytest.raises(PullRequestNotFound):
