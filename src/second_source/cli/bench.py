@@ -50,6 +50,13 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     sample.add_argument("--seed", type=int, required=True)
     sample.add_argument("--filter", choices=sorted(FILTERS), default="merged_with_body")
     sample.add_argument("--agents", help="comma-separated agent names (default: all)")
+    sample.add_argument(
+        "--exclude-from",
+        type=Path,
+        action="append",
+        default=[],
+        help="JSON Lines file whose records' url fields are skipped (repeatable)",
+    )
     sample.add_argument("-o", "--output", type=Path, required=True)
 
     run = steps.add_parser("run", help="check every sampled PR (resumable)")
@@ -80,6 +87,7 @@ def run_command(args: argparse.Namespace, context: BenchContext) -> int:
 
 def _sample(args: argparse.Namespace, context: BenchContext) -> int:
     agents = [a.strip() for a in args.agents.split(",")] if args.agents else None
+    exclude = {url for path in args.exclude_from for url in _urls_in(path)}
     try:
         with context.aidev_factory() as client:
             sample = draw_sample(
@@ -88,6 +96,7 @@ def _sample(args: argparse.Namespace, context: BenchContext) -> int:
                 seed=args.seed,
                 filter_name=args.filter,
                 agents=agents,
+                exclude=exclude,
             )
     except (AidevError, ValueError) as error:
         print(f"error: {error}", file=context.err)
@@ -97,6 +106,13 @@ def _sample(args: argparse.Namespace, context: BenchContext) -> int:
     if sample.shortfall:
         print(f"note: not enough matching rows for {sample.shortfall}", file=context.err)
     return EXIT_OK
+
+
+def _urls_in(path: Path) -> set[str]:
+    """URLs of the records in a JSON Lines file (a sample's header record has none)."""
+    with path.open(encoding="utf-8") as handle:
+        records = (json.loads(line) for line in handle if line.strip())
+        return {record["url"] for record in records if "url" in record}
 
 
 def _run(args: argparse.Namespace, context: BenchContext) -> int:
