@@ -77,3 +77,22 @@ def test_markdown_lists_every_agent_and_type():
     assert "## codex" in text and "## devin" in text
     assert "| TESTS_PASS | 2 | 1 | 1 | 0 | 100% | 50% (" in text
     assert "never counted as false" in text
+
+
+def test_low_confidence_claims_are_counted_separately():
+    low = {
+        **claim("BUILD_OK", "CONTRADICTED", "CI_JOB_FAILED"),
+        "attributes": {"confidence": "low"},
+    }
+    high = {**claim("TESTS_PASS", "VERIFIED"), "attributes": {"confidence": "high"}}
+    implicit = claim("MERGE_HOLDS", "VERIFIED")  # no confidence attribute: always counted
+    record = {
+        "url": "u",
+        "dataset_agent": "codex",
+        "report": {"agent": None, "claims": [low, high, implicit]},
+    }
+    codex = summarize([record])["agents"]["codex"]
+    assert codex["low_confidence_claims"] == 1
+    assert "BUILD_OK" not in codex["claims"]
+    assert codex["claims"][ALL]["claims"] == 2
+    assert "1 low-confidence claims not counted" in to_markdown(summarize([record]))
