@@ -14,7 +14,7 @@ from __future__ import annotations
 
 from collections.abc import Callable, Iterable, Sequence
 from dataclasses import dataclass, field
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 from second_source.core.model import Claim, Evidence
@@ -39,6 +39,12 @@ from second_source.sources.github.urls import PullRequestRef
 Json = dict[str, Any]
 
 # Fetch order. Cheap and most decisive types first, so a rate limit hurts as little as possible.
+# Reverts are looked for only inside the durability window that follows the merge (the
+# coding.not_reverted check's default window_days). Without an end date, a PR merged months ago
+# would make us page through every later commit and hit the page limit on any busy repository.
+REVERT_WINDOW = timedelta(days=30)
+REVERT_MAX_PAGES = 10  # up to 1,000 commits in the window
+
 FETCH_ORDER = (
     "pr_state",
     "check_result",
@@ -191,9 +197,13 @@ class GitHubSource:
         pull = loaded.pull
         if not loaded.merged or not pull.get("merge_commit_sha"):
             return []
+        merged_at = mappers.parse_time(pull["merged_at"])
+        until = merged_at + REVERT_WINDOW if merged_at else None
+        params = {"sha": pull["base"]["ref"], "since": pull["merged_at"]}
+        if until is not None:
+            params["until"] = until.isoformat().replace("+00:00", "Z")
         commits = self.client.get_paginated(
-            f"{self._base(loaded)}/commits",
-            {"sha": pull["base"]["ref"], "since": pull["merged_at"]},
+            f"{self._base(loaded)}/commits", params, max_pages=REVERT_MAX_PAGES
         )
         return mappers.revert_evidence(
             commits,
