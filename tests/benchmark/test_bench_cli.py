@@ -107,10 +107,12 @@ def test_golden_scores_a_split(tmp_path):
 
 def test_sample_can_exclude_urls_from_earlier_files(viewer, tmp_path):
     first = tmp_path / "first.jsonl"
-    bench(["sample", "--per-agent", "2", "--seed", "1", "-o", str(first)], viewer=viewer())
+    # Claude Code has the largest block in the fake table, so the draw budget is never the limit.
+    common = ["sample", "--per-agent", "3", "--seed", "1", "--agents", "claude_code"]
+    bench([*common, "-o", str(first)], viewer=viewer())
     second = tmp_path / "second.jsonl"
-    args = ["sample", "--per-agent", "2", "--seed", "1", "--exclude-from", str(first)]
+    args = [*common, "--exclude-from", str(first)]
     code, _out, _err, _tokens = bench([*args, "-o", str(second)], viewer=viewer())
     urls = [json.loads(line).get("url") for line in first.read_text().splitlines()[1:]]
     again = [json.loads(line).get("url") for line in second.read_text().splitlines()[1:]]
-    assert code == 0 and len(again) == 12 and not set(urls) & set(again)
+    assert code == 0 and len(again) == 3 and not set(urls) & set(again)
