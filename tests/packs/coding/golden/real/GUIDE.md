@@ -41,7 +41,15 @@ asserts. Do not guess what a tool might detect.
    boilerplate the agent did not write about this change (for example a repository's PR
    template headings with nothing filled in).
 9. **The title** is not part of what you label; label the body only.
-10. **When genuinely unsure** whether a sentence asserts something, do not label it, and say
+10. **Only the agent's words.** Summaries written by review bots (CodeRabbit, cubic, Cursor
+    Bugbot, Greptile, Sourcery, ...) and quoted "Original prompt" sections are not the
+    agent's text; ignore them.
+11. **Command lists and checklists.** A command listed with no stated result is not a pass
+    claim. A ticked checklist item naming a check ("[x] make test") counts as passed; a vague
+    one ("[x] I tested my changes") does not.
+12. **Agent instruction files** (AGENTS.md, CLAUDE.md, copilot-instructions.md,
+    .cursor/rules) are documentation.
+13. **When genuinely unsure** whether a sentence asserts something, do not label it, and say
     why in the notes field. Ambiguous cases are useful to know about.
 
 ## Output per PR
