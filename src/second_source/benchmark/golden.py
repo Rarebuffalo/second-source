@@ -221,17 +221,20 @@ class RuleMetrics:
         return wilson_interval(self.correct, self.hits)[0] if self.hits else 0.0
 
 
-def score_rules(cases: Iterable[GoldenCase]) -> dict[str, RuleMetrics]:
-    """Precision of every extraction rule, judged on its own.
+RuleKey = tuple[str, str]  # (claim type, rule name): command rules yield several claim types
+
+
+def score_rules(cases: Iterable[GoldenCase]) -> dict[RuleKey, RuleMetrics]:
+    """Precision of every extraction rule for each claim type it produces, judged on its own.
 
     A rule's hit in a case is correct when the case's labels contain that claim type. Each
-    rule counts at most once per case, matching how claims are counted.
+    rule counts at most once per case and type, matching how claims are counted.
     """
-    metrics: dict[str, RuleMetrics] = {}
+    metrics: dict[RuleKey, RuleMetrics] = {}
     for case in cases:
         expected = set(case.expected)
         for claim_type, rule in rule_hits(case.text):
-            entry = metrics.setdefault(rule, RuleMetrics(claim_type))
+            entry = metrics.setdefault((claim_type, rule), RuleMetrics(claim_type))
             if claim_type in expected:
                 entry.correct += 1
             else:
@@ -239,9 +242,9 @@ def score_rules(cases: Iterable[GoldenCase]) -> dict[str, RuleMetrics]:
     return metrics
 
 
-def rules_report(metrics: Mapping[str, RuleMetrics]) -> str:
+def rules_report(metrics: Mapping[RuleKey, RuleMetrics]) -> str:
     lines = [f"  {'rule':<30} {'type':<13} hits  right  precision  (95% low)"]
-    for rule, m in sorted(metrics.items(), key=lambda item: (item[1].claim_type, item[0])):
+    for (_kind, rule), m in sorted(metrics.items()):
         lines.append(
             f"  {rule:<30} {m.claim_type:<13} {m.hits:>4}  {m.correct:>5}  "
             f"{m.precision:>9.2f}  ({m.precision_low:.2f})"
