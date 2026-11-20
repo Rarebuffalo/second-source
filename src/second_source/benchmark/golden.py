@@ -250,3 +250,25 @@ def rules_report(metrics: Mapping[RuleKey, RuleMetrics]) -> str:
             f"{m.precision:>9.2f}  ({m.precision_low:.2f})"
         )
     return "\n".join(lines)
+
+
+def select_trusted(
+    metrics: Mapping[RuleKey, RuleMetrics], *, min_hits: int, min_precision: float
+) -> list[dict[str, Any]]:
+    """The (claim type, rule) pairs that fired often enough and were right often enough.
+
+    The criterion is fixed before looking at the held-out split, so that split can then test
+    whether the selection holds on unseen text.
+    """
+    chosen = []
+    for (claim_type, rule), m in sorted(metrics.items()):
+        if m.hits >= min_hits and m.precision >= min_precision:
+            chosen.append(
+                {
+                    "type": claim_type,
+                    "rule": rule,
+                    "hits": m.hits,
+                    "precision": round(m.precision, 3),
+                }
+            )
+    return chosen
