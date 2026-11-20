@@ -70,6 +70,15 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     summarize.add_argument("results", type=Path)
     summarize.add_argument("-o", "--output", type=Path, required=True, help="output directory")
 
+    merge = steps.add_parser(
+        "merge-labels", help="merge two labellers' files into golden cases (with adjudications)"
+    )
+    merge.add_argument("sample", type=Path)
+    merge.add_argument("--a", type=Path, action="append", required=True, help="labeller A file")
+    merge.add_argument("--b", type=Path, action="append", required=True, help="labeller B file")
+    merge.add_argument("--adjudications", type=Path, help="JSON: {url: {expected, reason}}")
+    merge.add_argument("-o", "--output", type=Path, required=True)
+
     score = steps.add_parser("golden", help="score extraction against a labelled golden set")
     score.add_argument("cases", type=Path)
     score.add_argument("--split", choices=[golden.DEV, golden.TEST, "all"], default=golden.DEV)
@@ -81,6 +90,7 @@ def run_command(args: argparse.Namespace, context: BenchContext) -> int:
         "run": _run,
         "summarize": _summarize,
         "golden": _golden,
+        "merge-labels": _merge_labels,
     }
     return handlers[args.bench_command](args, context)
 
@@ -157,3 +167,36 @@ def _golden(args: argparse.Namespace, context: BenchContext) -> int:
     print(f"{len(cases)} cases ({args.split})", file=context.out)
     print(golden.score(cases).report(), file=context.out)
     return EXIT_OK
+
+
+def _merge_labels(args: argparse.Namespace, context: BenchContext) -> int:
+    """Merge labels; print agreement and every unresolved disagreement for adjudication."""
+    rows = [pull.to_dict() for pull in read_sample(args.sample).rows]
+    labels_a = {r["url"]: r for path in args.a for r in _records(path)}
+    labels_b = {r["url"]: r for path in args.b for r in _records(path)}
+    adjudications = (
+        json.loads(args.adjudications.read_text(encoding="utf-8")) if args.adjudications else {}
+    )
+    try:
+        result = golden.merge_labels(rows, labels_a, labels_b, adjudications)
+    except ValueError as error:
+        print(f"error: {error}", file=context.err)
+        return EXIT_ERROR
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    with args.output.open("w", encoding="utf-8") as handle:
+        for record in result.records:
+            handle.write(json.dumps(record, ensure_ascii=False, sort_keys=True) + "\n")
+    print(
+        f"exact agreement {result.exact_agreement}/{result.total}; "
+        f"wrote {len(result.records)} cases; unresolved {len(result.unresolved)}",
+        file=context.out,
+    )
+    for record in result.unresolved:
+        summary = {k: record[k] for k in ("url", "labeller_a", "labeller_b", "notes_a", "notes_b")}
+        print(json.dumps(summary, ensure_ascii=False), file=context.out)
+    return EXIT_OK
+
+
+def _records(path: Path) -> list[dict]:
+    with path.open(encoding="utf-8") as handle:
+        return [json.loads(line) for line in handle if line.strip()]
