@@ -116,3 +116,21 @@ def test_sample_can_exclude_urls_from_earlier_files(viewer, tmp_path):
     urls = [json.loads(line).get("url") for line in first.read_text().splitlines()[1:]]
     again = [json.loads(line).get("url") for line in second.read_text().splitlines()[1:]]
     assert code == 0 and len(again) == 3 and not set(urls) & set(again)
+
+
+def test_merge_labels_reports_agreement_and_unresolved_cases(tmp_path):
+    sample = write_one_pr_sample(tmp_path)
+    url = "https://github.com/Octo/App/pull/7"
+    a, b = tmp_path / "a.jsonl", tmp_path / "b.jsonl"
+    a.write_text(json.dumps({"url": url, "expected": ["TESTS_PASS"]}) + "\n")
+    b.write_text(json.dumps({"url": url, "expected": []}) + "\n")
+    out = tmp_path / "cases.jsonl"
+    argv = ["merge-labels", str(sample), "--a", str(a), "--b", str(b), "-o", str(out)]
+    code, text, _err, _tokens = bench(argv)
+    assert code == 0 and "exact agreement 0/1" in text and "unresolved 1" in text
+
+    adjudications = tmp_path / "adj.json"
+    adjudications.write_text(json.dumps({url: {"expected": [], "reason": "no result stated"}}))
+    code, text, _err, _tokens = bench([*argv, "--adjudications", str(adjudications)])
+    assert "unresolved 0" in text
+    assert json.loads(out.read_text())["adjudication"] == "no result stated"
