@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 from collections import Counter
 from collections.abc import Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
@@ -85,17 +86,23 @@ class Score:
         return "\n".join(lines)
 
 
-def predict(text: str) -> Counter[str]:
-    """Claim types extracted from one PR body."""
+_REPO_IN_URL = re.compile(r"github\.com/([^/]+/[^/]+)/pull/")
+
+
+def predict(text: str, url: str = "") -> Counter[str]:
+    """Claim types extracted from one PR body. The repository is taken from the PR URL, as the
+    pipeline does, so "Fixes #12" and "Fixes owner/repo#12" count as one claim."""
+    found = _REPO_IN_URL.search(url)
     source = TextSource(origin="body", text=text, written_at=_WRITTEN_AT)
-    return Counter(claim.type for claim in extract_claims("golden", [source]))
+    claims = extract_claims("golden", [source], repo=found.group(1) if found else None)
+    return Counter(claim.type for claim in claims)
 
 
 def score(cases: Iterable[GoldenCase]) -> Score:
     result = Score()
     for case in cases:
         expected = Counter(case.expected)
-        predicted = predict(case.text)
+        predicted = predict(case.text, case.name)
         for claim_type in expected | predicted:
             metrics = result.per_type.setdefault(claim_type, Metrics())
             hits = min(expected[claim_type], predicted[claim_type])
