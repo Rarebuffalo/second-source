@@ -91,6 +91,11 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     score = steps.add_parser("golden", help="score extraction against a labelled golden set")
     score.add_argument("cases", type=Path)
     score.add_argument("--split", choices=[golden.DEV, golden.TEST, "all"], default=golden.DEV)
+    score.add_argument(
+        "--high-confidence",
+        action="store_true",
+        help="count only claims found by trusted rules (what the benchmark publishes)",
+    )
 
 
 def run_command(args: argparse.Namespace, context: BenchContext) -> int:
@@ -175,7 +180,7 @@ def _golden(args: argparse.Namespace, context: BenchContext) -> int:
     if args.split != "all":
         cases = golden.in_split(cases, args.split)
     print(f"{len(cases)} cases ({args.split})", file=context.out)
-    print(golden.score(cases).report(), file=context.out)
+    print(golden.score(cases, high_only=args.high_confidence).report(), file=context.out)
     return EXIT_OK
 
 
