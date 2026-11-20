@@ -88,6 +88,11 @@ def test_rate_limit_produces_unverifiable_not_contradicted(fake_github):
     assert results(report)["TESTS_PASS"] is Result.UNVERIFIABLE
     assert "check_result" in report.stale
     assert report.errors
+    assert report.rate_limited
+
+
+def test_normal_runs_are_not_rate_limited(fake_github):
+    assert not run(fake_github(), DAY_AFTER).rate_limited
 
 
 def test_reports_api_usage(fake_github):
