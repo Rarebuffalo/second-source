@@ -1,17 +1,18 @@
 # Real golden set for claim extraction
 
-`cases.jsonl` holds 120 pull request descriptions written by six coding agents (20 each:
+`cases.jsonl` holds 402 pull request descriptions written by six coding agents (67 each:
 Claude Code, Codex, Copilot, Cursor, Devin, Jules), labelled with the claims they make.
 Method: docs/benchmark.md, section 3. Labelling rules: [GUIDE.md](GUIDE.md).
 
 ## How it was built
 
-1. Sample: `second-source bench sample --per-agent 20 --seed 20261120 --filter has_body`
-   on AIDev revision `b8dc67df93e7c11f6f20c84129db7232eb1ec253`.
+1. Sample, on AIDev revision `b8dc67df93e7c11f6f20c84129db7232eb1ec253`:
+   - round 1 (120 PRs): `second-source bench sample --per-agent 20 --seed 20261120 --filter has_body`
+   - round 2 (282 PRs): `second-source bench sample --per-agent 47 --seed 20261121 --filter has_body --exclude-from cases.jsonl`
 2. Two labellers labelled every body independently from the guide, without seeing the
    extraction rules (`labeller_a`, `labeller_b` in each record).
 3. Where they disagreed, a third read against the guide decided `expected`; the reason is in
-   `adjudication`.
+   `adjudication`. `second-source bench merge-labels` rebuilds the cases from the labeller files.
 4. Each case is in the `dev` or `test` split by a hash of its URL
    (`second_source.benchmark.golden.split_for`). Rules are tuned on `dev` only; `test` is
    scored once, to report.
@@ -31,7 +32,34 @@ under the same licence. The labels are ours.
 
 ## Results
 
-Labeller agreement before adjudication: 113 of 120 PRs exactly equal.
+Labeller agreement before adjudication: 113 of 120 PRs exactly equal in round 1, 272 of 282 in
+round 2 (385 of 402 overall, 96%).
+
+### Round 2 (402 PRs; dev 212, test 190)
+
+Held-out test split, scored once with the rules before and after round-2 tuning on the dev
+split. Precision / recall:
+
+| Claim type | Labelled | Before round 2 | After round 2 | Dev split after |
+|---|---:|---|---|---|
+| TESTS_PASS | 27 | 0.85 / 0.81 | **0.80** / 0.89 | 0.97 / 0.93 |
+| BUILD_OK | 20 | 0.90 / 0.45 | 0.91 / 0.50 | 1.00 / 0.55 |
+| LINT_OK | 17 | 1.00 / 0.65 | 1.00 / 0.65 | 1.00 / 0.86 |
+| TESTS_ADDED | 38 | 0.87 / 0.71 | 0.87 / 0.68 | 0.97 / 0.79 |
+| FIXES_ISSUE | 33 | 1.00 / 0.94 | 1.00 / 0.94 | 1.00 / 0.97 |
+| DOCS_UPDATED | 42 | 0.87 / 0.31 | 0.85 / 0.40 | 1.00 / 0.65 |
+
+What this says:
+
+- Tuning on 212 dev cases still does not carry over to unseen text for TESTS_PASS: dev
+  precision rose to 0.97 while test precision fell from 0.85 to 0.80. New, looser phrasings
+  ("verified ... tests", "tests ... all pass") raised recall but also false claims.
+- FIXES_ISSUE (1.00) and LINT_OK (1.00) are reliable on unseen text; BUILD_OK and TESTS_ADDED
+  are close to 0.9; DOCS_UPDATED and TESTS_PASS are not yet at the 0.95 target.
+- Next step: measure precision **per extraction rule** and let the benchmark use only rules
+  that hold the target on both splits, instead of adding more rules.
+
+### Round 1 (120 PRs; dev 62, test 58)
 
 Held-out **test split** (58 PRs), scored once before and once after the M3 rule changes that
 were tuned on the dev split. Precision / recall per claim type:
