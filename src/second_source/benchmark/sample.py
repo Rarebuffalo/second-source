@@ -101,9 +101,19 @@ def locate_blocks(client: AidevClient) -> tuple[Block, ...]:
 
 
 def sample_block(
-    client: AidevClient, block: Block, *, count: int, seed: int, accept: Filter
+    client: AidevClient,
+    block: Block,
+    *,
+    count: int,
+    seed: int,
+    accept: Filter,
+    exclude: frozenset[str] = frozenset(),
 ) -> list[AidevPullRequest]:
-    """Up to ``count`` random rows from one block that pass ``accept``."""
+    """Up to ``count`` random rows from one block that pass ``accept``.
+
+    Rows whose URL is in ``exclude`` (for example PRs already in a golden set) are skipped and
+    do not count towards ``count``, so a set can grow without duplicates.
+    """
     rng = random.Random(f"{seed}:{block.agent}")
     budget = min(block.size, count * DRAWS_PER_ROW)
     chosen: list[AidevPullRequest] = []
@@ -111,7 +121,7 @@ def sample_block(
         if len(chosen) == count:
             break
         pull = client.page(offset, 1).rows[0]
-        if accept(pull):
+        if pull.url not in exclude and accept(pull):
             chosen.append(pull)
     return chosen
 
@@ -123,8 +133,11 @@ def draw_sample(
     seed: int,
     filter_name: str = "has_body",
     agents: Iterable[str] | None = None,
+    exclude: Iterable[str] = (),
 ) -> Sample:
-    """Draw ``per_agent`` PRs for each agent (all agents in the table unless given)."""
+    """Draw ``per_agent`` PRs for each agent (all agents in the table unless given), skipping
+    any PR whose URL is in ``exclude``."""
+    excluded = frozenset(exclude)
     accept = FILTERS[filter_name]
     blocks = locate_blocks(client)
     wanted = set(agents) if agents is not None else {block.agent for block in blocks}
@@ -137,7 +150,9 @@ def draw_sample(
     for block in blocks:
         if block.agent not in wanted:
             continue
-        chosen = sample_block(client, block, count=per_agent, seed=seed, accept=accept)
+        chosen = sample_block(
+            client, block, count=per_agent, seed=seed, accept=accept, exclude=excluded
+        )
         rows.extend(chosen)
         if len(chosen) < per_agent:
             shortfall[block.agent] = per_agent - len(chosen)
@@ -151,6 +166,7 @@ def draw_sample(
         "filter": filter_name,
         "blocks": [[block.agent, block.start, block.end] for block in blocks],
         "shortfall": shortfall,
+        "excluded": len(excluded),
         "tool_version": __version__,
     }
     return Sample(header=header, rows=tuple(rows), shortfall=shortfall)
