@@ -85,8 +85,11 @@ _SENTENCE_END = re.compile(r"(?<=[.!;])\s+")
 _CLAUSE_BREAK = re.compile(r",?\s+but\s+|\s+and\s+(?=(?:no|not|none|nothing|never)\b)")
 
 
-# A Markdown heading ("## Local testing") or a line that is only bold text ("**Testing:**").
-_HEADING = re.compile(r"^\s*(?:#{1,6}\s+(?P<hash>.+?)|\*\*(?P<bold>[^*]+)\*\*:?)\s*$")
+# A Markdown heading ("## Local testing") or a line that is only bold text, possibly as a list
+# item ("**Testing:**", "1. **New Files**:").
+_HEADING = re.compile(
+    r"^\s*(?:#{1,6}\s+(?P<hash>.+?)|(?:(?:[-*+]|\d+[.)])\s+)?\*\*(?P<bold>[^*]+)\*\*:?)\s*$"
+)
 
 
 def heading_of(line: str) -> str | None:
@@ -232,20 +235,31 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(r"\b(type ?check(ing)?|mypy|tsc)\s+(passes|passed|clean)\b"),
     ),
     TESTS_ADDED: (
+        # "Added 3 new unit tests", "Added comprehensive unit tests", "Added a new E2E test".
+        # Up to three describing words may sit between the verb and "tests", but not a
+        # preposition: "added support for tests" is not adding tests.
         re.compile(
-            r"\b(added|adds|add|wrote|writes|created|creates|includes|included)\s+"
-            r"(new\s+|more\s+|additional\s+)?(unit\s+|integration\s+|e2e\s+|regression\s+)?"
+            r"\b(added|adds|add|wrote|writes|created|creates|includes|included|introduced|"
+            r"introduces)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)[\w-]+\s+){0,3}?"
             r"(tests?|test cases?|test coverage|specs?)\b"
         ),
         re.compile(
             r"\bnew\s+(unit\s+|integration\s+|regression\s+)?tests?\s+(for|covering|to cover)\b"
         ),
         re.compile(r"\btests?\s+(were\s+|have been\s+)?added\b"),
+        # "11 tests covering all include patterns", "7 proxy integration tests added".
+        re.compile(r"\b\d+\s+(?:[\w-]+\s+){0,3}?(tests?|test cases)\s+(added|covering|to cover)\b"),
+        re.compile(r"\b(extended|expanded)\s+(the\s+)?(tests?|test suite|test coverage)\b"),
+        # Changed assertions check new behaviour; plain "updated tests" may be a refactor.
+        re.compile(r"\bupdated\s+(the\s+)?test\s+assertions\b"),
     ),
     DOCS_UPDATED: (
+        # "Updates the source-clickhouse user documentation", "Improves the Entity Cache
+        # documentation": up to three describing words before the documentation noun.
         re.compile(
-            r"\b(updated|updates|update|added|adds|wrote|improved|improves)\s+(the\s+)?"
-            r"(docs|documentation|readme|changelog)\b"
+            r"\b(updated|updates|update|added|adds|wrote|improved|improves|corrected|corrects|"
+            r"rewrote|rewrites|expanded|expands)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)"
+            r"[\w-]+\s+){0,3}?(docs|documentation|readme|changelog)\b"
         ),
         re.compile(
             r"\b(docs|documentation|readme|changelog)\s+"
@@ -257,6 +271,7 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
 # Matched separately because they capture values.
 _ISSUE_REF = re.compile(
     r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s*:?\s+"
+    r"(?:(?:the\s+)?(?:issue|bug)\s+)?"  # "fixes issue #12", "fixes bug #12"
     r"(?P<repo>[\w.-]+/[\w.-]+)?#(?P<number>\d+)\b"
 )
 _DEPLOY = re.compile(
