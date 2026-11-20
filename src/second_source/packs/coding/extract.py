@@ -78,6 +78,11 @@ def clean(text: str) -> str:
 _CHECKBOX = re.compile(r"^\s*(?:[-*+]|\d+[.)])?\s*\[( |x|X)\]\s*(.*)$")
 _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!;])\s+")
+# Where one statement ends and an independent one starts inside a sentence, so a negation in
+# the second part cannot cancel the first: "tests pass but integration tests had issues",
+# "verified that tests pass and no other usages exist". Plain "and" is not split, because
+# "tests and lint pass" is one statement about both.
+_CLAUSE_BREAK = re.compile(r",?\s+but\s+|\s+and\s+(?=(?:no|not|none|nothing|never)\b)")
 
 
 # A Markdown heading ("## Local testing") or a line that is only bold text ("**Testing:**").
@@ -108,10 +113,11 @@ def clauses_in_sections(text: str) -> Iterator[tuple[str, str]]:
                 continue
             line = box.group(2)
         line = _BULLET.sub("", line).strip()
-        for part in _SENTENCE_END.split(line):
-            part = part.strip(" \t-*#:|")
-            if part:
-                yield part, heading
+        for sentence in _SENTENCE_END.split(line):
+            for part in _CLAUSE_BREAK.split(sentence):
+                part = part.strip(" \t-*#:|")
+                if part:
+                    yield part, heading
 
 
 # --------------------------------------------------------------------------------------------
@@ -138,7 +144,11 @@ _NOT_AN_ASSERTION = re.compile(
 # match them.
 _POSITIVE_NO = re.compile(
     r"\bno\s+((lint|linting|linter|eslint|type)\s+)?(errors|warnings|issues)\b"
+    r"|\bwithout\s+(any\s+)?(failures?|errors?|warnings?|issues)\b"
 )
+# Quoted text names something ("the 'not re-exported' note"); its words are not the agent's
+# own negation or hedge.
+_QUOTED_TEXT = re.compile(r'"[^"\n]*"|“[^”\n]*”')
 
 
 # "... to ensure / to verify X" says why something was done; X itself is not asserted.
@@ -154,7 +164,7 @@ def asserted_part(clause: str) -> str:
 def is_assertion(clause: str) -> bool:
     if clause.rstrip().endswith("?"):
         return False
-    lowered = _POSITIVE_NO.sub(" ", clause.lower())
+    lowered = _POSITIVE_NO.sub(" ", _QUOTED_TEXT.sub(" ", clause.lower()))
     return not _NOT_AN_ASSERTION.search(lowered)
 
 
