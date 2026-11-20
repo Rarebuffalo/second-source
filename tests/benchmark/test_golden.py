@@ -113,3 +113,12 @@ def test_select_trusted_needs_enough_hits_and_precision():
     }
     chosen = select_trusted(metrics, min_hits=5, min_precision=0.95)
     assert [(c["type"], c["rule"]) for c in chosen] == [("TESTS_PASS", "a")]
+
+
+def test_high_only_scoring_drops_low_confidence_claims():
+    cases = [GoldenCase("a", "The build succeeds. Tests pass.", ("BUILD_OK", "TESTS_PASS"))]
+    everything = score(cases).per_type
+    high = score(cases, high_only=True).per_type
+    assert everything["BUILD_OK"].true_positive == 1
+    assert high["BUILD_OK"].false_negative == 1  # no trusted BUILD_OK rule yet
+    assert high["TESTS_PASS"].true_positive == 1
