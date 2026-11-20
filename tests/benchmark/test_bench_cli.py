@@ -157,3 +157,12 @@ def test_rules_select_writes_a_trusted_rules_file(tmp_path):
     assert code == 0 and "wrote 1 trusted rules" in text
     assert document["trusted"][0]["rule"] == "tests_pass.plain"
     assert document["selected_on"]["min_hits"] == 5
+
+
+def test_golden_can_count_only_high_confidence_claims(tmp_path):
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(
+        json.dumps({"url": "u", "body": "The build succeeds.", "expected": ["BUILD_OK"]}) + "\n"
+    )
+    _code, out, _err, _tokens = bench(["golden", str(cases), "--split", "all", "--high-confidence"])
+    assert "BUILD_OK      precision=1.00 recall=0.00" in out
