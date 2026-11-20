@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from second_source.benchmark.stats import wilson_interval
-from second_source.packs.coding.extract import TextSource, extract_claims, rule_hits
+from second_source.packs.coding.extract import HIGH, TextSource, extract_claims, rule_hits
 
 DEV, TEST = "dev", "test"
 _WRITTEN_AT = datetime(2026, 1, 1, tzinfo=UTC)  # extraction needs a time; its value is irrelevant
@@ -90,20 +90,23 @@ class Score:
 _REPO_IN_URL = re.compile(r"github\.com/([^/]+/[^/]+)/pull/")
 
 
-def predict(text: str, url: str = "") -> Counter[str]:
+def predict(text: str, url: str = "", *, high_only: bool = False) -> Counter[str]:
     """Claim types extracted from one PR body. The repository is taken from the PR URL, as the
-    pipeline does, so "Fixes #12" and "Fixes owner/repo#12" count as one claim."""
+    pipeline does, so "Fixes #12" and "Fixes owner/repo#12" count as one claim. With
+    ``high_only`` only claims found by trusted rules count (what the benchmark publishes)."""
     found = _REPO_IN_URL.search(url)
     source = TextSource(origin="body", text=text, written_at=_WRITTEN_AT)
     claims = extract_claims("golden", [source], repo=found.group(1) if found else None)
+    if high_only:
+        claims = [claim for claim in claims if claim.attributes.get("confidence") == HIGH]
     return Counter(claim.type for claim in claims)
 
 
-def score(cases: Iterable[GoldenCase]) -> Score:
+def score(cases: Iterable[GoldenCase], *, high_only: bool = False) -> Score:
     result = Score()
     for case in cases:
         expected = Counter(case.expected)
-        predicted = predict(case.text, case.name)
+        predicted = predict(case.text, case.name, high_only=high_only)
         for claim_type in expected | predicted:
             metrics = result.per_type.setdefault(claim_type, Metrics())
             hits = min(expected[claim_type], predicted[claim_type])
