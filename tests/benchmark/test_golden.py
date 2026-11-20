@@ -2,6 +2,8 @@
 
 import json
 
+import pytest
+
 from second_source.benchmark.golden import (
     DEV,
     TEST,
@@ -9,6 +11,7 @@ from second_source.benchmark.golden import (
     Metrics,
     in_split,
     load_cases,
+    merge_labels,
     score,
     split_for,
 )
@@ -55,3 +58,21 @@ def test_load_cases_and_split(tmp_path):
     cases = load_cases(path)
     assert len(cases) == 10 and cases[0].agent == "codex"
     assert len(in_split(cases, DEV)) + len(in_split(cases, TEST)) == 10
+
+
+def test_merge_labels_agreement_adjudication_and_unresolved():
+    rows = [{"url": u, "agent": "codex", "body": "b"} for u in ("u1", "u2", "u3")]
+    a = {"u1": {"expected": ["TESTS_PASS"]}, "u2": {"expected": []}, "u3": {"expected": []}}
+    b = {
+        "u1": {"expected": ["TESTS_PASS"]},
+        "u2": {"expected": ["LINT_OK"]},
+        "u3": {"expected": ["X"]},
+    }
+    adjudications = {"u2": {"expected": ["LINT_OK"], "reason": "lint stated"}}
+    result = merge_labels(rows, a, b, adjudications)
+    assert (result.exact_agreement, result.total) == (1, 3)
+    assert [r["url"] for r in result.records] == ["u1", "u2"]
+    assert result.records[1]["adjudication"] == "lint stated"
+    assert [r["url"] for r in result.unresolved] == ["u3"]
+    with pytest.raises(ValueError):
+        merge_labels(rows, {"u1": a["u1"]}, b, {})
