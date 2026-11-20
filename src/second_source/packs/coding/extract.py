@@ -64,11 +64,26 @@ _HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
 _QUOTED_LINE = re.compile(r"^\s*>.*$", re.MULTILINE)
 
 
-def clean(text: str) -> str:
-    """Drop code, HTML comments and quoted lines (quotes are someone else's words)."""
-    for pattern in (_FENCED_CODE, _HTML_COMMENT, _QUOTED_LINE):
+# Review bots (CodeRabbit, Cursor Bugbot) append summaries to the PR body between marker
+# comments. Those are the bot's words about the change, not the agent's claims.
+_BOT_SECTION = re.compile(
+    r"<!--\s*This is an auto-generated comment.*?-->.*?<!--\s*end of auto-generated comment.*?-->"
+    r"|<!--\s*CURSOR_SUMMARY\s*-->.*?<!--\s*/CURSOR_SUMMARY\s*-->",
+    re.DOTALL | re.IGNORECASE,
+)
+
+
+def without_blocks(text: str) -> str:
+    """Drop bot sections, code blocks, HTML comments and quoted lines; keep inline code."""
+    for pattern in (_BOT_SECTION, _FENCED_CODE, _HTML_COMMENT, _QUOTED_LINE):
         text = pattern.sub(" ", text)
-    return _INLINE_CODE.sub(" ", text)
+    return text
+
+
+def clean(text: str) -> str:
+    """Drop everything that is not the agent's own prose: bot sections, code, HTML comments
+    and quoted lines (quotes are someone else's words)."""
+    return _INLINE_CODE.sub(" ", without_blocks(text))
 
 
 # --------------------------------------------------------------------------------------------
@@ -142,9 +157,13 @@ _NOT_AN_ASSERTION = re.compile(
     r"fail|fails|failing|failed|failure|broken|flaky|"
     # partial or quantified statements ("most tests pass" is not "tests pass")
     r"partially|partial|related|most|mostly|some|several|few|majority|except|excluding|"
-    r"apart from)\b"
+    r"apart from|"
+    # conditional checklist items ("included tests if applicable")
+    r"if applicable|where applicable|if needed|if any|if relevant)\b"
     r"|n't\b"
 )
+# A partial count ("19/22 tests passing") is a hedge, however positive the wording.
+_COUNT = re.compile(r"\b(\d+)\s*/\s*(\d+)\b")
 
 # "No lint errors" or "compiles with no warnings" are positive claims even though they contain
 # "no"; these exact phrases are removed before the negation test so claim patterns can still
@@ -152,6 +171,8 @@ _NOT_AN_ASSERTION = re.compile(
 _POSITIVE_NO = re.compile(
     r"\bno\s+((lint|linting|linter|eslint|type)\s+)?(errors|warnings|issues)\b"
     r"|\bwithout\s+(any\s+)?(failures?|errors?|warnings?|issues)\b"
+    # "211 pass, 0 fail", "zero warnings"
+    r"|\b(0|zero)\s+(fail|fails|failed|failures?|errors?|warnings?|issues)\b"
 )
 # Quoted text names something ("the 'not re-exported' note"); its words are not the agent's
 # own negation or hedge.
@@ -172,6 +193,8 @@ def is_assertion(clause: str) -> bool:
     if clause.rstrip().endswith("?"):
         return False
     lowered = _POSITIVE_NO.sub(" ", _QUOTED_TEXT.sub(" ", clause.lower()))
+    if any(int(done) < int(total) for done, total in _COUNT.findall(lowered)):
+        return False
     return not _NOT_AN_ASSERTION.search(lowered)
 
 
@@ -195,8 +218,10 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\b(all|new|existing)\b[^.]{0,40}?(?<!-)\btests?\b[^.]{0,40}?"
             r"\b(passed|pass|passing|continue\s+(to\s+)?pass(ing)?)\b"
         ),
-        # "7 tests added (all passing)".
-        re.compile(r"(?<!-)\btests?\b[^.]{0,40}\(\s*all\s+(pass|passing|passed|green)\s*\)"),
+        # "7 tests added (all passing)", "27 tests, all passing".
+        re.compile(r"(?<!-)\btests?\b[^.]{0,40}\ball\s+(pass|passing|passed|green)\b"),
+        # "Verified compilation and tests", "verified with existing unit tests".
+        re.compile(r"\bverified\b[^.]{0,40}?\b(tests?|test suite)\b"),
         re.compile(rf"\b(test suite|test run|tests? run)\s+(is\s+)?(now\s+)?{_PASS_WORDS}\b"),
         # CI as a whole. Bare "checks pass" is too vague ("repo checks pass" may be lint).
         re.compile(
@@ -223,6 +248,8 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(
             r"\b(compiles|compiled)\s+(successfully|cleanly|fine|without (errors|warnings))\b"
         ),
+        re.compile(rf"\b(compilation|cargo check)\s+(is\s+|now\s+)*{_PASS_WORDS}\b"),
+        re.compile(r"\b(clean|successful)\s+build\b|\bverified\b[^.]{0,30}?\bcompilation\b"),
     ),
     LINT_OK: (
         re.compile(
@@ -237,6 +264,8 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         ),
         re.compile(r"\bverified\s+(with|by|using)\s+(the\s+)?(lint|linting|linters?)\b"),
         re.compile(r"\b(type ?check(ing)?|mypy|tsc)\s+(passes|passed|clean)\b"),
+        re.compile(rf"\b(typescript|type)\s+checks?\s+(are\s+|now\s+)*{_PASS_WORDS}\b"),
+        re.compile(r"\b(zero|0)\s+(lint|linter|linting)\s+(errors|warnings|issues)\b"),
     ),
     TESTS_ADDED: (
         # "Added 3 new unit tests", "Added comprehensive unit tests", "Added a new E2E test".
@@ -245,11 +274,16 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
         re.compile(
             r"\b(added|adds|add|wrote|writes|created|creates|includes|included|introduced|"
             r"introduces)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)[\w-]+\s+){0,3}?"
-            r"(tests?|test cases?|test coverage|specs?)\b"
+            r"(tests?|test cases?|test coverage|specs?|assertions|regression coverage)\b"
+            # "test metadata", "test scripts", "test data" are not new automated tests.
+            r"(?!\s+(metadata|data|fixtures?|utilities|utils|helpers?|scripts?|ids?|names?|plans?))"
         ),
         re.compile(
             r"\bnew\s+(unit\s+|integration\s+|regression\s+)?tests?\s+(for|covering|to cover)\b"
         ),
+        re.compile(r"\bnew\W{1,6}\d+\s+(new\s+)?(unit\s+)?tests?\b"),  # "**New**: 4 tests"
+        re.compile(r"\b(improved|increased|expanded|extended)\s+(\w+\s+)?test\s+coverage\b"),
+        re.compile(r"\btests?\s+(were\s+|have been\s+)?(extended|expanded)\b"),
         re.compile(r"\btests?\s+(were\s+|have been\s+)?added\b"),
         # "11 tests covering all include patterns", "7 proxy integration tests added".
         re.compile(r"\b\d+\s+(?:[\w-]+\s+){0,3}?(tests?|test cases)\s+(added|covering|to cover)\b"),
@@ -260,20 +294,28 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
     DOCS_UPDATED: (
         # "Updates the source-clickhouse user documentation", "Improves the Entity Cache
         # documentation": up to three describing words before the documentation noun.
+        # "Updates the source-clickhouse user documentation", "update progress in TypeScript
+        # README", "add a baseline doc": a change verb, then within five words a documentation
+        # noun that is not docs tooling ("added logging to the documentation builder").
         re.compile(
-            r"\b(updated|updates|update|added|adds|wrote|improved|improves|corrected|corrects|"
-            r"rewrote|rewrites|expanded|expands)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)"
-            r"[\w-]+\s+){0,3}?(docs|documentation|readme|changelog)\b"
+            r"\b(updated|updates|update|added|adds|add|wrote|write|improved|improves|improve|"
+            r"corrected|corrects|correct|rewrote|rewrites|rewrite|expanded|expands|expand|"
+            r"refreshed|refreshes|refresh|created|creates|create)\s+(?:[\w-]+\s+){0,5}?"
+            r"(docs|documentation|readme|changelog|doc)\b"
+            r"(?!\s+(builder|build|builds|generator|generation|site|tooling|pipeline|workflow))"
         ),
+        re.compile(r"\bnew\s+(readme|docs|documentation|design doc|guide)\b"),
         # Documentation files named in plain text: "Update the instructions in AGENTS.md".
         re.compile(
             r"\b(updated|updates|update|added|adds|created|creates|edited|edits|rewrote|"
             r"rewrites|corrected|corrects|expanded|expands)\b[^.]{0,60}?"
             r"(?<![\w/.-])[\w/.-]+\.(md|mdx|rst|adoc)\b"
         ),
+        # "README.md updated", "API docs updated", "documentation and examples updated".
         re.compile(
-            r"\b(docs|documentation|readme|changelog)\s+"
-            r"(are\s+|is\s+|was\s+|were\s+|have been\s+|has been\s+)?(updated|added)\b"
+            r"\b(docs|documentation|readme(\.md)?|changelog(\.md)?|news)\b[^.]{0,30}?"
+            r"\b(are\s+|is\s+|was\s+|were\s+|have been\s+|has been\s+)?"
+            r"(updated|added|improved|refreshed|expanded)\b"
         ),
     ),
 }
@@ -353,7 +395,8 @@ _MARKED_CODE = re.compile(
 # Prose saying a command succeeded ("201 passed" included).
 _SUCCESS_PROSE = re.compile(
     r"\b(passed|passes|passing|succeeded|succeeds|successful|successfully|clean|green|"
-    r"all pass|ok)\b|\b\d+\s*(/\s*\d+\s*)?(tests?\s+)?passed\b"
+    r"all pass|ok)\b|\b\d+\s*(/\s*\d+\s*)?(tests?\s+)?(passed|pass)\b"
+    r"|\b(0|zero)\s+(errors|warnings|issues|failures)\b"
 )
 
 # Programs that run tests, builds or linters. Inline code only counts as a command if it
@@ -430,9 +473,8 @@ def _changed_file_claims(sentence: str, prose: str, heading: str) -> Iterator[st
 
 def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Yield (claim type, attributes, span) from sentences that contain inline code."""
-    without_blocks = _QUOTED_LINE.sub(" ", _HTML_COMMENT.sub(" ", _FENCED_CODE.sub(" ", text)))
     heading = ""
-    for line in without_blocks.splitlines():
+    for line in without_blocks(text).splitlines():
         heading = heading_of(line) or heading
         box = _CHECKBOX.match(line)
         if box and box.group(1) == " ":
