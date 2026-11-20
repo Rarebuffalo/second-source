@@ -79,6 +79,10 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     merge.add_argument("--adjudications", type=Path, help="JSON: {url: {expected, reason}}")
     merge.add_argument("-o", "--output", type=Path, required=True)
 
+    rules = steps.add_parser("rules", help="precision of each extraction rule on a golden set")
+    rules.add_argument("cases", type=Path)
+    rules.add_argument("--split", choices=[golden.DEV, golden.TEST, "all"], default=golden.DEV)
+
     score = steps.add_parser("golden", help="score extraction against a labelled golden set")
     score.add_argument("cases", type=Path)
     score.add_argument("--split", choices=[golden.DEV, golden.TEST, "all"], default=golden.DEV)
@@ -91,6 +95,7 @@ def run_command(args: argparse.Namespace, context: BenchContext) -> int:
         "summarize": _summarize,
         "golden": _golden,
         "merge-labels": _merge_labels,
+        "rules": _rules,
     }
     return handlers[args.bench_command](args, context)
 
@@ -200,3 +205,12 @@ def _merge_labels(args: argparse.Namespace, context: BenchContext) -> int:
 def _records(path: Path) -> list[dict]:
     with path.open(encoding="utf-8") as handle:
         return [json.loads(line) for line in handle if line.strip()]
+
+
+def _rules(args: argparse.Namespace, context: BenchContext) -> int:
+    cases = golden.load_cases(args.cases)
+    if args.split != "all":
+        cases = golden.in_split(cases, args.split)
+    print(f"{len(cases)} cases ({args.split})", file=context.out)
+    print(golden.rules_report(golden.score_rules(cases)), file=context.out)
+    return EXIT_OK
