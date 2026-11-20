@@ -22,6 +22,7 @@ from second_source.packs.coding.extract import (
     clean,
     extract_claims,
     is_assertion,
+    is_local,
     merge_claim,
 )
 
@@ -155,9 +156,45 @@ def test_ref_is_attached_to_commit_dependent_claims():
     assert claim.attributes["ref"] == "deadbeef"
 
 
-def test_local_qualifier_is_recorded():
+def test_local_scope_is_recorded_from_the_clause():
     (claim,) = extract_claims("pr-1", [body("All tests pass locally")])
-    assert claim.attributes["qualifier"] == "locally"
+    assert claim.attributes["scope"] == "local"
+
+
+def test_local_scope_is_recorded_from_the_section_heading():
+    text = "## Local verification\n- All tests pass\n\n## Notes\n- Build succeeds"
+    claims = {c.type: c for c in extract_claims("pr-1", [body(text)])}
+    assert claims[TESTS_PASS].attributes["scope"] == "local"
+    assert "scope" not in claims[BUILD_OK].attributes  # a later section resets the heading
+
+
+def test_local_scope_applies_to_command_status_lines():
+    text = "**Testing (in the sandbox):**\n- ✅ `pytest -q`"
+    (claim,) = extract_claims("pr-1", [body(text)])
+    assert claim.attributes["scope"] == "local"
+
+
+def test_unscoped_claims_have_no_scope():
+    (claim,) = extract_claims("pr-1", [body("All tests pass")])
+    assert "scope" not in claim.attributes
+
+
+def test_scope_is_only_set_on_check_claims():
+    (claim,) = extract_claims("pr-1", [body("Added unit tests locally")])
+    assert claim.type == TESTS_ADDED and "scope" not in claim.attributes
+
+
+@pytest.mark.parametrize(
+    "text",
+    ["ran it on my machine", "Local test run", "in the sandbox", "tests run locally"],
+)
+def test_is_local_phrases(text):
+    assert is_local(text)
+
+
+@pytest.mark.parametrize("text", ["a local variable", "localisation fixes", "the build"])
+def test_is_local_ignores_unrelated_uses(text):
+    assert not is_local(text)
 
 
 def test_issue_references_capture_number_and_repo():
@@ -187,7 +224,7 @@ def test_same_claim_at_same_commit_is_kept_once_from_the_earliest_source():
     assert claim.origin == "body"
 
 
-def test_qualifier_does_not_create_a_duplicate_claim():
+def test_scope_does_not_create_a_duplicate_claim():
     # Review finding: "tests pass" and "tests pass locally" at one commit are one claim.
     claims = extract_claims("pr-1", [body("All tests pass. Tests pass locally.")])
     assert [c.type for c in claims] == [TESTS_PASS]
