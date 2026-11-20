@@ -60,7 +60,7 @@ src/second_source/
   report/          renderers: Markdown (check summary, job summary, terminal), JSON
   cli/             `second-source` command (check, explain, bench)
   action/          GitHub Action entrypoint (reads event, runs pipeline, writes check run)
-benchmark/       batch pipeline (AIDev sampling with DuckDB, runner, statistics)
+benchmark/       batch pipeline (AIDev sampling via the dataset viewer API, runner, statistics)
 site/            static leaderboard (GitHub Pages)
 action.yml       GitHub Action metadata (must sit at repo root)
 tests/
@@ -228,7 +228,7 @@ Each step is committed as its own commit, one file per commit where possible.
 | M0 Core engine | model → hashing → evidence → expr → checks → aggregate → engine → pack loader → tests (unit, non-coding fixtures, replay) → CI workflow |
 | M1 Coding pack | agent detection rules → claim grammar → referenced-commit resolution → checks (tests pass, build/lint, tests added, fixes issue, docs updated, deployed) → durability checks → golden set |
 | M2 GitHub source + CLI | API client (auth chain, ETag cache, rate limits) → mappers → `second-source check <PR URL>` → Markdown/JSON reports → recorded fixtures |
-| M3 Benchmark | AIDev sampling (DuckDB) → batch runner with cache → statistics (Wilson intervals) → result files |
+| M3 Benchmark | AIDev sampling (dataset viewer API, see docs/benchmark.md) → batch runner with cache → statistics (Wilson intervals) → result files |
 | M4 Action | `action.yml` → entrypoint (event parsing, wait-for-CI, check run + job summary) → daily durability mode → dispute command → one-click setup link |
 | M5 Launch | static site → dataset release → README, GIF and docs → open-source hygiene files → Marketplace listing |
 
