@@ -37,6 +37,7 @@ class PullRequestReport:
     errors: Sequence[str]
     checked_at: datetime
     api_requests: int
+    rate_limited: bool = False  # evidence fetching stopped at the rate limit (see stale)
 
     def verdict_for(self, claim: Claim) -> Verdict:
         return next(v for v in self.verdicts if v.claim_id == claim.id)
@@ -84,4 +85,5 @@ def check_pull_request(
         errors=tuple(evidence.errors),
         checked_at=checked_at,
         api_requests=source.client.stats.requests,
+        rate_limited=evidence.rate_limited,
     )
