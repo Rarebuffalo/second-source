@@ -17,9 +17,13 @@ from __future__ import annotations
 
 import re
 from collections.abc import Iterator, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import datetime
+from functools import lru_cache
+from pathlib import Path
 from typing import Any
+
+import yaml
 
 from second_source.core.hashing import sha256_hex
 from second_source.core.model import Claim
@@ -417,6 +421,24 @@ def is_local(*texts: str) -> bool:
     return any(_LOCAL_SCOPE.search(text.lower()) for text in texts)
 
 
+# Rules whose precision held the target on the golden set's selection split
+# (trusted_rules.yaml, written by `second-source bench rules --select`). Claims they find are
+# marked confidence "high"; all other claims "low". The benchmark headline counts only "high".
+TRUSTED_RULES_FILE = Path(__file__).parent / "trusted_rules.yaml"
+HIGH, LOW = "high", "low"
+
+
+@lru_cache(maxsize=1)
+def trusted_rules() -> frozenset[tuple[str, str]]:
+    """The trusted (claim type, rule) pairs."""
+    document = yaml.safe_load(TRUSTED_RULES_FILE.read_text(encoding="utf-8")) or {}
+    return frozenset((entry["type"], entry["rule"]) for entry in document.get("trusted", []))
+
+
+def confidence_of(claim_type: str, rule: str) -> str:
+    return HIGH if (claim_type, rule) in trusted_rules() else LOW
+
+
 ISSUE_RULE = "fixes_issue.closing_ref"
 DEPLOY_RULE = "deployed.phrase"
 CODE_SENTENCE_RULES = (
@@ -445,6 +467,8 @@ def _match_clause(
 
     for claim_type, rules in _PATTERNS.items():
         matched = [name for name, pattern in rules if pattern.search(lowered)]
+        # Prefer a trusted rule when several match, so the claim gets the confidence it earned.
+        matched.sort(key=lambda name: confidence_of(claim_type, name) != HIGH)
         for name in matched if all_rules else matched[:1]:
             attributes: dict[str, Any] = {"rule": name}
             if local and claim_type in _SCOPED_TYPES:
@@ -634,7 +658,7 @@ def rule_hits(text: str) -> set[tuple[str, str]]:
 # the claim but ignored when deciding whether two claims are the same.
 # "Tests pass" and "tests pass locally" are one claim; the first statement made is kept.
 # "rule" records which extraction rule found the claim; it is not part of what was claimed.
-_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule"})
+_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule", "confidence"})
 
 
 def extract_claims(
@@ -648,18 +672,25 @@ def extract_claims(
     "Fixes #12" and "Fixes owner/name#12" are one claim.
     """
     claims: list[Claim] = []
-    seen: set[str] = set()
+    seen: dict[str, int] = {}  # claim key -> index in claims
     for source in sorted(sources, key=lambda s: s.written_at):
         for claim_type, attributes, span in _candidates(source):
             if claim_type in _REF_TYPES:
                 attributes["ref"] = source.ref
             if claim_type == FIXES_ISSUE and repo and attributes["repo"] == repo.lower():
                 attributes["repo"] = ""
+            attributes["confidence"] = confidence_of(claim_type, attributes["rule"])
             substance = {k: v for k, v in attributes.items() if k not in _DESCRIPTIVE_ATTRIBUTES}
             key = sha256_hex([episode_id, claim_type, substance])
             if key in seen:
+                # Same claim said again. Keep the earliest statement, but if a trusted rule
+                # found it this time, the claim has earned high confidence.
+                kept = claims[seen[key]]
+                if attributes["confidence"] == HIGH and kept.attributes["confidence"] == LOW:
+                    upgraded = {**kept.attributes, "rule": attributes["rule"], "confidence": HIGH}
+                    claims[seen[key]] = replace(kept, attributes=upgraded)
                 continue
-            seen.add(key)
+            seen[key] = len(claims)
             claims.append(
                 Claim(
                     id=f"clm_{key[:16]}",
