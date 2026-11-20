@@ -12,7 +12,9 @@ from second_source.benchmark.golden import (
     in_split,
     load_cases,
     merge_labels,
+    rules_report,
     score,
+    score_rules,
     split_for,
 )
 
@@ -76,3 +78,17 @@ def test_merge_labels_agreement_adjudication_and_unresolved():
     assert [r["url"] for r in result.unresolved] == ["u3"]
     with pytest.raises(ValueError):
         merge_labels(rows, {"u1": a["u1"]}, b, {})
+
+
+def test_score_rules_judges_each_rule_on_its_own():
+    cases = [
+        GoldenCase("a", "All new tests pass.", ("TESTS_PASS",)),
+        GoldenCase("b", "All new tests pass.", ()),  # labelled as no claim: both rules wrong
+        GoldenCase("c", "Fixes #4.", ("FIXES_ISSUE",)),
+    ]
+    rules = score_rules(cases)
+    assert (rules["tests_pass.plain"].correct, rules["tests_pass.plain"].wrong) == (1, 1)
+    assert rules["tests_pass.quantified"].precision == 0.5
+    assert rules["fixes_issue.closing_ref"].precision == 1.0
+    assert 0 < rules["fixes_issue.closing_ref"].precision_low < 1  # one hit proves little
+    assert "tests_pass.plain" in rules_report(rules)
