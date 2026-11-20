@@ -1,0 +1,105 @@
+"""End-to-end tests for ``second-source bench`` with fake AIDev and fake GitHub APIs."""
+
+import io
+import json
+
+import httpx
+
+from second_source.benchmark.aidev import AidevClient, AidevPullRequest
+from second_source.benchmark.sample import Sample, write_sample
+from second_source.cli.main import main
+from second_source.sources.github.auth import TokenResult
+from second_source.sources.github.client import GitHubClient
+
+
+def bench(argv, *, viewer=None, github=None, token=None):
+    out, err = io.StringIO(), io.StringIO()
+    tokens = []
+
+    def client_factory(value, _use_cache):
+        tokens.append(value)
+        return GitHubClient(value, transport=httpx.MockTransport(github), sleep=lambda _s: None)
+
+    code = main(
+        ["bench", *argv],
+        client_factory=client_factory,
+        token_resolver=lambda _env: TokenResult(token, "test" if token else "none"),
+        aidev_factory=lambda: AidevClient(
+            transport=httpx.MockTransport(viewer), sleep=lambda _s: None, min_interval=0
+        ),
+        env={},
+        stdout=out,
+        stderr=err,
+    )
+    return code, out.getvalue(), err.getvalue(), tokens
+
+
+def test_sample_writes_a_reproducible_file(viewer, tmp_path):
+    path = tmp_path / "s.jsonl"
+    code, out, _err, _tokens = bench(
+        ["sample", "--per-agent", "2", "--seed", "1", "-o", str(path)], viewer=viewer()
+    )
+    assert code == 0 and "wrote 12 pull requests" in out
+    header = json.loads(path.read_text().splitlines()[0])["header"]
+    assert header["filter"] == "merged_with_body" and header["seed"] == 1
+
+
+def test_sample_reports_unknown_agents(viewer, tmp_path):
+    code, _out, err, _tokens = bench(
+        [
+            "sample",
+            "--per-agent",
+            "1",
+            "--seed",
+            "1",
+            "--agents",
+            "nobody",
+            "-o",
+            str(tmp_path / "s"),
+        ],
+        viewer=viewer(),
+    )
+    assert code == 2 and "not in the dataset" in err
+
+
+def write_one_pr_sample(tmp_path):
+    pull = AidevPullRequest(
+        "https://github.com/Octo/App/pull/7", "codex", "t", "b", "closed", None, "2026-11-20"
+    )
+    path = tmp_path / "s.jsonl"
+    write_sample(Sample(header={"seed": 1}, rows=(pull,)), path)
+    return path
+
+
+def test_run_then_summarize(fake_github, tmp_path):
+    sample = write_one_pr_sample(tmp_path)
+    results = tmp_path / "r.jsonl"
+    code, out, err, tokens = bench(
+        ["run", str(sample), "-o", str(results), "--anonymous"], github=fake_github(), token="t"
+    )
+    assert code == 0 and "checked 1, errors 0" in out
+    assert tokens == [None]  # --anonymous wins over an available token
+    assert "no GitHub token" in err
+
+    code, out, _err, _tokens = bench(["summarize", str(results), "-o", str(tmp_path / "sum")])
+    assert code == 0
+    summary = json.loads((tmp_path / "sum" / "summary.json").read_text())
+    assert summary["agents"]["codex"]["prs"] == 1
+    assert "## codex" in (tmp_path / "sum" / "summary.md").read_text()
+
+
+def test_run_uses_an_available_token(fake_github, tmp_path):
+    sample = write_one_pr_sample(tmp_path)
+    _code, _out, err, tokens = bench(
+        ["run", str(sample), "-o", str(tmp_path / "r.jsonl")], github=fake_github(), token="t"
+    )
+    assert tokens == ["t"] and "no GitHub token" not in err
+
+
+def test_golden_scores_a_split(tmp_path):
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(
+        json.dumps({"url": "u", "body": "All tests pass.", "expected": ["TESTS_PASS"]}) + "\n"
+    )
+    code, out, _err, _tokens = bench(["golden", str(cases), "--split", "all"])
+    assert code == 0 and "1 cases (all)" in out and "TESTS_PASS" in out
