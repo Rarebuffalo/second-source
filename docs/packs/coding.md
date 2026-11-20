@@ -16,9 +16,9 @@ requests (PRs). It lives in `src/second_source/packs/coding/`.
 
 | Claim type | Example text | Key attributes | Checks |
 |---|---|---|---|
-| `TESTS_PASS` | "All tests pass", "- [x] Tests pass", "CI is green" | `ref` | `coding.ci_result` |
-| `BUILD_OK` | "Build succeeds", "compiles cleanly" | `ref` | `coding.ci_result` |
-| `LINT_OK` | "Lint passes", "no lint errors" | `ref` | `coding.ci_result` |
+| `TESTS_PASS` | "All tests pass", "- [x] Tests pass", "CI is green" | `ref`, `scope` | `coding.ci_result` |
+| `BUILD_OK` | "Build succeeds", "compiles cleanly" | `ref`, `scope` | `coding.ci_result` |
+| `LINT_OK` | "Lint passes", "no lint errors" | `ref`, `scope` | `coding.ci_result` |
 | `TESTS_ADDED` | "Added unit tests for the parser" | (none) | `coding.tests_added` |
 | `FIXES_ISSUE` | "Fixes #123", "Closes owner/repo#45" | `issue`, `repo` | `coding.fixes_issue`, `coding.fixes_issue_durable` |
 | `DOCS_UPDATED` | "Updated the README" | (none) | `coding.docs_updated` |
@@ -27,6 +27,13 @@ requests (PRs). It lives in `src/second_source/packs/coding/`.
 
 `ref` is the commit the claim refers to: the PR head commit at the moment the text was
 written. The source supplies it (see section 4), and extraction copies it onto the claim.
+
+`scope` is `local` when the text says a test, build or lint check ran locally ("tests pass
+locally", or a claim under a "## Local verification" heading). Passing CI still verifies a
+local claim, but failing CI makes it `UNVERIFIABLE` with reason `CI_FAILED_LOCAL_CLAIM`
+instead of `CONTRADICTED`: local and CI environments differ, so it is a signal, not proof.
+Claims that do not say where they ran are read as claims about the change itself, and
+failing CI contradicts them. (See docs/benchmark.md, section 4.)
 
 `MERGE_HOLDS` is an implicit claim: merging a PR asserts that the change is good. Making it
 a claim lets the L5 "stayed true" checks use the same engine as everything else.
