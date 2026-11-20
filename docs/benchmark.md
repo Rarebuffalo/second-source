@@ -124,3 +124,15 @@ This keeps the promise "missing or weak evidence is never reported as contradict
 - Agents that edit their PR body after CI runs are judged on the final text.
 - Labels come from careful readers following a guide, not from the agents' authors; the guide
   and the agreement score are published so the labels can be challenged.
+
+## 9. Status after M3
+
+- The real golden set exists (120 PRs, 113/120 labeller agreement). Held-out results are in
+  `tests/packs/coding/golden/real/README.md`: recall roughly doubled, but TESTS_PASS precision
+  on unseen text is 0.75, below the 0.95 target. A larger labelled set (several hundred PRs)
+  is the next step before any published contradiction rate.
+- A first anonymous end-to-end run (8 PRs) worked through sample → run → summarize, with agent
+  detection matching the dataset label on every PR. It exposed the open-ended revert scan
+  (now bounded to the durability window).
+- Until extraction precision meets the target, every "contradicted" result is checked by a
+  person before publication.
