@@ -87,8 +87,17 @@ def test_score_rules_judges_each_rule_on_its_own():
         GoldenCase("c", "Fixes #4.", ("FIXES_ISSUE",)),
     ]
     rules = score_rules(cases)
-    assert (rules["tests_pass.plain"].correct, rules["tests_pass.plain"].wrong) == (1, 1)
-    assert rules["tests_pass.quantified"].precision == 0.5
-    assert rules["fixes_issue.closing_ref"].precision == 1.0
-    assert 0 < rules["fixes_issue.closing_ref"].precision_low < 1  # one hit proves little
+    plain = rules[("TESTS_PASS", "tests_pass.plain")]
+    assert (plain.correct, plain.wrong) == (1, 1)
+    assert rules[("TESTS_PASS", "tests_pass.quantified")].precision == 0.5
+    issue = rules[("FIXES_ISSUE", "fixes_issue.closing_ref")]
+    assert issue.precision == 1.0
+    assert 0 < issue.precision_low < 1  # one hit proves little
     assert "tests_pass.plain" in rules_report(rules)
+
+
+def test_command_rules_are_scored_per_claim_type():
+    cases = [GoldenCase("a", "- ✅ `pytest -q`\n- ✅ `ruff check .`", ("TESTS_PASS",))]
+    rules = score_rules(cases)
+    assert rules[("TESTS_PASS", "command.marked")].correct == 1
+    assert rules[("LINT_OK", "command.marked")].wrong == 1
