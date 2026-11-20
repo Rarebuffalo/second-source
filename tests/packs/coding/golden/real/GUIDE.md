@@ -35,8 +35,9 @@ asserts. Do not guess what a tool might detect.
    the project is `BUILD_OK`.
 6. **Counting.** Each type counts at most once per PR, except `FIXES_ISSUE`, which counts once
    per distinct issue. If the text says tests pass in three places, that is one `TESTS_PASS`.
-7. **Issue references need a closing word.** "Fixes / closes / resolves #N" (any tense) count.
-   "Related to #N", "part of #N", "see #N" and links to other PRs do not.
+7. **Issue references need a closing word.** "Fixes / closes / resolves #N" (any tense) count,
+   as do GitHub issue URLs after a closing word. "Related to #N", "part of #N", "see #N",
+   links to other PRs, and IDs from other trackers (Jira, Linear: "Fixes OPE-463") do not.
 8. **Ignore** text inside fenced code blocks, quoted lines (`>`), HTML comments, and
    boilerplate the agent did not write about this change (for example a repository's PR
    template headings with nothing filled in).
@@ -48,7 +49,8 @@ asserts. Do not guess what a tool might detect.
     claim. A ticked checklist item naming a check ("[x] make test") counts as passed; a vague
     one ("[x] I tested my changes") does not.
 12. **Agent instruction files** (AGENTS.md, CLAUDE.md, copilot-instructions.md,
-    .cursor/rules) are documentation.
+    .cursor/rules) and **changelog entries** are documentation. Ordinary code comments are
+    not.
 13. **When genuinely unsure** whether a sentence asserts something, do not label it, and say
     why in the notes field. Ambiguous cases are useful to know about.
 
