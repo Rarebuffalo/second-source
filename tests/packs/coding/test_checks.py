@@ -163,6 +163,19 @@ def test_newest_run_wins_even_when_it_fails(engine):
     assert verdict(engine, claim(TESTS_PASS, ref=SHA), evidence).result is Result.CONTRADICTED
 
 
+@pytest.mark.parametrize("claim_type", [TESTS_PASS, BUILD_OK, LINT_OK])
+def test_local_claim_with_failing_ci_is_not_contradicted(engine, claim_type):
+    job = {TESTS_PASS: "pytest", BUILD_OK: "build", LINT_OK: "ruff"}[claim_type]
+    local = claim(claim_type, ref=SHA, scope="local")
+    result = verdict(engine, local, [check_result(job, "failure")])
+    assert (result.result, result.reasons) == (Result.UNVERIFIABLE, ("CI_FAILED_LOCAL_CLAIM",))
+
+
+def test_local_claim_with_passing_ci_is_verified(engine):
+    local = claim(TESTS_PASS, ref=SHA, scope="local")
+    assert verdict(engine, local, [check_result("pytest")]).result is Result.VERIFIED
+
+
 def test_missing_commit_reference_is_unverifiable(engine):
     result = verdict(engine, claim(TESTS_PASS), [check_result("pytest")])
     assert result.reasons == ("NO_COMMIT_REFERENCE",)
