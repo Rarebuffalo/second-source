@@ -4,6 +4,7 @@ import io
 import json
 
 import httpx
+import yaml
 
 from second_source.benchmark.aidev import AidevClient, AidevPullRequest
 from second_source.benchmark.sample import Sample, write_sample
@@ -143,3 +144,16 @@ def test_rules_prints_per_rule_precision(tmp_path):
     )
     code, out, _err, _tokens = bench(["rules", str(cases), "--split", "all"])
     assert code == 0 and "tests_pass.plain" in out
+
+
+def test_rules_select_writes_a_trusted_rules_file(tmp_path):
+    cases = tmp_path / "cases.jsonl"
+    record = {"url": "u", "body": "Tests pass.", "expected": ["TESTS_PASS"]}
+    cases.write_text("".join(json.dumps({**record, "url": f"u{n}"}) + "\n" for n in range(5)))
+    out = tmp_path / "trusted.yaml"
+    argv = ["rules", str(cases), "--split", "all", "--select", str(out)]
+    code, text, _err, _tokens = bench(argv)
+    document = yaml.safe_load(out.read_text())
+    assert code == 0 and "wrote 1 trusted rules" in text
+    assert document["trusted"][0]["rule"] == "tests_pass.plain"
+    assert document["selected_on"]["min_hits"] == 5
