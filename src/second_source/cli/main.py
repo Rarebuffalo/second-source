@@ -2,6 +2,7 @@
 
     second-source check https://github.com/owner/repo/pull/123
     second-source check owner/repo#123 --json
+    second-source bench ...   (the benchmark; see cli/bench.py)
 
 Zero setup: a token is picked up from GITHUB_TOKEN / GH_TOKEN or the GitHub CLI if present;
 without one the public API is used (60 requests per hour, enough for a few PRs).
@@ -22,6 +23,8 @@ from collections.abc import Callable, Mapping, Sequence
 from typing import TextIO
 
 from second_source import __version__
+from second_source.benchmark.aidev import AidevClient
+from second_source.cli import bench
 from second_source.core.model import Result
 from second_source.pipeline import check_pull_request
 from second_source.report.render import to_json, to_text
@@ -61,6 +64,7 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="use the public API without any token, even if one is available",
     )
+    bench.add_parser(commands)
     return parser
 
 
@@ -69,6 +73,7 @@ def main(
     *,
     client_factory: ClientFactory = default_client_factory,
     token_resolver: TokenResolver = resolve_token,
+    aidev_factory: Callable[[], AidevClient] = AidevClient,
     env: Mapping[str, str] | None = None,
     stdout: TextIO | None = None,
     stderr: TextIO | None = None,
@@ -77,6 +82,27 @@ def main(
     err = stderr or sys.stderr
     args = build_parser().parse_args(argv)
 
+    if args.command == "bench":
+        context = bench.BenchContext(
+            client_factory=client_factory,
+            token_resolver=token_resolver,
+            aidev_factory=aidev_factory,
+            env=env,
+            out=out,
+            err=err,
+        )
+        return bench.run_command(args, context)
+    return _check(args, client_factory, token_resolver, env, out, err)
+
+
+def _check(
+    args: argparse.Namespace,
+    client_factory: ClientFactory,
+    token_resolver: TokenResolver,
+    env: Mapping[str, str] | None,
+    out: TextIO,
+    err: TextIO,
+) -> int:
     try:
         ref = parse_pull_request(args.pull_request)
     except ValueError as error:
