@@ -25,6 +25,8 @@ from second_source.packs.coding.extract import (
     is_local,
     merge_claim,
     rule_hits,
+    rule_names,
+    trusted_rules,
 )
 
 T0 = datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
@@ -435,12 +437,34 @@ def test_rule_hits_reports_every_matching_rule():
 
 
 def test_rule_names_are_unique():
-    from second_source.packs.coding.extract import _PATTERNS
+    names = rule_names()
+    assert len(names) == len(set(names)) == 40  # 34 clause rules + issue, deploy, 4 code-sentence
 
-    names = [name for rules in _PATTERNS.values() for name, _pattern in rules]
-    assert len(names) == len(set(names))
-    assert all(
-        name.split(".")[0] == kind.lower()
-        for kind, rules in _PATTERNS.items()
-        for name, _pattern in rules
+
+# ---- confidence from trusted rules ---------------------------------------------------------
+
+
+def test_claims_from_trusted_rules_are_high_confidence():
+    (claim,) = extract_claims("pr-1", [body("Tests pass.")])
+    assert claim.attributes["confidence"] == "high"
+
+
+def test_claims_from_unproven_rules_are_low_confidence():
+    (claim,) = extract_claims("pr-1", [body("The build succeeds.")])
+    assert claim.attributes["confidence"] == "low"
+
+
+def test_a_repeated_claim_is_upgraded_when_a_trusted_rule_finds_it():
+    text = "Verified with the existing unit tests.\n\nAll tests pass."
+    (claim,) = extract_claims("pr-1", [body(text)])
+    assert claim.span == "Verified with the existing unit tests."  # earliest statement kept
+    assert (claim.attributes["rule"], claim.attributes["confidence"]) == (
+        "tests_pass.plain",
+        "high",
     )
+
+
+def test_trusted_rules_file_names_real_rules():
+    known = set(rule_names())
+    assert trusted_rules()
+    assert all(rule in known for _kind, rule in trusted_rules())
