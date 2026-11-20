@@ -313,3 +313,19 @@ def test_command_results_in_prose(text, expected):
 )
 def test_changed_files_named_in_inline_code(text, expected):
     assert types(text) == expected
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Unit tests pass but integration tests had authentication issues.", [TESTS_PASS]),
+        ("Verified that tests pass and no other usages exist.", [TESTS_PASS]),
+        ("All tests passed without any failures.", [TESTS_PASS]),
+        ('All tests pass; narrowed the "not re-exported" note.', [TESTS_PASS]),
+        # Plain "and" keeps a statement together, and a negation still applies to it.
+        ("Tests and lint did not pass.", []),
+        ("The build fails but tests pass.", [TESTS_PASS]),
+    ],
+)
+def test_negations_only_cancel_their_own_part_of_a_sentence(text, expected):
+    assert types(text) == expected
