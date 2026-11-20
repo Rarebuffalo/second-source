@@ -346,3 +346,23 @@ def test_negations_only_cancel_their_own_part_of_a_sentence(text, expected):
 )
 def test_real_agent_phrasings_for_checks(text, expected):
     assert sorted(types(text)) == sorted(expected)
+
+
+@pytest.mark.parametrize(
+    ("text", "expected"),
+    [
+        ("Added 3 new unit tests in `filters.spec.js`.", [TESTS_ADDED]),
+        ("Added comprehensive unit tests covering token estimation.", [TESTS_ADDED]),
+        ("11 tests covering all include patterns", [TESTS_ADDED]),
+        ("Updated test assertions to verify the new command format.", [TESTS_ADDED]),
+        ("Added support for tests in the plugin loader.", []),  # a feature, not new tests
+        ("Updates the source-clickhouse user documentation.", [DOCS_UPDATED]),
+        ("Updated the docs for the CLI.", [DOCS_UPDATED]),
+        ("Added logging to the documentation builder.", []),  # a preposition breaks the phrase
+        ("This PR fixes issue #2351 for long names.", [FIXES_ISSUE]),
+        ("Fixes bug #11832.", [FIXES_ISSUE]),
+        ("1. **New Files**:\n   - `tests/Cache/DiskCacheTests.cs` - Unit tests", [TESTS_ADDED]),
+    ],
+)
+def test_real_agent_phrasings_for_changes(text, expected):
+    assert types(text) == expected
