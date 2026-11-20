@@ -103,3 +103,14 @@ def test_golden_scores_a_split(tmp_path):
     )
     code, out, _err, _tokens = bench(["golden", str(cases), "--split", "all"])
     assert code == 0 and "1 cases (all)" in out and "TESTS_PASS" in out
+
+
+def test_sample_can_exclude_urls_from_earlier_files(viewer, tmp_path):
+    first = tmp_path / "first.jsonl"
+    bench(["sample", "--per-agent", "2", "--seed", "1", "-o", str(first)], viewer=viewer())
+    second = tmp_path / "second.jsonl"
+    args = ["sample", "--per-agent", "2", "--seed", "1", "--exclude-from", str(first)]
+    code, _out, _err, _tokens = bench([*args, "-o", str(second)], viewer=viewer())
+    urls = [json.loads(line).get("url") for line in first.read_text().splitlines()[1:]]
+    again = [json.loads(line).get("url") for line in second.read_text().splitlines()[1:]]
+    assert code == 0 and len(again) == 12 and not set(urls) & set(again)
