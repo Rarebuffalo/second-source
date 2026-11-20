@@ -1,0 +1,77 @@
+"""Tests for the resumable batch runner (benchmark/runner.py) against the shared fake GitHub."""
+
+from datetime import UTC, datetime
+
+import httpx
+
+from second_source.benchmark.aidev import AidevPullRequest
+from second_source.benchmark.runner import completed_urls, read_results, run_benchmark
+from second_source.sources.github.client import GitHubClient
+from second_source.sources.github.source import GitHubSource
+
+NOW = datetime(2026, 11, 21, tzinfo=UTC)
+GOOD = "https://github.com/Octo/App/pull/7"
+MISSING = "https://github.com/Octo/App/pull/99"
+
+
+def pull(url, agent="codex"):
+    return AidevPullRequest(url, agent, "t", "b", "closed", None, "2026-11-20T12:00:00Z")
+
+
+def run(fake, rows, out, **kwargs):
+    client = GitHubClient(transport=httpx.MockTransport(fake), sleep=lambda _s: None)
+    return run_benchmark(rows, out, source=GitHubSource(client), clock=lambda: NOW, **kwargs)
+
+
+def test_records_reports_and_errors(fake_github, tmp_path):
+    out = tmp_path / "results.jsonl"
+    messages = []
+    summary = run(
+        fake_github(), [pull(GOOD), pull(MISSING), pull("not a url")], out, progress=messages.append
+    )
+    assert (summary.checked, summary.errors, summary.stopped) == (1, 2, None)
+    records = {r["url"]: r for r in read_results(out)}
+    assert records[GOOD]["dataset_agent"] == "codex"
+    assert records[GOOD]["report"]["agent"]["name"] == "codex"
+    assert records[MISSING]["error"] == "not_found"
+    assert records["not a url"]["error"].startswith("invalid url")
+    assert len(messages) == 3
+
+
+def test_resumes_without_rechecking(fake_github, tmp_path):
+    out = tmp_path / "results.jsonl"
+    run(fake_github(), [pull(GOOD)], out)
+    summary = run(fake_github(), [pull(GOOD), pull(MISSING)], out)
+    assert (summary.skipped, summary.errors, summary.checked) == (1, 1, 0)
+    assert len(read_results(out)) == 2
+    assert completed_urls(out) == {GOOD, MISSING}
+
+
+def test_rate_limit_stops_without_recording_the_pr(fake_github, tmp_path):
+    limited = httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
+    out = tmp_path / "results.jsonl"
+    # Limit hit while fetching evidence: the report would be partial, so it is not recorded.
+    fake = fake_github({"/repos/Octo/App/commits/c1/check-runs": limited})
+    summary = run(fake, [pull(GOOD), pull(MISSING)], out)
+    assert summary.stopped == "GitHub rate limit reached"
+    assert completed_urls(out) == set()
+
+
+def test_rate_limit_while_loading_the_pr_also_stops(fake_github, tmp_path):
+    limited = httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
+    out = tmp_path / "results.jsonl"
+    summary = run(fake_github({"/repos/Octo/App/pulls/7": limited}), [pull(GOOD)], out)
+    assert summary.stopped == "GitHub rate limit reached"
+    assert not out.read_text()
+
+
+def test_limit_caps_new_checks_only(fake_github, tmp_path):
+    out = tmp_path / "results.jsonl"
+    run(fake_github(), [pull(GOOD)], out)
+    summary = run(fake_github(), [pull(GOOD), pull(MISSING), pull("x")], out, limit=1)
+    assert summary.skipped == 1 and summary.errors == 1
+    assert summary.stopped == "reached the limit of 1 pull requests"
+
+
+def test_completed_urls_of_a_missing_file_is_empty(tmp_path):
+    assert completed_urls(tmp_path / "none.jsonl") == set()
