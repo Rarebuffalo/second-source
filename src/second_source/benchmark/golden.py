@@ -20,7 +20,8 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from second_source.packs.coding.extract import TextSource, extract_claims
+from second_source.benchmark.stats import wilson_interval
+from second_source.packs.coding.extract import TextSource, extract_claims, rule_hits
 
 DEV, TEST = "dev", "test"
 _WRITTEN_AT = datetime(2026, 1, 1, tzinfo=UTC)  # extraction needs a time; its value is irrelevant
@@ -193,3 +194,56 @@ def merge_labels(
             continue
         records.append(record)
     return MergeResult(records, agreed, len(rows), unresolved)
+
+
+# ---- precision per extraction rule ----------------------------------------------------------
+
+
+@dataclass
+class RuleMetrics:
+    """How often one rule's hits were right, counted once per case it fired in."""
+
+    claim_type: str
+    correct: int = 0
+    wrong: int = 0
+
+    @property
+    def hits(self) -> int:
+        return self.correct + self.wrong
+
+    @property
+    def precision(self) -> float:
+        return self.correct / self.hits if self.hits else 1.0
+
+    @property
+    def precision_low(self) -> float:
+        """Lower end of the 95% Wilson interval: what the precision is at least, plausibly."""
+        return wilson_interval(self.correct, self.hits)[0] if self.hits else 0.0
+
+
+def score_rules(cases: Iterable[GoldenCase]) -> dict[str, RuleMetrics]:
+    """Precision of every extraction rule, judged on its own.
+
+    A rule's hit in a case is correct when the case's labels contain that claim type. Each
+    rule counts at most once per case, matching how claims are counted.
+    """
+    metrics: dict[str, RuleMetrics] = {}
+    for case in cases:
+        expected = set(case.expected)
+        for claim_type, rule in rule_hits(case.text):
+            entry = metrics.setdefault(rule, RuleMetrics(claim_type))
+            if claim_type in expected:
+                entry.correct += 1
+            else:
+                entry.wrong += 1
+    return metrics
+
+
+def rules_report(metrics: Mapping[str, RuleMetrics]) -> str:
+    lines = [f"  {'rule':<30} {'type':<13} hits  right  precision  (95% low)"]
+    for rule, m in sorted(metrics.items(), key=lambda item: (item[1].claim_type, item[0])):
+        lines.append(
+            f"  {rule:<30} {m.claim_type:<13} {m.hits:>4}  {m.correct:>5}  "
+            f"{m.precision:>9.2f}  ({m.precision_low:.2f})"
+        )
+    return "\n".join(lines)
