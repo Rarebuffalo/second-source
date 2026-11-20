@@ -82,7 +82,11 @@ _SENTENCE_END = re.compile(r"(?<=[.!;])\s+")
 # the second part cannot cancel the first: "tests pass but integration tests had issues",
 # "verified that tests pass and no other usages exist". Plain "and" is not split, because
 # "tests and lint pass" is one statement about both.
-_CLAUSE_BREAK = re.compile(r",?\s+but\s+|\s+and\s+(?=(?:no|not|none|nothing|never)\b)")
+# A relative clause after a comma describes something else ("fixes bug #12, where the plugin
+# would misapply filters"), so it is judged on its own too.
+_CLAUSE_BREAK = re.compile(
+    r",?\s+but\s+|\s+and\s+(?=(?:no|not|none|nothing|never)\b)|,\s+(?=(?:where|which|when)\b)"
+)
 
 
 # A Markdown heading ("## Local testing") or a line that is only bold text, possibly as a list
@@ -260,6 +264,12 @@ _PATTERNS: dict[str, tuple[re.Pattern[str], ...]] = {
             r"\b(updated|updates|update|added|adds|wrote|improved|improves|corrected|corrects|"
             r"rewrote|rewrites|expanded|expands)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)"
             r"[\w-]+\s+){0,3}?(docs|documentation|readme|changelog)\b"
+        ),
+        # Documentation files named in plain text: "Update the instructions in AGENTS.md".
+        re.compile(
+            r"\b(updated|updates|update|added|adds|created|creates|edited|edits|rewrote|"
+            r"rewrites|corrected|corrects|expanded|expands)\b[^.]{0,60}?"
+            r"(?<![\w/.-])[\w/.-]+\.(md|mdx|rst|adoc)\b"
         ),
         re.compile(
             r"\b(docs|documentation|readme|changelog)\s+"
