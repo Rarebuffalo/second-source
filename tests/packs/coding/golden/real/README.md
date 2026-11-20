@@ -59,6 +59,32 @@ What this says:
 - Next step: measure precision **per extraction rule** and let the benchmark use only rules
   that hold the target on both splits, instead of adding more rules.
 
+### Trusted rules (per-rule precision)
+
+Each extraction rule is scored on its own (`second-source bench rules`). Rules that fired at
+least 5 times on the dev split with precision ≥ 0.95 were marked trusted
+(`src/second_source/packs/coding/trusted_rules.yaml`, 10 rules); their claims are "high
+confidence". The selection was then checked once on the test split:
+
+| Claim type | Test precision, all claims | Test precision, high confidence only | Recall, high only |
+|---|---|---|---|
+| FIXES_ISSUE | 1.00 | **1.00** | 0.94 |
+| LINT_OK | 1.00 | **1.00** | 0.29 |
+| TESTS_PASS | 0.80 | 0.88 | 0.78 |
+| TESTS_ADDED | 0.87 | 0.90 | 0.68 |
+| DOCS_UPDATED | 0.85 | 0.83 | 0.36 |
+| BUILD_OK | 0.91 | no trusted rule yet | 0.00 |
+
+What this says:
+
+- Restricting to trusted rules helps TESTS_PASS (0.80 → 0.88) and TESTS_ADDED, and keeps
+  FIXES_ISSUE and LINT_OK at 1.00, but rules that looked perfect on dev still lose precision
+  on unseen text. Even "tests pass" itself is 0.86 on the test split: whether a sentence is a
+  real claim often depends on context (hedges, failures mentioned elsewhere) that patterns do
+  not see.
+- So the benchmark publishes contradiction rates only for high-confidence claims, and every
+  contradicted claim is checked by a person before publication (docs/benchmark.md).
+
 ### Round 1 (120 PRs; dev 62, test 58)
 
 Held-out **test split** (58 PRs), scored once before and once after the M3 rule changes that
