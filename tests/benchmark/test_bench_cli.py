@@ -134,3 +134,12 @@ def test_merge_labels_reports_agreement_and_unresolved_cases(tmp_path):
     code, text, _err, _tokens = bench([*argv, "--adjudications", str(adjudications)])
     assert "unresolved 0" in text
     assert json.loads(out.read_text())["adjudication"] == "no result stated"
+
+
+def test_rules_prints_per_rule_precision(tmp_path):
+    cases = tmp_path / "cases.jsonl"
+    cases.write_text(
+        json.dumps({"url": "u", "body": "All tests pass.", "expected": ["TESTS_PASS"]}) + "\n"
+    )
+    code, out, _err, _tokens = bench(["rules", str(cases), "--split", "all"])
+    assert code == 0 and "tests_pass.plain" in out
