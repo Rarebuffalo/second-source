@@ -6,6 +6,8 @@ kind: temporal
 level: L5
 applies_to: [MERGE_HOLDS]
 params:
+  # The GitHub source scans 30 days after the merge (sources/github/source.py, REVERT_WINDOW).
+  # A longer window here also needs a longer scan there, or later reverts would be missed.
   window_days: {type: int, default: 30, min: 7, max: 90}
 evidence:
   reverts:
