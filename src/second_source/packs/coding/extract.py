@@ -23,7 +23,13 @@ from typing import Any
 
 from second_source.core.hashing import sha256_hex
 from second_source.core.model import Claim
-from second_source.packs.coding.functions import is_build_check, is_lint_check, is_test_check
+from second_source.packs.coding.functions import (
+    is_build_check,
+    is_doc_path,
+    is_lint_check,
+    is_test_check,
+    is_test_path,
+)
 
 # Claim type names (kept as constants so typos fail loudly in tests and code).
 TESTS_PASS = "TESTS_PASS"
@@ -133,6 +139,16 @@ _NOT_AN_ASSERTION = re.compile(
 _POSITIVE_NO = re.compile(
     r"\bno\s+((lint|linting|linter|eslint|type)\s+)?(errors|warnings|issues)\b"
 )
+
+
+# "... to ensure / to verify X" says why something was done; X itself is not asserted.
+_PURPOSE = re.compile(r"\bto\s+(?:ensure|guarantee|verify|confirm|make sure|check|validate)\b")
+
+
+def asserted_part(clause: str) -> str:
+    """The part of a clause before any purpose phrase ("ran tests to ensure X" → "ran tests")."""
+    found = _PURPOSE.search(clause.lower())
+    return clause if found is None else clause[: found.start()]
 
 
 def is_assertion(clause: str) -> bool:
@@ -256,17 +272,34 @@ def _match_clause(clause: str, local: bool) -> Iterator[tuple[str, dict[str, Any
 
 
 # --------------------------------------------------------------------------------------------
-# Step 4b: command status lines, e.g. "- ✅ `pytest -q`".
+# Step 4b: sentences that name commands or files in inline code.
 #
-# Some agents (notably Codex) report checks as a list of commands with a status emoji. The
-# command is inline code, which `clean` removes, so these lines are read separately from text
-# that still contains inline code. A ✅/✔ next to a command claims it succeeded; lines with
-# ❌, ⚠️ or ✗ are failure or warning reports and never produce a claim.
+# `clean` removes inline code, so the clause patterns never see it. Real agents put the most
+# checkable statements there, so these sentences are read separately:
+#
+# - **Command results.** "- ✅ `pytest -q`", "`pytest tests/`: 201 passed", "Ran `pnpm tsc`
+#   and it completed successfully". A command claims success only when a ✅/✔ sits right
+#   next to it, or the sentence's own prose says it passed. A ✅ used as a section emoji
+#   ("**✅ Verification:** ran `npm test`") is not next to the command and does not count.
+#   Sentences with ❌, ⚠️ or ✗ never claim success, and nor do purpose clauses ("ran
+#   `npm test` to ensure it passes" says why it ran, not what happened).
+# - **Changed files.** "Created `tests/test_parser.py`", "Updated `docs/setup.md`". A test
+#   file that was added or extended is TESTS_ADDED; any edited documentation file is
+#   DOCS_UPDATED. Paths listed under a "New files" or "Added" heading count as added.
 # --------------------------------------------------------------------------------------------
 
 _SUCCESS_MARK = re.compile(r"✅|✔")
 _FAILURE_MARK = re.compile(r"❌|⚠|✗|✖|🚫")
 _INLINE_COMMAND = re.compile(r"`([^`\n]+)`")
+# A success mark directly before or after inline code (bold markers and separators allowed).
+_MARKED_CODE = re.compile(
+    r"(?:✅|✔)\s*(?:\*\*)?\s*`[^`\n]+`|`[^`\n]+`\s*(?:\*\*)?\s*[:\-–—]?\s*(?:✅|✔)"
+)
+# Prose saying a command succeeded ("201 passed" included).
+_SUCCESS_PROSE = re.compile(
+    r"\b(passed|passes|passing|succeeded|succeeds|successful|successfully|clean|green|"
+    r"all pass|ok)\b|\b\d+\s*(/\s*\d+\s*)?(tests?\s+)?passed\b"
+)
 
 # Programs that run tests, builds or linters. Inline code only counts as a command if it
 # starts with one of these; otherwise "✅ Created `tests/test_x.py`" would look like a test run.
@@ -281,6 +314,24 @@ _KNOWN_RUNNERS = frozenset(
     }
 )  # fmt: skip
 
+# Verbs that say a file was changed. Test files only count when added or extended (a test
+# file "fixed" or "renamed" is not new testing); documentation counts for any edit.
+_ADD_VERB = re.compile(
+    r"\b(add|adds|added|create|creates|created|new|introduce|introduces|introduced|"
+    r"extend|extends|extended|expand|expands|expanded|wrote|write|writes)\b"
+)
+_EDIT_VERB = re.compile(
+    r"\b(add|adds|added|create|creates|created|new|update|updates|updated|modify|modifies|"
+    r"modified|change|changes|changed|edit|edits|edited|fix|fixes|fixed|correct|corrects|"
+    r"corrected|rewrite|rewrites|rewrote|document|documents|documented|expand|expands|"
+    r"expanded|extend|extends|extended|improve|improves|improved|wrote|write|writes)\b"
+)
+# Paths named only as a reference ("as described in `README.md`") are not changes.
+_REFERENCE_BEFORE = re.compile(
+    r"\b(per|see|from|according to|described in|referenced in|following|like)\s*$"
+)
+_ADDED_SECTION = re.compile(r"\b(new|added|created)\b")
+
 
 def _looks_like_command(code: str) -> bool:
     """True if inline code is a command line (``pytest -q``), not a file path or identifier."""
@@ -288,28 +339,69 @@ def _looks_like_command(code: str) -> bool:
     return bool(tokens) and tokens[0].lower() in _KNOWN_RUNNERS
 
 
-def _command_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
-    """Yield (claim type, attributes, span) for each successful command status line."""
+def _looks_like_path(code: str) -> bool:
+    """True if inline code is a file path (``docs/setup.md``, ``README.md``)."""
+    code = code.strip()
+    return " " not in code and bool(re.search(r"\.[a-z0-9]{1,6}$|/", code, re.IGNORECASE))
+
+
+def _command_type(command: str) -> str | None:
+    # Lint and build are tested first: "npm run test:lint" should count as lint, not tests.
+    if is_lint_check(command):
+        return LINT_OK
+    if is_build_check(command):
+        return BUILD_OK
+    if is_test_check(command):
+        return TESTS_PASS
+    return None
+
+
+def _changed_file_claims(sentence: str, prose: str, heading: str) -> Iterator[str]:
+    """Claim types for files the sentence says were changed."""
+    in_added_section = bool(_ADDED_SECTION.search(heading.lower()))
+    added = in_added_section or bool(_ADD_VERB.search(prose))
+    edited = in_added_section or bool(_EDIT_VERB.search(prose))
+    for found in _INLINE_COMMAND.finditer(sentence):
+        path = found.group(1)
+        if not _looks_like_path(path) or _REFERENCE_BEFORE.search(
+            sentence[: found.start()].lower()
+        ):
+            continue
+        if added and is_test_path(path):
+            yield TESTS_ADDED
+        elif edited and is_doc_path(path):
+            yield DOCS_UPDATED
+
+
+def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
+    """Yield (claim type, attributes, span) from sentences that contain inline code."""
     without_blocks = _QUOTED_LINE.sub(" ", _HTML_COMMENT.sub(" ", _FENCED_CODE.sub(" ", text)))
     heading = ""
     for line in without_blocks.splitlines():
         heading = heading_of(line) or heading
-        if not _SUCCESS_MARK.search(line) or _FAILURE_MARK.search(line):
-            continue
-        # The prose around the command must itself be a plain assertion
-        # ("✅ `pytest` (not run: missing deps)" is not).
-        if not is_assertion(_INLINE_COMMAND.sub(" ", line)):
-            continue
-        attributes = {"scope": "local"} if is_local(line, heading) else {}
-        for command in filter(_looks_like_command, _INLINE_COMMAND.findall(line)):
-            # Lint and build are tested first: "npm run lint" also contains no test word,
-            # but "npm run test:lint" should count as lint, not tests.
-            if is_lint_check(command):
-                yield LINT_OK, dict(attributes), line.strip()
-            elif is_build_check(command):
-                yield BUILD_OK, dict(attributes), line.strip()
-            elif is_test_check(command):
-                yield TESTS_PASS, dict(attributes), line.strip()
+        box = _CHECKBOX.match(line)
+        if box and box.group(1) == " ":
+            continue  # unchecked to-do item
+        for sentence in _SENTENCE_END.split(line):
+            if "`" not in sentence or _FAILURE_MARK.search(sentence):
+                continue
+            prose = _INLINE_COMMAND.sub(" ", sentence).lower()
+            if not is_assertion(prose):
+                continue
+            span = sentence.strip()
+            attributes = {"scope": "local"} if is_local(sentence, heading) else {}
+
+            succeeded = bool(_MARKED_CODE.search(sentence)) or bool(
+                _SUCCESS_PROSE.search(asserted_part(prose))
+            )
+            if succeeded:
+                for command in filter(_looks_like_command, _INLINE_COMMAND.findall(sentence)):
+                    claim_type = _command_type(command)
+                    if claim_type:
+                        yield claim_type, dict(attributes), span
+
+            for claim_type in _changed_file_claims(sentence, prose, heading):
+                yield claim_type, {}, span
 
 
 # --------------------------------------------------------------------------------------------
@@ -324,9 +416,10 @@ def _candidates(source: TextSource) -> Iterator[tuple[str, dict[str, Any], str]]
     """Every (claim type, attributes, span) found in one text source, in reading order."""
     for clause, heading in clauses_in_sections(clean(source.text)):
         if is_assertion(clause):
-            for claim_type, attributes in _match_clause(clause, is_local(clause, heading)):
+            local = is_local(clause, heading)
+            for claim_type, attributes in _match_clause(asserted_part(clause), local):
                 yield claim_type, attributes, clause
-    yield from _command_claims(source.text)
+    yield from _code_sentence_claims(source.text)
 
 
 # Attributes that describe *how* something was said, not *what* was claimed. They are kept on
