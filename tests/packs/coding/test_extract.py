@@ -24,6 +24,7 @@ from second_source.packs.coding.extract import (
     is_assertion,
     is_local,
     merge_claim,
+    rule_hits,
 )
 
 T0 = datetime(2026, 11, 20, 9, 0, tzinfo=UTC)
@@ -413,3 +414,33 @@ def test_review_bot_sections_are_ignored():
         "<!-- end of auto-generated comment: release notes by coderabbit.ai -->"
     )
     assert types(text) == []
+
+
+# ---- rule names (for per-rule precision) ---------------------------------------------------
+
+
+def test_claims_record_the_rule_that_found_them():
+    claims = extract_claims("pr-1", [body("All tests pass.\nFixes #3\n- ✅ `ruff check .`")])
+    rules = {c.type: c.attributes["rule"] for c in claims}
+    assert rules == {
+        TESTS_PASS: "tests_pass.plain",
+        FIXES_ISSUE: "fixes_issue.closing_ref",
+        LINT_OK: "command.marked",
+    }
+
+
+def test_rule_hits_reports_every_matching_rule():
+    hits = rule_hits("All new tests pass.")
+    assert {("TESTS_PASS", "tests_pass.plain"), ("TESTS_PASS", "tests_pass.quantified")} <= hits
+
+
+def test_rule_names_are_unique():
+    from second_source.packs.coding.extract import _PATTERNS
+
+    names = [name for rules in _PATTERNS.values() for name, _pattern in rules]
+    assert len(names) == len(set(names))
+    assert all(
+        name.split(".")[0] == kind.lower()
+        for kind, rules in _PATTERNS.items()
+        for name, _pattern in rules
+    )
