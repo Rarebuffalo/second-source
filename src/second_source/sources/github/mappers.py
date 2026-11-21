@@ -272,7 +272,8 @@ def revert_evidence(
     - ``git revert``: "This reverts commit <sha>" naming the merge commit;
     - GitHub's "Revert" button: a commit mentioning "Reverts owner/repo#<number>";
     - the Revert button followed by a squash merge, whose message may keep only the title:
-      ``Revert "<PR title>"`` or ``Revert "<PR title> (#<number>)"``. The whole quoted title
+      ``Revert "<PR title>"`` or ``Revert "<PR title> (#<number>)"`` (also the
+      conventional-commit form ``revert: "<PR title>"``). The whole quoted title
       must match, so a short title ("Fix") cannot match an unrelated revert, and the title is
       used only when the message names no reverted PR or commit at all: an explicit
       "Reverts o/r#150" or "This reverts commit <sha>" says what was reverted, and two PRs
@@ -280,7 +281,7 @@ def revert_evidence(
     """
     pr_reference = re.compile(rf"\breverts\s+{re.escape(repo)}#{number}\b", re.IGNORECASE)
     title_revert = (
-        re.compile(rf'^revert\s+"{re.escape(title.strip())}(\s+\(#{number}\))?"', re.IGNORECASE)
+        re.compile(rf'^revert:?\s+"{re.escape(title.strip())}(\s+\(#{number}\))?"', re.IGNORECASE)
         if title.strip()
         else None
     )

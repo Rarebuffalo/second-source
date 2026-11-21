@@ -229,13 +229,14 @@ def test_reverts_by_title_after_a_squash_merge():
     commits = [
         commit("r1", "2026-11-21T10:00:00Z", 'Revert "Fix parser edge case" (#9)'),
         commit("r2", "2026-11-21T11:00:00Z", 'Revert "Fix parser edge case (#7)" (#10)'),
+        commit("r3", "2026-11-21T11:30:00Z", 'revert: "Fix parser edge case" (#12)'),
         commit("x1", "2026-11-21T12:00:00Z", 'Revert "Fix parser edge case in lexer" (#11)'),
         commit("x2", "2026-11-21T13:00:00Z", 'Revert "Fix parser edge case (#70)"'),
     ]
     found = mappers.revert_evidence(
         commits, "abc1234def56", "Octo/App", 7, NOW, title="Fix parser edge case"
     )
-    assert [e.external_ref for e in found] == ["r1", "r2"]
+    assert [e.external_ref for e in found] == ["r1", "r2", "r3"]
 
 
 def test_revert_probe_path_avoids_busy_files():
