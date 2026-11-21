@@ -38,6 +38,8 @@ class PullRequestReport:
     checked_at: datetime
     api_requests: int
     rate_limited: bool = False  # evidence fetching stopped at the rate limit (see stale)
+    head_sha: str = ""  # the PR's head commit, where the GitHub Action attaches its check run
+    labels: tuple[str, ...] = ()  # PR labels (the Action records disputes as a label)
 
     def verdict_for(self, claim: Claim) -> Verdict:
         return next(v for v in self.verdicts if v.claim_id == claim.id)
@@ -89,4 +91,6 @@ def check_pull_request(
         checked_at=checked_at,
         api_requests=source.client.stats.requests - requests_before,
         rate_limited=evidence.rate_limited,
+        head_sha=(loaded.pull.get("head") or {}).get("sha", ""),
+        labels=tuple(label["name"] for label in loaded.pull.get("labels", [])),
     )
