@@ -41,16 +41,23 @@ def _counts(claim: Claim) -> bool:
     return claim.attributes.get("confidence", "high") == "high"
 
 
+def awaiting_ci(report: PullRequestReport) -> bool:
+    """True while a deciding claim is pending only because CI has not finished."""
+    return any(
+        verdict.result is Result.PENDING and "AWAITING_CI" in verdict.reasons
+        for verdict in (report.verdict_for(c) for c in report.claims if _counts(c))
+    )
+
+
 def outcome_for(report: PullRequestReport, *, fail_on_contradiction: bool) -> Outcome:
     deciding = [report.verdict_for(c) for c in report.claims if _counts(c)]
     results = Counter(v.result for v in deciding)
-    awaiting_ci = any(v.result is Result.PENDING and "AWAITING_CI" in v.reasons for v in deciding)
 
     if results[Result.CONTRADICTED]:
         n = results[Result.CONTRADICTED]
         conclusion = "failure" if fail_on_contradiction else "neutral"
         return Outcome("completed", conclusion, f"{n} claim{'s' if n > 1 else ''} contradicted")
-    if awaiting_ci:
+    if awaiting_ci(report):
         return Outcome("in_progress", None, "Waiting for CI")
     if not report.claims:
         return Outcome("completed", "neutral", "No claims found")
