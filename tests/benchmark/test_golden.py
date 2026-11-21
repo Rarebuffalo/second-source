@@ -10,6 +10,7 @@ from second_source.benchmark.golden import (
     GoldenCase,
     Metrics,
     RuleMetrics,
+    cohens_kappa,
     in_split,
     load_cases,
     merge_labels,
@@ -151,3 +152,12 @@ def test_repo_split_keeps_a_repository_and_its_commit_items_together():
     body = case("https://github.com/o/x/pull/3", "url")
     commit = case("https://github.com/o/x/pull/3#commit-2", "url")
     assert body.split == commit.split  # a PR's commit items follow the PR
+
+
+def test_cohens_kappa_corrects_for_chance_agreement():
+    a = [["TESTS_PASS"], [], [], []]
+    b = [["TESTS_PASS"], [], [], ["TESTS_PASS"]]
+    kappa = cohens_kappa(a, b)["TESTS_PASS"]
+    assert 0.4 < kappa < 0.6  # 3 of 4 agree, but most agreement is on "no claim"
+    assert cohens_kappa([["X"], []], [["X"], []])["X"] == 1.0
+    assert cohens_kappa([["X"], ["X"]], [["X"], ["X"]])["X"] is None  # no variation

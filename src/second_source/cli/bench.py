@@ -251,6 +251,11 @@ def _merge_labels(args: argparse.Namespace, context: BenchContext) -> int:
         f"wrote {len(result.records)} cases; unresolved {len(result.unresolved)}",
         file=context.out,
     )
+    kappas = ", ".join(
+        f"{kind} {value:.3f}" if value is not None else f"{kind} n/a"
+        for kind, value in result.kappa.items()
+    )
+    print(f"Cohen's kappa per type: {kappas}", file=context.out)
     for record in result.unresolved:
         summary = {k: record[k] for k in ("url", "labeller_a", "labeller_b", "notes_a", "notes_b")}
         print(json.dumps(summary, ensure_ascii=False), file=context.out)

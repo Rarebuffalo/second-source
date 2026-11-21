@@ -165,6 +165,7 @@ class MergeResult:
     exact_agreement: int  # PRs where both labellers gave the same multiset of claims
     total: int
     unresolved: list[dict[str, Any]]  # disagreements without an adjudication yet
+    kappa: dict[str, float | None] = field(default_factory=dict)  # per claim type, see below
 
 
 def merge_labels(
@@ -207,7 +208,32 @@ def merge_labels(
             unresolved.append(record)
             continue
         records.append(record)
-    return MergeResult(records, agreed, len(rows), unresolved)
+    kappa = cohens_kappa(
+        [sorted(labels_a[row["url"]]["expected"]) for row in rows],
+        [sorted(labels_b[row["url"]]["expected"]) for row in rows],
+    )
+    return MergeResult(records, agreed, len(rows), unresolved, kappa)
+
+
+def cohens_kappa(
+    labels_a: Sequence[Sequence[str]], labels_b: Sequence[Sequence[str]]
+) -> dict[str, float | None]:
+    """Cohen's kappa per claim type, on "does this item have the type" (yes/no).
+
+    Exact agreement is inflated when most items have no claim of a type; kappa corrects for
+    agreement expected by chance. None when a type never appears (kappa is undefined).
+    """
+    types = sorted({t for labels in (*labels_a, *labels_b) for t in labels})
+    n = len(labels_a)
+    result: dict[str, float | None] = {}
+    for claim_type in types:
+        a = [claim_type in labels for labels in labels_a]
+        b = [claim_type in labels for labels in labels_b]
+        observed = sum(x == y for x, y in zip(a, b, strict=True)) / n
+        pa, pb = sum(a) / n, sum(b) / n
+        expected = pa * pb + (1 - pa) * (1 - pb)
+        result[claim_type] = None if expected == 1 else (observed - expected) / (1 - expected)
+    return result
 
 
 # ---- precision per extraction rule ----------------------------------------------------------
