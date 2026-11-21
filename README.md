@@ -10,9 +10,9 @@ The first domain is **coding agents**. Point it at a pull request opened by Clau
 Copilot, Cursor, Devin or Jules, and it tells you which of the agent's claims hold up against
 CI results, changed files, issue state and Git history.
 
-> **Status: early alpha.** The engine, the coding pack and the CLI work and are tested. The
-> GitHub Action and the public benchmark are in progress (see [Roadmap](#roadmap)). Interfaces
-> may change before 1.0.
+> **Status: early alpha.** The engine, the coding pack, the CLI and the GitHub Action work and
+> are tested; the Action has no tagged release yet, and the public benchmark is in progress
+> (see [Roadmap](#roadmap)). Interfaces may change before 1.0.
 
 ## Try it
 
@@ -54,6 +54,29 @@ Claims: 1 unverifiable, 2 pending, 3 verified
 | `--no-color` | Plain text (colour is also off when `NO_COLOR` is set) |
 
 Exit codes: `0` nothing contradicted, `1` at least one claim contradicted, `2` could not check.
+
+## Use it in your repository (GitHub Action)
+
+One command writes the workflow; commit it and every PR opened by a coding agent gets a
+**Second Source** check next to your CI:
+
+```bash
+uvx --from git+https://github.com/Rarebuffalo/second-source second-source init
+```
+
+The generated `.github/workflows/second-source.yml`:
+
+- checks agent PRs when they are opened or updated, waits a few minutes for CI, and updates the
+  check when your CI workflows finish (it reads their names from `.github/workflows`);
+- re-checks recent agent PRs daily, for durability (reverts, reopened issues);
+- understands `/second-source recheck` and `/second-source dispute <reason>` in PR comments
+  (from the PR author or people with write access).
+
+By default the check is advice: a contradicted claim makes it *neutral*, never failing. Set
+`fail-on-contradiction: "true"` to make it block merges. Other inputs: `wait-minutes`
+(default 10; use 0 on private repositories to save Actions minutes), `only-agents`,
+`sweep-days`. It costs nothing to run on public repositories, needs no server and no secrets,
+and never checks out the PR's code. Design: [docs/action.md](docs/action.md).
 
 ## What it checks
 
@@ -119,7 +142,8 @@ More: [architecture](docs/ARCHITECTURE.md), [coding pack](docs/packs/coding.md),
 
 - The CLI talks only to the GitHub API. Nothing is sent to us or anyone else.
 - Tokens are never printed, logged or written to the cache.
-- PR code is never checked out or run.
+- PR code is never checked out or run, which is why the Action can safely use
+  `pull_request_target`.
 - Report vulnerabilities privately: see [SECURITY.md](SECURITY.md).
 
 ## Roadmap
@@ -127,9 +151,10 @@ More: [architecture](docs/ARCHITECTURE.md), [coding pack](docs/packs/coding.md),
 - **Agent Claim Truth benchmark.** How often each coding agent's claims hold up, with
   confidence intervals, published as open data. The pipeline is built
   (`second-source bench`); the first full run is next.
-- **GitHub Action.** Check every agent PR in your repository automatically, for free, with no
-  server.
-- **Durability checks over time.** Re-check merged claims daily (reverts, reopened issues).
+- **GitHub Action.** Built and tested (see above); next are a first tagged release (`v1`) and a
+  Marketplace listing.
+- **Durability checks over time.** The Action re-checks merged claims daily (reverts,
+  reopened issues); a longer watch window is planned.
 - **More domains.** The same core for customer-support, voice and other agents.
 
 ## Development
