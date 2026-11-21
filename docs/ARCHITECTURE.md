@@ -64,17 +64,21 @@ src/second_source/
   report/        renderers: terminal text, Markdown, versioned JSON
   benchmark/     AIDev sampling, golden-set scoring and label merging, per-rule precision,
                  resumable batch runner, statistics (Wilson intervals)
-  cli/           `second-source check` and `second-source bench ...`
+  action/        the GitHub Action: inputs, event -> plan, CI waiting, check-run publishing,
+                 daily sweep, PR comment commands, workflow generation (docs/action.md)
+  cli/           `second-source check`, `bench ...`, `action` and `init`
 tests/
   core/            unit tests for the engine
   fixtures/        non-coding fixture suite (customer-support refunds)
   packs/coding/    extraction, detection and check tests; seed and real golden sets
   sources/github/  client, cache, auth, mapper and source tests against a fake API
   benchmark/       sampling, runner, statistics and bench CLI tests
+  action/          Action tests against the fake API (events, publishing, waiting, end to end)
 scripts/check.sh   the quality gate: ruff lint, ruff format check, full test suite
+action.yml         the composite GitHub Action
 ```
 
-Planned: `action.yml` and an Action entrypoint (M4), and a static benchmark site (M5).
+Planned: a static benchmark site (M5).
 
 **Dependency direction:** `core` ← `packs` ← `sources` ← `pipeline` ← `cli` / `benchmark`.
 `core` imports nothing from the other packages. Packs may import `core` only.
@@ -238,7 +242,7 @@ Each step is committed as its own commit, one file per commit where possible.
 | M1 Coding pack | done | agent detection rules → claim grammar → referenced-commit resolution → checks (tests pass, build/lint, tests added, fixes issue, docs updated, deployed) → durability checks → golden set |
 | M2 GitHub source + CLI | done | API client (auth chain, ETag cache, rate limits) → mappers → `second-source check <PR URL>` → Markdown/JSON reports → recorded fixtures |
 | M3 Benchmark | in progress | AIDev sampling (dataset viewer API, see docs/benchmark.md) → batch runner with cache → statistics (Wilson intervals) → result files |
-| M4 Action | next | `action.yml` → entrypoint (event parsing, wait-for-CI, check run + job summary) → daily durability mode → dispute command → one-click setup link |
+| M4 Action | built; release pending | `action.yml` → entrypoint (event parsing, wait-for-CI, check run + job summary) → daily durability mode → dispute command → one-click setup link |
 | M5 Launch | planned | static site → dataset release → README, GIF and docs → open-source hygiene files → Marketplace listing |
 
 ## 11. Open decisions
