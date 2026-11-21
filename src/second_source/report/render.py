@@ -218,7 +218,11 @@ def to_json(report: PullRequestReport) -> dict[str, Any]:
         )
     return {
         "schema_version": JSON_SCHEMA_VERSION,
-        "pull_request": {"ref": str(report.ref), "url": report.ref.url},
+        "pull_request": {
+            "ref": str(report.ref),
+            "url": report.ref.url,
+            "opened_at": report.episode.opened_at.isoformat(),
+        },
         "agent": (
             None
             if report.agent is None

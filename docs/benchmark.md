@@ -130,6 +130,27 @@ This keeps the promise "missing or weak evidence is never reported as contradict
 - Agent detection agreement with the dataset label (a free accuracy check of our detection).
 - Every summary records the sample file, seed, dataset revision, tool version and run dates.
 
+### Related work and a comparable cell
+
+Others have measured parts of this; the benchmark cites them and reproduces where it overlaps
+instead of claiming novelty:
+
+- **testreceipt** (<https://github.com/amos689/testreceipt>, study in `docs/study.md`, MIT):
+  checks "the tests pass" claims in agent PR descriptions against CI at the same commit, on
+  AIDev (2025) and on fresh 2026 PRs, and reports how often CI failed. `bench summarize`
+  prints a **comparable cell** ("Comparable to testreceipt": high-confidence, unscoped body
+  TESTS_PASS claims decided by CI, by year opened). Independent parsers and labels agreeing is
+  corroboration; disagreeing is a finding to explain. Their figures are quoted from their
+  study and must be re-checked against it before publication.
+- **Gong et al., "Message-Code Inconsistency in AI Coding Agent-Authored PRs"** (MSR 2026
+  mining challenge, <https://arxiv.org/abs/2601.04886>): hand-labelled descriptions that do not
+  match the code ("phantom changes"), without CI or issue evidence. Our TESTS_ADDED and
+  DOCS_UPDATED checks measure the evidence-backed part of that question.
+
+What this benchmark adds: rule-based verdicts with reasons (no model judges the claims),
+six claim types including issue closure and post-merge durability, abstention reported as
+coverage, and stored evidence snapshots so verdicts stay auditable after GitHub expires CI.
+
 ## 7. Build order (one commit per step)
 
 1. This document.

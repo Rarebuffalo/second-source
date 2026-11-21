@@ -128,3 +128,34 @@ def test_low_confidence_claims_are_counted_separately():
     assert "BUILD_OK" not in codex["claims"]
     assert codex["claims"][ALL]["prs"] == 1
     assert "1 low-confidence claims not counted" in to_markdown(summarize([record]))
+
+
+def test_testreceipt_comparable_cell_counts_body_claims_by_year():
+    def body_claim(result, **attributes):
+        return {
+            "type": "TESTS_PASS",
+            "result": result,
+            "reasons": [],
+            "origin": "body",
+            "attributes": {"confidence": "high", **attributes},
+        }
+
+    def record(n, year, *claims):
+        report = {"agent": None, "pull_request": {"opened_at": f"{year}-05-01T00:00:00+00:00"}}
+        return {
+            "url": f"https://github.com/o/r{n}/pull/1",
+            "dataset_agent": "codex",
+            "report": {**report, "claims": list(claims)},
+        }
+
+    records = [
+        record(1, 2025, body_claim("VERIFIED")),
+        record(2, 2025, body_claim("CONTRADICTED")),
+        record(3, 2025, body_claim("CONTRADICTED", scope="subset")),  # scoped: not comparable
+        record(4, 2026, body_claim("UNVERIFIABLE")),  # undecided: not counted
+        record(5, 2026, body_claim("VERIFIED")),
+    ]
+    cells = summarize(records)["testreceipt_comparable"]
+    assert (cells["2025"]["checkable"], cells["2025"]["contradicted"]) == (2, 1)
+    assert (cells["2026"]["checkable"], cells["2026"]["contradicted"]) == (1, 0)
+    assert "Comparable to testreceipt" in to_markdown(summarize(records))

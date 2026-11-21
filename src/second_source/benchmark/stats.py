@@ -148,6 +148,36 @@ class AgentStats:
     claims: dict[str, Cell] = field(default_factory=lambda: defaultdict(Cell))
 
 
+def _testreceipt_cells(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
+    """A cell comparable to testreceipt's study (github.com/amos689/testreceipt, docs/study.md):
+    PRs whose description claims the tests pass, with CI results at the claim's commit, and the
+    share where CI failed. Counted per year the PR was opened, over all agents.
+
+    Our version: high-confidence, unscoped TESTS_PASS claims from the PR body, decided
+    (VERIFIED or CONTRADICTED). Differences remain (their parser, their labels, their CI
+    matching), so agreement is corroboration and disagreement is a finding to explain.
+    """
+    years: dict[str, Cell] = defaultdict(Cell)
+    for record in records:
+        report = record.get("report")
+        if not report:
+            continue
+        opened = (report.get("pull_request") or {}).get("opened_at", "")
+        year = opened[:4] or "unknown"
+        outcomes = [
+            outcome_of(claim["result"], claim["reasons"])
+            for claim in report["claims"]
+            if claim["type"] == "TESTS_PASS"
+            and claim.get("origin") == "body"
+            and claim.get("attributes", {}).get("confidence") == "high"
+            and "scope" not in claim.get("attributes", {})
+        ]
+        decided = [o for o in outcomes if o in ("VERIFIED", "CONTRADICTED")]
+        if decided:
+            years[year].add(combine(decided), repo_of(record["url"]))
+    return {year: years[year].to_dict() for year in sorted(years)}
+
+
 def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Aggregate runner result records into the published summary structure."""
     agents: dict[str, AgentStats] = defaultdict(AgentStats)
@@ -177,6 +207,7 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             stats.claims[ALL].add(combine(written), repo)
 
     return {
+        "testreceipt_comparable": _testreceipt_cells(records),
         "agents": {
             agent: {
                 "prs": stats.prs,
@@ -188,7 +219,7 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
                 "claims": {kind: cell.to_dict() for kind, cell in sorted(stats.claims.items())},
             }
             for agent, stats in sorted(agents.items())
-        }
+        },
     }
 
 
@@ -214,6 +245,29 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
         "counted.",
         "",
     ]
+    cells = summary.get("testreceipt_comparable") or {}
+    if cells:
+        lines += [
+            "## Comparable to testreceipt",
+            "",
+            "PRs whose body claims the tests pass (high confidence, unscoped) and whose CI at",
+            "the claim's commit decided it; share where CI failed, by year opened. Compare with",
+            "testreceipt's study (github.com/amos689/testreceipt): same question, independent",
+            "parser and labels.",
+            "",
+            "| Year | PRs | Repos | CI failed | Rate (95% CI) |",
+            "|---|---:|---:|---:|---|",
+        ]
+        for year, cell in cells.items():
+            interval = cell["false_rate_ci95"]
+            rate = (
+                f"{_percent(cell['false_rate'])} ({_percent(interval[0])}–{_percent(interval[1])})"
+            )
+            lines.append(
+                f"| {year} | {cell['checkable']} | {cell['repos']} | "
+                f"{cell['contradicted']} | {rate} |"
+            )
+        lines.append("")
     for agent, data in summary["agents"].items():
         agreement = _percent(data["detection_agreement"])
         lines += [
