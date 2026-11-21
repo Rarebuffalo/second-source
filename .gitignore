@@ -17,3 +17,6 @@ data/
 .idea/
 .vscode/
 .DS_Store
+
+# Local-only material (internal planning documents, backups); never committed.
+private/
