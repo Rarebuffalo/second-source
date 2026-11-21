@@ -1,5 +1,7 @@
 """Tests for the GitHub REST client (sources/github/client.py). No network: MockTransport."""
 
+import json
+
 import httpx
 import pytest
 
@@ -152,3 +154,48 @@ def test_network_errors_are_retried():
         return item
 
     assert make_client(handler).get("/r") == {"ok": True}
+
+
+# ---- write requests -------------------------------------------------------------------------
+
+
+def test_post_sends_json_and_returns_the_created_resource():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        return httpx.Response(201, json={"id": 9})
+
+    client = make_client(handler)
+    assert client.post("/repos/o/r/check-runs", {"name": "Second Source"}) == {"id": 9}
+    assert seen[0].method == "POST"
+    assert json.loads(seen[0].content) == {"name": "Second Source"}
+
+
+def test_post_is_not_retried_so_it_cannot_create_duplicates():
+    calls = []
+
+    def handler(request):
+        calls.append(request)
+        return httpx.Response(502)
+
+    with pytest.raises(GitHubError):
+        make_client(handler).post("/x", {})
+    assert len(calls) == 1
+
+
+def test_patch_is_retried_on_server_errors():
+    answers = [httpx.Response(502), httpx.Response(200, json={"ok": True})]
+    assert make_client(lambda _r: answers.pop(0)).patch("/x", {}) == {"ok": True}
+
+
+def test_writes_report_missing_resources_and_rate_limits():
+    with pytest.raises(NotFound):
+        make_client(lambda _r: httpx.Response(404)).patch("/x", {})
+    limited = httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
+    with pytest.raises(RateLimited):
+        make_client(lambda _r: limited).post("/x", {})
+
+
+def test_no_content_responses_return_none():
+    assert make_client(lambda _r: httpx.Response(204)).patch("/x", {}) is None
