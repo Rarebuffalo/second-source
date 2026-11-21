@@ -38,7 +38,7 @@ def test_text_report_names_agent_claims_and_evidence(report):
     text = to_text(report)
     assert "Octo/App#7" in text
     assert "Agent: codex (detected by branch_prefix: codex/)" in text
-    assert "✔ verified     Tests pass" in text
+    assert "✔ verified     Tests pass (low confidence)" in text
     assert 'said in body: "- ✅ `pytest -q`"' in text
     assert "\033[" not in text  # no colour codes unless asked
 
@@ -50,7 +50,9 @@ def test_text_report_can_use_colour(report):
 def test_markdown_is_a_table_with_escaped_cells(report):
     markdown = to_markdown(report)
     assert "| | Claim | Result | Why | Said in |" in markdown
-    assert "| ✔ | Tests pass | verified |" in markdown
+    # "✅ `pytest -q`" comes from a rule not yet proven on real PRs, so it is low confidence.
+    assert "| ✔ | Tests pass (low confidence) | verified |" in markdown
+    assert "| ✔ | Tests added | verified |" in markdown  # a trusted rule: no label
     assert "never as contradicted" in markdown
 
 
