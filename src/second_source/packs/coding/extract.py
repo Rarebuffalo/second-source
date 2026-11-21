@@ -56,6 +56,9 @@ class TextSource:
     text: str
     written_at: datetime
     ref: str | None = None  # PR head commit when written (for a commit message: that commit)
+    # For editable texts (title, body): the PR head when the text was read, if it differs from
+    # ``ref``. The text may have been edited up to then, so either commit could be meant.
+    final_ref: str | None = None
 
 
 # --------------------------------------------------------------------------------------------
@@ -734,6 +737,8 @@ def extract_claims(
         for claim_type, attributes, span in _candidates(source):
             if claim_type in _REF_TYPES:
                 attributes["ref"] = source.ref
+            if claim_type in _SCOPED_TYPES and source.final_ref:
+                attributes["final_ref"] = source.final_ref
             if claim_type == FIXES_ISSUE and repo and attributes["repo"] == repo.lower():
                 attributes["repo"] = ""
             attributes["confidence"] = confidence_of(claim_type, attributes["rule"], source.origin)

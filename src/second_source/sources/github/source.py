@@ -252,8 +252,12 @@ class GitHubSource:
 
 def _claim_refs(claims: Iterable[Claim]) -> set[str]:
     """Commits referenced by CI-dependent claims (tests, build, lint)."""
-    return {
-        claim.attributes["ref"]
-        for claim in claims
-        if claim.type in {TESTS_PASS, BUILD_OK, LINT_OK} and claim.attributes.get("ref")
-    }
+    refs: set[str] = set()
+    for claim in claims:
+        if claim.type in {TESTS_PASS, BUILD_OK, LINT_OK}:
+            refs.update(
+                ref
+                for ref in (claim.attributes.get("ref"), claim.attributes.get("final_ref"))
+                if ref
+            )
+    return refs

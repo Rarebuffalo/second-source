@@ -4,9 +4,11 @@ Used by the source, pipeline and CLI tests.
 
 Scenario (repository Octo/App, PR #7, opened by Codex on branch codex/fix-parser):
 - body claims: unit tests added, fixes #12, and a Testing section with ✅ pytest and ✅ ruff
-- commits: c1 (before the PR was opened) and c2 (after)
+- commits: c1 (before the PR was opened) and c2 (after; the head)
 - CI on c1: pytest failed on run 100, then passed on re-run 205 (filter=latest returns 205);
-  ruff passed
+  ruff passed. The head c2 ("Tidy") builds the same: its CI routes mirror c1's, including any
+  override a test sets for c1, unless the test sets c2's routes itself. Body claims are judged
+  on both commits (c1 when the PR opened, c2 the final head).
 - files: src/parser.py modified, tests/test_parser.py added
 - issue #12 closed seconds after the merge; the PR was merged at 12:00
 - the agent later commented "Deployed to staging" (no GitHub deployment records exist)
@@ -100,6 +102,8 @@ class FakeGitHub:
         self.requested.append(path)
         self.requests.append(request)
         response = self.routes.get(path)
+        if response is None and "/commits/c2/" in path:
+            response = self.routes.get(path.replace("/commits/c2/", "/commits/c1/"))
         if isinstance(response, httpx.Response):
             return response
         if response is None:

@@ -28,6 +28,12 @@ requests (PRs). It lives in `src/second_source/packs/coding/`.
 `ref` is the commit the claim refers to: the PR head commit at the moment the text was
 written. The source supplies it (see section 4), and extraction copies it onto the claim.
 
+`final_ref` is set on test, build and lint claims from the PR body or title when the PR gained
+commits after it opened. Those texts can be edited (Copilot rewrites its body as it works, from
+an empty "Initial plan" commit), so either commit may be meant. CI must pass on the final head
+to verify the claim and fail on both commits to contradict it; a failure on only one is
+`UNVERIFIABLE` with reason `CLAIM_COMMIT_AMBIGUOUS`.
+
 `scope` is `local` when the text says a test, build or lint check ran locally ("tests pass
 locally", or a claim under a "## Local verification" heading). Passing CI still verifies a
 local claim, but failing CI makes it `UNVERIFIABLE` with reason `CI_FAILED_LOCAL_CLAIM`

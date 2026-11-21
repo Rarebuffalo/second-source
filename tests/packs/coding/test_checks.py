@@ -196,6 +196,43 @@ def test_subset_claim_with_passing_ci_is_verified(engine):
     assert verdict(engine, subset, [check_result("pytest")]).result is Result.VERIFIED
 
 
+# ---- body claims judged on two commits (PR creation and final head) -----------------------
+
+FINAL = "f" * 40
+
+
+@pytest.mark.parametrize(
+    ("evidence", "expected", "reason"),
+    [
+        # Fails when the PR opened, passes on the final head: which one the text means is unknown.
+        (
+            [check_result("pytest", "failure"), check_result("pytest", ref=FINAL)],
+            Result.UNVERIFIABLE,
+            "CLAIM_COMMIT_AMBIGUOUS",
+        ),
+        # Copilot's empty "Initial plan" commit passes, the real work fails.
+        (
+            [check_result("pytest"), check_result("pytest", "failure", ref=FINAL)],
+            Result.UNVERIFIABLE,
+            "CLAIM_COMMIT_AMBIGUOUS",
+        ),
+        (
+            [check_result("pytest", "failure"), check_result("pytest", "failure", ref=FINAL)],
+            Result.CONTRADICTED,
+            "CI_JOB_FAILED",
+        ),
+        ([check_result("pytest", ref=FINAL)], Result.VERIFIED, "ALL_MATCHING_CI_JOBS_PASSED"),
+        # A pass only on the opening commit does not verify the final change.
+        ([check_result("pytest")], Result.UNVERIFIABLE, "NO_CI_RESULTS"),
+    ],
+    ids=["fail-then-pass", "pass-then-fail", "fail-both", "pass-final", "pass-start-only"],
+)
+def test_body_claims_with_a_final_head(engine, evidence, expected, reason):
+    two_commits = claim(TESTS_PASS, ref=SHA, final_ref=FINAL)
+    result = verdict(engine, two_commits, evidence, hours=12)
+    assert (result.result, result.reasons) == (expected, (reason,))
+
+
 def test_missing_commit_reference_is_unverifiable(engine):
     result = verdict(engine, claim(TESTS_PASS), [check_result("pytest")])
     assert result.reasons == ("NO_COMMIT_REFERENCE",)

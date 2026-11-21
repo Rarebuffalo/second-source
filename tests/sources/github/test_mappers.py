@@ -78,6 +78,20 @@ def test_body_refers_to_newest_commit_before_the_pr_was_opened():
     assert texts["body"].ref == "c1"  # c2 was pushed after the PR was opened
 
 
+def test_editable_texts_also_carry_the_final_head():
+    texts = {t.origin: t for t in mappers.texts_from_pull(pull(), COMMITS, [])}
+    # Body and title may have been edited after c2 was pushed, so both commits could be meant.
+    assert (texts["body"].final_ref, texts["title"].final_ref) == ("c2", "c2")
+    commit_texts = [t for t in mappers.texts_from_pull(pull(), COMMITS, []) if t.origin == "commit"]
+    assert all(t.final_ref is None for t in commit_texts)  # a commit message is exact
+
+
+def test_no_final_head_when_the_pr_gained_no_commits():
+    pr = pull(head={"ref": "codex/fix-parser", "sha": "c1"})
+    texts = {t.origin: t for t in mappers.texts_from_pull(pr, [COMMITS[0]], [])}
+    assert texts["body"].ref == "c1" and texts["body"].final_ref is None
+
+
 def test_body_falls_back_to_first_commit_when_all_are_later():
     commits = [commit("c9", "2026-11-20T10:00:00Z")]
     texts = {t.origin: t for t in mappers.texts_from_pull(pull(), commits, [])}

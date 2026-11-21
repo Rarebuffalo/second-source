@@ -126,9 +126,11 @@ def texts_from_pull(
     pr_ref = ref_at(commits, opened_at, head_sha)
     author = (pull.get("user") or {}).get("login")
 
+    # Title and body can be edited after the PR opens; what we read is their latest version.
+    final_ref = head_sha if head_sha and head_sha != pr_ref else None
     texts = [
-        TextSource("title", pull.get("title") or "", opened_at, pr_ref),
-        TextSource("body", pull.get("body") or "", opened_at, pr_ref),
+        TextSource("title", pull.get("title") or "", opened_at, pr_ref, final_ref),
+        TextSource("body", pull.get("body") or "", opened_at, pr_ref, final_ref),
     ]
     for commit in commits:
         written_at = _commit_time(commit) or opened_at

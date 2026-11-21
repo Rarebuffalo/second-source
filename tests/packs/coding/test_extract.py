@@ -549,3 +549,15 @@ def test_phrases_that_are_not_claims(text):
 def test_real_claims_next_to_those_phrases_still_count():
     assert types("Added unit tests for the parser.") == [TESTS_ADDED]
     assert types("Updated the README with setup steps.") == [DOCS_UPDATED]
+
+
+def test_ci_claims_from_editable_texts_carry_the_final_head():
+    source = TextSource(
+        origin="body", text="All tests pass. Fixes #3", written_at=T0, ref="c1", final_ref="c2"
+    )
+    claims = {c.type: c for c in extract_claims("pr-1", [source])}
+    assert (claims[TESTS_PASS].attributes["ref"], claims[TESTS_PASS].attributes["final_ref"]) == (
+        "c1",
+        "c2",
+    )
+    assert "final_ref" not in claims[FIXES_ISSUE].attributes

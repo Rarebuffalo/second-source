@@ -110,7 +110,12 @@ class Recorder:
         if request.method in ("POST", "PATCH"):
             self.writes.append((request.method, request.url.path, json.loads(request.content)))
             return httpx.Response(201, json={"id": 77})
-        if request.url.path.endswith("/commits/c2/check-runs"):
+        # The lookup of our own check run (by name) on the head commit; CI evidence for the
+        # same commit is fetched without a name and goes to the fake.
+        if (
+            request.url.path.endswith("/commits/c2/check-runs")
+            and "check_name" in request.url.params
+        ):
             assert request.url.params["check_name"] == CHECK_NAME
             return httpx.Response(
                 200, json={"total_count": len(self.existing), "check_runs": self.existing}
