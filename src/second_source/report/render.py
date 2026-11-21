@@ -81,9 +81,14 @@ def rows(report: PullRequestReport) -> list[Row]:
     prepared = []
     for claim in report.claims:
         verdict: Verdict = report.verdict_for(claim)
+        label = describe_claim(claim)
+        if claim.attributes.get("confidence") == "low":
+            # Found by an extraction rule that has not proven its precision on the golden set:
+            # the agent may not have meant this as a claim.
+            label += " (low confidence)"
         prepared.append(
             Row(
-                label=describe_claim(claim),
+                label=label,
                 result=verdict.result,
                 reasons=verdict.reasons,
                 details=tuple(
@@ -174,6 +179,7 @@ def to_markdown(report: PullRequestReport) -> str:
     lines += [
         "",
         "Missing or unavailable evidence is reported as *unverifiable*, never as contradicted.",
+        "*Low confidence* marks claims found by text patterns whose accuracy is not yet proven.",
     ]
     return "\n".join(lines)
 
