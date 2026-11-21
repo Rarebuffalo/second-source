@@ -111,3 +111,13 @@ def test_missing_pull_request(fake_github):
     client = GitHubClient(transport=httpx.MockTransport(fake_github()), sleep=lambda _s: None)
     with pytest.raises(PullRequestNotFound):
         check_pull_request(PullRequestRef("Octo", "App", 99), GitHubSource(client), now=DAY_AFTER)
+
+
+def test_report_carries_head_commit_and_labels(fake_github):
+    report = run(fake_github(), DAY_AFTER)
+    assert report.head_sha == "c2" and report.labels == ()
+
+    path = "/repos/Octo/App/pulls/7"
+    pull = {**fake_github.BASE_ROUTES[path], "labels": [{"name": "second-source: disputed"}]}
+    labelled = run(fake_github({path: pull}), DAY_AFTER)
+    assert labelled.labels == ("second-source: disputed",)
