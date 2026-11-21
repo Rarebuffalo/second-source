@@ -162,8 +162,9 @@ _NOT_AN_ASSERTION = re.compile(
     # partial or quantified statements ("most tests pass" is not "tests pass")
     r"partially|partial|related|most|mostly|some|several|few|majority|except|excluding|"
     r"apart from|"
-    # conditional checklist items ("included tests if applicable")
-    r"if applicable|where applicable|if needed|if any|if relevant)\b"
+    # conditions: "included tests if applicable", and template lines such as "If this pull
+    # request adds new functionality, it includes unit tests" (a rule, not a statement)
+    r"if|whether|where applicable)\b"
     r"|n't\b"
 )
 # A partial count ("19/22 tests passing") is a hedge, however positive the wording.
@@ -193,8 +194,13 @@ def asserted_part(clause: str) -> str:
     return clause if found is None else clause[: found.start()]
 
 
+# A clause split off at ", which" describes the noun before it, often another PR or commit
+# ("follows #12, which added schema tests"), not this change.
+_RELATIVE_CLAUSE = re.compile(r"^\s*which\b", re.IGNORECASE)
+
+
 def is_assertion(clause: str) -> bool:
-    if clause.rstrip().endswith("?"):
+    if clause.rstrip().endswith("?") or _RELATIVE_CLAUSE.match(clause):
         return False
     lowered = _POSITIVE_NO.sub(" ", _QUOTED_TEXT.sub(" ", clause.lower()))
     if any(int(done) < int(total) for done, total in _COUNT.findall(lowered)):
@@ -326,8 +332,12 @@ _PATTERNS: dict[str, tuple[Rule, ...]] = {
             r"\b(added|adds|add|wrote|writes|created|creates|includes|included|introduced|"
             r"introduces)\s+(?:(?!(?:for|to|of|in|with|on|from)\b)[\w-]+\s+){0,3}?"
             r"(tests?|test cases?|test coverage|specs?|assertions|regression coverage)\b"
-            # "test metadata", "test scripts", "test data" are not new automated tests.
-            r"(?!\s+(metadata|data|fixtures?|utilities|utils|helpers?|scripts?|ids?|names?|plans?))",
+            # "test metadata", "test scripts", "test data" are not new automated tests, and nor
+            # are features or infrastructure named after testing: "added save and test
+            # connection functionality", "created test PR #12", "add integration test workflow".
+            r"(?!\s+(metadata|data|fixtures?|utilities|utils|helpers?|scripts?|ids?|names?|plans?|"
+            r"connections?|prs?|pull requests?|workflows?|apps?|accounts?|users?|environments?|"
+            r"servers?|mode|pages?|buttons?|endpoints?|commands?|targets?|jobs?|runners?)\b)",
         ),
         _rule(
             "tests_added.new_for",
@@ -369,7 +379,10 @@ _PATTERNS: dict[str, tuple[Rule, ...]] = {
             r"corrected|corrects|correct|rewrote|rewrites|rewrite|expanded|expands|expand|"
             r"refreshed|refreshes|refresh|created|creates|create)\s+(?:[\w-]+\s+){0,5}?"
             r"(docs|documentation|readme|changelog|doc)\b"
-            r"(?!\s+(builder|build|builds|generator|generation|site|tooling|pipeline|workflow))",
+            # Docs tooling, inline code docs ("XML doc comments" live in source files and are
+            # not documentation files) and other nouns: "doc info", "docs extras".
+            r"(?!\s+(builder|build|builds|generator|generation|site|tooling|pipeline|workflow|"
+            r"comments?|strings?|blocks?|info|extras?|dependencies|deps|group)\b)",
         ),
         _rule("docs_updated.new", r"\bnew\s+(readme|docs|documentation|design doc|guide)\b"),
         # Documentation files named in plain text: "Update the instructions in AGENTS.md".

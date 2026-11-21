@@ -483,3 +483,33 @@ def test_trusted_rules_file_names_real_rules():
     known = set(rule_names())
     assert trusted_rules()
     assert all(rule in known for _kind, rule in trusted_rules())
+
+
+# ---- false claims seen in benchmark run 1 -------------------------------------------------
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        # A template rule ticked as a checkbox is a condition, not a statement.
+        "- [x] If this pull request adds new functionality, it includes unit tests",
+        "Tests pass if you run them with the dev profile.",
+        # Features and infrastructure named after testing.
+        "Added save and test connection functionality",
+        "Created test PR #69792 to check the hook",
+        "Add conditional integration test workflow",
+        # A relative clause about another change.
+        "Follows up on #12, which added schema munging tests.",
+        # Inline code docs and other nouns are not documentation files.
+        "Add XML doc comments to the public API",
+        "Add doc info and detailed parse errors",
+        "Add dev and docs extras to the optional dependencies",
+    ],
+)
+def test_phrases_that_are_not_claims(text):
+    assert types(text) == []
+
+
+def test_real_claims_next_to_those_phrases_still_count():
+    assert types("Added unit tests for the parser.") == [TESTS_ADDED]
+    assert types("Updated the README with setup steps.") == [DOCS_UPDATED]
