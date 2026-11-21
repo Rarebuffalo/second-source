@@ -91,6 +91,10 @@ def test_is_lint_check(name, expected):
         ("web/login.cy.ts", True),
         ("testdata/sqllogictests/joins.slt", True),
         ("src/attestation.rs", False),
+        (".github/workflows/run_tests.yml", False),
+        ("requirements_test.txt", False),
+        ("playwright/config.ts", False),
+        ("foo_test.md", False),
         ("src/parser.py", False),
         ("src/latest.py", False),
         ("docs/testing.md", False),  # documentation about testing, not a test
@@ -114,6 +118,7 @@ def test_is_test_path(path, expected):
         (".changeset/brave-dogs-run.md", True),
         ("changelog_entry.yaml", True),
         ("src/changes_handler.py", False),
+        ("src/changes/diff.ts", False),
         ("src/readme_parser.py", False),
         ("src/app.py", False),
     ],

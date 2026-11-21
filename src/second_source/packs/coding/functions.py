@@ -94,8 +94,11 @@ _TEST_PATH = re.compile(
     r"|(test|tests|spec)\.(java|kt|cs|scala|swift)$"  # FooTest.java, FooSpec.scala
     r"|_spec\.rb$"  # RSpec
     r"|(^|/)[^/]*[._-]tests?/"  # .NET Foo.Tests/, unit-tests/, integration_tests/
-    r"|(^|/)(e2e|cypress|playwright)/"  # end-to-end suites
-    r"|_(unit)?tests?\.[a-z]+$"  # foo_unittest.cc, foo_test.rs, foo_tests.rs
+    r"|(^|/)(e2e|cypress)/"  # end-to-end suites
+    # foo_unittest.cc, foo_test.rs, foo_tests.rs: source files only, not run_tests.yml or
+    # requirements_test.txt
+    r"|_(unit)?tests?\.(c|cc|cpp|cxx|h|hpp|rs|go|py|rb|php|java|kt|swift|m|mm|cs|scala|exs?|dart|"
+    r"[cm]?[jt]sx?)$"
     r"|\.cy\.[cm]?[jt]sx?$"  # Cypress: x.cy.ts
     r"|\.slt$"  # sqllogictest files
 )
@@ -105,13 +108,18 @@ _DOC_PATH = re.compile(
     r"|\.(md|mdx|rst|adoc)$"  # documentation formats
     # Changelog fragments (towncrier, changesets, per-PR entry files) are changelog entries,
     # which count as documentation (golden-set guide, rule 12).
-    r"|(^|/)\.?(changelogs?|changes|newsfragments|changelog\.d|changeset)/"
+    # At the repository root only: "src/changes/diff.ts" is code.
+    r"|^\.?(changelogs?|changes|newsfragments|changelog\.d|changeset)/"
     r"|(^|/)changelog_entry\.ya?ml$"
 )
 
 
 def is_test_path(path: str) -> bool:
-    return bool(_TEST_PATH.search(path.lower()))
+    lowered = path.lower()
+    # CI configuration that runs tests is not a test ("".github/workflows/tests.yml").
+    if lowered.startswith(".github/"):
+        return False
+    return bool(_TEST_PATH.search(lowered))
 
 
 def is_doc_path(path: str) -> bool:
