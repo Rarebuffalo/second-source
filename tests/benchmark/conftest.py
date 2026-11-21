@@ -39,11 +39,13 @@ def fake_row(index, label_for=grouped_label):
         "state": "closed",
         "created_at": "2026-01-01T00:00:00Z",
         "merged_at": None if index % 3 == 0 else "2026-01-02T00:00:00Z",
+        "id": str(100000 + index),
     }
 
 
 class FakeViewer:
-    """Serves /rows from a synthetic table and /api/datasets for the revision."""
+    """Serves /rows from a synthetic table, /filter for pr_commits (three commits per PR) and
+    /api/datasets for the revision."""
 
     # Exposed for tests (tests cannot import conftest under --import-mode=importlib).
     BLOCKS = BLOCKS
@@ -62,6 +64,12 @@ class FakeViewer:
             return httpx.Response(500)
         if request.url.path.startswith("/api/datasets/"):
             return httpx.Response(200, json={"sha": "abc123"})
+        if request.url.path == "/filter":
+            pr_id = request.url.params["where"].split("'")[1]
+            rows = [
+                {"row": {"pr_id": pr_id, "message": f"commit {n} of {pr_id}"}} for n in range(3)
+            ]
+            return httpx.Response(200, json={"rows": rows, "num_rows_total": 3})
         offset = int(request.url.params["offset"])
         length = int(request.url.params["length"])
         rows = [

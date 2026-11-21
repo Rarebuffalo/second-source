@@ -1,6 +1,7 @@
 """``second-source bench``: reproduce the Agent Claim Truth benchmark (docs/benchmark.md).
 
     second-source bench sample  --per-agent 200 --seed 1 --max-per-repo 3 -o s.jsonl
+    second-source bench commits s.jsonl -o commits.jsonl [--per-pr 5]
     second-source bench run     s.jsonl -o results.jsonl [--limit 10] [--anonymous]
     second-source bench summarize results.jsonl -o summary/
     second-source bench golden  cases.jsonl [--split dev|test|all]
@@ -73,6 +74,13 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     )
     sample.add_argument("-o", "--output", type=Path, required=True)
 
+    commits = steps.add_parser(
+        "commits", help="add each sampled PR's commit messages from AIDev (for labelling)"
+    )
+    commits.add_argument("sample", type=Path)
+    commits.add_argument("--per-pr", type=int, default=5, help="first N commits of each PR")
+    commits.add_argument("-o", "--output", type=Path, required=True)
+
     run = steps.add_parser("run", help="check every sampled PR (resumable)")
     run.add_argument("sample", type=Path)
     run.add_argument("-o", "--output", type=Path, required=True)
@@ -113,6 +121,7 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
 def run_command(args: argparse.Namespace, context: BenchContext) -> int:
     handlers = {
         "sample": _sample,
+        "commits": _commits,
         "run": _run,
         "summarize": _summarize,
         "golden": _golden,
@@ -145,6 +154,27 @@ def _sample(args: argparse.Namespace, context: BenchContext) -> int:
     print(f"wrote {len(sample.rows)} pull requests to {args.output}", file=context.out)
     if sample.shortfall:
         print(f"note: not enough matching rows for {sample.shortfall}", file=context.err)
+    return EXIT_OK
+
+
+def _commits(args: argparse.Namespace, context: BenchContext) -> int:
+    """One JSON line per sampled PR: url, agent and its first ``--per-pr`` commit messages."""
+    sample = read_sample(args.sample)
+    missing = [row.url for row in sample.rows if not row.id]
+    if missing:
+        print(f"error: {len(missing)} rows have no AIDev id; redraw the sample", file=context.err)
+        return EXIT_ERROR
+    args.output.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        with context.aidev_factory() as client, args.output.open("w", encoding="utf-8") as out:
+            for row in sample.rows:
+                messages = client.commit_messages(row.id)[: args.per_pr]
+                record = {"url": row.url, "agent": row.agent, "commits": messages}
+                out.write(json.dumps(record, ensure_ascii=False) + "\n")
+    except AidevError as error:
+        print(f"error: {error}", file=context.err)
+        return EXIT_ERROR
+    print(f"wrote commit messages for {len(sample.rows)} PRs to {args.output}", file=context.out)
     return EXIT_OK
 
 

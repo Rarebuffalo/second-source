@@ -107,3 +107,27 @@ def test_rows_are_redacted_before_they_are_stored():
     pull = AidevPullRequest.from_row({"html_url": "u", "agent": "Devin", "body": body})
     assert fake_key not in pull.body
     assert "X-Amz-Credential=REDACTED" in pull.body
+
+
+def test_commit_messages_use_the_filter_endpoint():
+    seen = []
+
+    def handler(request):
+        seen.append(request)
+        rows = [{"row": {"pr_id": "42", "message": "test: add parser tests"}}]
+        return httpx.Response(200, json={"rows": rows, "num_rows_total": 1})
+
+    assert client_for(handler).commit_messages("42") == ["test: add parser tests"]
+    params = seen[0].url.params
+    assert seen[0].url.path == "/filter"
+    assert params["config"] == "pr_commits" and params["where"] == "\"pr_id\"='42'"
+
+
+def test_commit_messages_reject_ids_that_are_not_numbers():
+    with pytest.raises(ValueError):
+        client_for(lambda _r: httpx.Response(200, json={})).commit_messages("1' OR '1'='1")
+
+
+def test_rows_keep_the_aidev_pr_id():
+    row = {"html_url": "u", "agent": "Devin", "id": 4076553601}
+    assert AidevPullRequest.from_row(row).id == "4076553601"

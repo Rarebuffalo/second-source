@@ -24,6 +24,8 @@ from second_source.benchmark.redact import redact_secrets
 DATASET = "hao-li/AIDev"
 CONFIG = "pull_request"  # the curated table (repositories with more than 100 stars)
 ROWS_URL = "https://datasets-server.huggingface.co/rows"
+FILTER_URL = "https://datasets-server.huggingface.co/filter"
+COMMITS_CONFIG = "pr_commits"  # one row per commit: sha, pr_id, author, committer, message
 INFO_URL = f"https://huggingface.co/api/datasets/{DATASET}"
 MAX_PAGE = 100  # the dataset viewer returns at most 100 rows per request
 USER_AGENT = f"second-source/{__version__}"
@@ -62,6 +64,7 @@ class AidevPullRequest:
     state: str
     created_at: str | None
     merged_at: str | None
+    id: str = ""  # AIDev's PR id, the key of its pr_commits table ("" in older sample files)
 
     @property
     def merged(self) -> bool:
@@ -85,6 +88,7 @@ class AidevPullRequest:
             state=row.get("state") or "",
             created_at=row.get("created_at"),
             merged_at=row.get("merged_at"),
+            id=str(row.get("id") or ""),
         )
 
     def to_dict(self) -> dict[str, Any]:
@@ -96,6 +100,7 @@ class AidevPullRequest:
             "state": self.state,
             "created_at": self.created_at,
             "merged_at": self.merged_at,
+            "id": self.id,
         }
 
 
@@ -161,6 +166,28 @@ class AidevClient:
             rows = tuple(AidevPullRequest.from_row(item["row"]) for item in data["rows"])
             return Page(rows=rows, total=int(data["num_rows_total"]))
         except (KeyError, TypeError, ValueError) as error:
+            raise AidevError(f"unexpected response shape: {error!r}") from error
+
+    def commit_messages(self, pr_id: str, limit: int = MAX_PAGE) -> list[str]:
+        """Commit messages of one PR from AIDev's ``pr_commits`` table, in table order.
+
+        Read with the dataset viewer's filter endpoint, so commit texts can be labelled without
+        any GitHub requests. Messages are redacted like PR bodies.
+        """
+        if not pr_id.isdigit():  # the id goes into a filter expression
+            raise ValueError(f"invalid AIDev pr_id: {pr_id!r}")
+        params = {
+            "dataset": DATASET,
+            "config": COMMITS_CONFIG,
+            "split": "train",
+            "where": f"\"pr_id\"='{pr_id}'",
+            "offset": 0,
+            "length": min(limit, MAX_PAGE),
+        }
+        data = self._get_json(FILTER_URL, params)
+        try:
+            return [redact_secrets(item["row"].get("message") or "") for item in data["rows"]]
+        except (KeyError, TypeError) as error:
             raise AidevError(f"unexpected response shape: {error!r}") from error
 
     def revision(self) -> str:

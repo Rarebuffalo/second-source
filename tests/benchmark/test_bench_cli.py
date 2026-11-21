@@ -184,3 +184,16 @@ def test_sample_can_cap_repositories_and_exclude_earlier_repositories(viewer, tm
     again = repos(second)
     assert len(again) == len(set(again)) == 3  # one per repository
     assert not set(repos(first)) & set(again)  # no repository seen before
+
+
+def test_commits_adds_commit_messages_for_labelling(viewer, tmp_path):
+    sample = tmp_path / "s.jsonl"
+    bench(["sample", "--per-agent", "1", "--seed", "1", "-o", str(sample)], viewer=viewer())
+    out = tmp_path / "commits.jsonl"
+    code, stdout, _err, _tokens = bench(
+        ["commits", str(sample), "--per-pr", "2", "-o", str(out)], viewer=viewer()
+    )
+    records = [json.loads(line) for line in out.read_text().splitlines()]
+    assert code == 0 and f"{len(records)} PRs" in stdout and records
+    assert all(len(record["commits"]) == 2 for record in records)
+    assert records[0]["commits"][0].startswith("commit 0 of ")
