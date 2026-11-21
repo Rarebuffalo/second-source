@@ -242,3 +242,14 @@ def test_revert_probe_path_avoids_busy_files():
     assert mappers.revert_probe_path(files) == "src/a.ts"
     assert mappers.revert_probe_path([{"filename": "yarn.lock"}]) == "yarn.lock"
     assert mappers.revert_probe_path([]) is None
+
+
+def test_a_title_match_never_overrides_an_explicit_revert_reference():
+    # Code review H2: two PRs may share a generic title; the message names the reverted one.
+    commits = [
+        commit("x1", "2026-11-21T10:00:00Z", 'Revert "Fix bug" (#200)\n\nReverts Octo/App#150'),
+        commit("x2", "2026-11-21T11:00:00Z", 'Revert "Fix bug"\n\nThis reverts commit 9999999.'),
+        commit("r1", "2026-11-21T12:00:00Z", 'Revert "Fix bug" (#201)\n\nReverts Octo/App#7'),
+    ]
+    found = mappers.revert_evidence(commits, "abc1234def56", "Octo/App", 7, NOW, title="Fix bug")
+    assert [e.external_ref for e in found] == ["r1"]

@@ -248,6 +248,7 @@ def issue_evidence(
 
 
 _REVERTS_COMMIT = re.compile(r"this reverts commit ([0-9a-f]{7,40})", re.IGNORECASE)
+_ANY_PR_REVERT = re.compile(r"\breverts\s+[\w.-]+/[\w.-]+#\d+\b|\breverts\s+#\d+\b", re.IGNORECASE)
 
 
 def revert_evidence(
@@ -265,7 +266,10 @@ def revert_evidence(
     - GitHub's "Revert" button: a commit mentioning "Reverts owner/repo#<number>";
     - the Revert button followed by a squash merge, whose message may keep only the title:
       ``Revert "<PR title>"`` or ``Revert "<PR title> (#<number>)"``. The whole quoted title
-      must match, so a short title ("Fix") cannot match an unrelated revert.
+      must match, so a short title ("Fix") cannot match an unrelated revert, and the title is
+      used only when the message names no reverted PR or commit at all: an explicit
+      "Reverts o/r#150" or "This reverts commit <sha>" says what was reverted, and two PRs
+      may share a generic title ("Update README.md").
     """
     pr_reference = re.compile(rf"\breverts\s+{re.escape(repo)}#{number}\b", re.IGNORECASE)
     title_revert = (
@@ -277,7 +281,8 @@ def revert_evidence(
     for commit in commits:
         message = commit["commit"].get("message") or ""
         named = [sha for sha in _REVERTS_COMMIT.findall(message) if merge_sha.startswith(sha)]
-        by_title = title_revert is not None and title_revert.match(message.strip())
+        explicit = _REVERTS_COMMIT.search(message) or _ANY_PR_REVERT.search(message)
+        by_title = not explicit and title_revert is not None and title_revert.match(message.strip())
         if named or pr_reference.search(message) or by_title:
             found.append(
                 Evidence(
