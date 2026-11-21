@@ -2,9 +2,18 @@
 
 Definitions (claims are counted from the batch runner's result records):
 
-- **checkable** claims are those with a definite answer: VERIFIED or CONTRADICTED.
-- **false rate** = contradicted / checkable, the share of checkable claims that were false.
-- **coverage** = checkable / all claims, so a low false rate cannot hide behind
+- **Counted per PR, not per claim.** A PR's claims of one type become one outcome (any
+  contradicted → contradicted; else any verified → verified; else scoped CI failure; else
+  pending; else unverifiable). One PR with 25 similar commit-message claims would otherwise
+  outweigh 24 other PRs, and claims of one PR are not independent trials.
+- **all** = a PR's stated claims together. The implicit MERGE_HOLDS claim (made by every merged
+  PR, not written by the agent) is reported on its own and left out of **all**, so it cannot
+  dilute the rate of claims agents actually wrote.
+- Every cell reports how many **repositories** its checkable PRs come from: PRs of one
+  repository are not independent either, so a rate resting on few repositories is weak.
+- **checkable** PRs are those with a definite answer: VERIFIED or CONTRADICTED.
+- **false rate** = contradicted / checkable, the share of checkable PRs whose claim was false.
+- **coverage** = checkable / all PRs with the claim, so a low false rate cannot hide behind
   "almost nothing could be checked".
 - **Only high-confidence claims count.** Claims found by extraction rules that have not proven
   their precision on the golden set (``confidence: low``) are counted separately, per agent, and
@@ -28,7 +37,11 @@ from typing import Any
 
 Z_95 = 1.959963984540054  # two-sided 95% normal quantile
 SCOPED_CI_FAILED = frozenset({"CI_FAILED_LOCAL_CLAIM", "CI_FAILED_SUBSET_CLAIM"})
-ALL = "all"  # pseudo claim type: every claim of an agent
+ALL = "all"  # pseudo claim type: every claim an agent wrote (not MERGE_HOLDS)
+IMPLICIT_TYPES = frozenset({"MERGE_HOLDS"})  # claims no agent wrote; never part of ALL
+
+# How a PR's several claims of one type combine into one outcome, strongest first.
+_OUTCOME_ORDER = ("CONTRADICTED", "VERIFIED", "SCOPED_CI_FAILED", "PENDING", "UNVERIFIABLE")
 
 
 def wilson_interval(successes: int, trials: int, z: float = Z_95) -> tuple[float, float]:
@@ -48,27 +61,42 @@ def wilson_interval(successes: int, trials: int, z: float = Z_95) -> tuple[float
     return low, high
 
 
+def outcome_of(result: str, reasons: Iterable[str]) -> str:
+    """One claim's verdict as a counting outcome (scoped CI failures kept apart)."""
+    if result == "UNVERIFIABLE" and SCOPED_CI_FAILED.intersection(reasons):
+        return "SCOPED_CI_FAILED"
+    return result if result in _OUTCOME_ORDER else "UNVERIFIABLE"
+
+
+def combine(outcomes: Iterable[str]) -> str:
+    """One outcome for several claims of the same type on one PR."""
+    return min(outcomes, key=_OUTCOME_ORDER.index)
+
+
 @dataclass
 class Cell:
-    """Counts for one agent and one claim type."""
+    """Counts of PRs for one agent and one claim type."""
 
     verified: int = 0
     contradicted: int = 0
     scoped_ci_failed: int = 0
     pending: int = 0
     unverifiable: int = 0  # excluding scoped_ci_failed
+    repos: set[str] = field(default_factory=set)  # repositories of the checkable PRs
 
-    def add(self, result: str, reasons: Iterable[str]) -> None:
-        if result == "VERIFIED":
+    def add(self, outcome: str, repo: str = "") -> None:
+        if outcome == "VERIFIED":
             self.verified += 1
-        elif result == "CONTRADICTED":
+        elif outcome == "CONTRADICTED":
             self.contradicted += 1
-        elif result == "PENDING":
+        elif outcome == "PENDING":
             self.pending += 1
-        elif SCOPED_CI_FAILED.intersection(reasons):
+        elif outcome == "SCOPED_CI_FAILED":
             self.scoped_ci_failed += 1
         else:
             self.unverifiable += 1
+        if outcome in ("VERIFIED", "CONTRADICTED") and repo:
+            self.repos.add(repo)
 
     @property
     def total(self) -> int:
@@ -95,7 +123,8 @@ class Cell:
     def to_dict(self) -> dict[str, Any]:
         low, high = wilson_interval(self.contradicted, self.checkable)
         return {
-            "claims": self.total,
+            "prs": self.total,
+            "repos": len(self.repos),
             "verified": self.verified,
             "contradicted": self.contradicted,
             "ci_failed_after_scoped_claim": self.scoped_ci_failed,
@@ -117,6 +146,12 @@ class AgentStats:
     claims: dict[str, Cell] = field(default_factory=lambda: defaultdict(Cell))
 
 
+def _repo_of(url: str) -> str:
+    """``owner/name`` from a pull request URL, lower-cased; "" if it is not one."""
+    parts = url.lower().split("/")
+    return "/".join(parts[3:5]) if len(parts) > 4 and "github.com" in parts[2] else ""
+
+
 def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Aggregate runner result records into the published summary structure."""
     agents: dict[str, AgentStats] = defaultdict(AgentStats)
@@ -130,12 +165,20 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         detected = (report.get("agent") or {}).get("name")
         if detected == record["dataset_agent"]:
             stats.detected_as_dataset_agent += 1
+        repo = _repo_of(record["url"])
+        by_type: dict[str, list[str]] = defaultdict(list)
         for claim in report["claims"]:
             if claim.get("attributes", {}).get("confidence", "high") != "high":
                 stats.low_confidence_claims += 1
                 continue
-            for key in (claim["type"], ALL):
-                stats.claims[key].add(claim["result"], claim["reasons"])
+            by_type[claim["type"]].append(outcome_of(claim["result"], claim["reasons"]))
+        for kind, outcomes in by_type.items():
+            stats.claims[kind].add(combine(outcomes), repo)
+        written = [
+            o for kind, outcomes in by_type.items() if kind not in IMPLICIT_TYPES for o in outcomes
+        ]
+        if written:
+            stats.claims[ALL].add(combine(written), repo)
 
     return {
         "agents": {
@@ -164,11 +207,13 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
     lines = [
         f"# {title}",
         "",
-        "False rate = contradicted ÷ checkable claims (95% Wilson interval). Coverage = checkable",
-        "÷ all claims. *Scoped, CI failed* = the agent said a check passed locally, or that part",
-        "of the checks passed, and a CI job failed;",
-        "shown separately and never counted as false. Only high-confidence claims (found by",
-        "extraction rules with proven precision) are counted.",
+        "Counted per PR: a PR's claims of one type give one outcome. False rate = contradicted",
+        "÷ checkable PRs (95% Wilson interval; PRs of one repository are not independent, so",
+        "check the *Repos* column). Coverage = checkable ÷ all PRs with the claim. *Scoped, CI",
+        "failed* = the agent said a check passed locally, or that part of the checks passed, and",
+        "a CI job failed; shown separately and never counted as false. *all* = the claims agents",
+        "wrote (MERGE_HOLDS, which every merged PR makes implicitly, is left out). Only",
+        "high-confidence claims (found by extraction rules with proven precision) are counted.",
         "",
     ]
     for agent, data in summary["agents"].items():
@@ -180,9 +225,9 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
             f"agent detection agreed with the dataset label on {agreement}; "
             f"{data['low_confidence_claims']} low-confidence claims not counted.",
             "",
-            "| Claim | Claims | Verified | Contradicted | Scoped, CI failed | Coverage | "
+            "| Claim | PRs | Repos | Verified | Contradicted | Scoped, CI failed | Coverage | "
             "False rate (95% CI) |",
-            "|---|---:|---:|---:|---:|---:|---|",
+            "|---|---:|---:|---:|---:|---:|---:|---|",
         ]
         for kind, cell in data["claims"].items():
             interval = cell["false_rate_ci95"]
@@ -193,7 +238,8 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
                 f"({_percent(interval[0])}–{_percent(interval[1])})"
             )
             lines.append(
-                f"| {kind} | {cell['claims']} | {cell['verified']} | {cell['contradicted']} | "
+                f"| {kind} | {cell['prs']} | {cell['repos']} | {cell['verified']} | "
+                f"{cell['contradicted']} | "
                 f"{cell['ci_failed_after_scoped_claim']} | {_percent(cell['coverage'])} | {rate} |"
             )
         lines.append("")

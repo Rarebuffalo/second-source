@@ -101,12 +101,20 @@ This keeps the promise "missing or weak evidence is never reported as contradict
 
 `second-source bench summarize <results.jsonl>` writes `summary.json` and `summary.md`.
 
-- Per agent × claim type: counts of verified, contradicted, scoped-CI-failed, pending and
-  unverifiable.
-- **Headline rate:** contradicted ÷ (verified + contradicted), the share of *checkable* claims
-  that were false, with a 95% **Wilson** interval. Wilson stays sensible for small counts and
+- **Counted per PR, not per claim.** A PR's high-confidence claims of one type combine into
+  one outcome (any contradicted → contradicted; else any verified → verified; else scoped CI
+  failure; else pending; else unverifiable). Claims on one PR are not independent trials, and
+  one PR with 25 similar commit claims must not outweigh 24 other PRs.
+- Per agent × claim type: PRs that were verified, contradicted, scoped-CI-failed, pending and
+  unverifiable, plus the number of **repositories** the checkable PRs come from. PRs of one
+  repository are not independent either; the Wilson interval below assumes they are, so it is
+  too narrow when few repositories dominate.
+- `all` combines the claims agents wrote. MERGE_HOLDS (implicit in every merged PR) has its own
+  row and is left out of `all`, so it cannot dilute the rate.
+- **Headline rate:** contradicted ÷ (verified + contradicted), the share of *checkable* PRs
+  whose claim was false, with a 95% **Wilson** interval. Wilson stays sensible for small counts and
   rates near 0 or 1, where the normal approximation breaks.
-- Coverage: the share of claims that were checkable at all, so a low contradiction rate cannot
+- Coverage: the share of PRs with the claim that were checkable at all, so a low contradiction rate cannot
   hide behind "we could check nothing".
 - Agent detection agreement with the dataset label (a free accuracy check of our detection).
 - Every summary records the sample file, seed, dataset revision, tool version and run dates.

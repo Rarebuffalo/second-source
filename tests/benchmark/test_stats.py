@@ -2,7 +2,15 @@
 
 import pytest
 
-from second_source.benchmark.stats import ALL, Cell, summarize, to_markdown, wilson_interval
+from second_source.benchmark.stats import (
+    ALL,
+    Cell,
+    combine,
+    outcome_of,
+    summarize,
+    to_markdown,
+    wilson_interval,
+)
 
 
 def test_wilson_matches_published_values():
@@ -22,15 +30,25 @@ def test_wilson_edge_cases():
 
 def test_cell_counts_scoped_ci_failures_separately():
     cell = Cell()
-    cell.add("VERIFIED", [])
-    cell.add("CONTRADICTED", ["CI_JOB_FAILED"])
-    cell.add("UNVERIFIABLE", ["CI_FAILED_LOCAL_CLAIM"])
-    cell.add("UNVERIFIABLE", ["NO_MATCHING_CI_JOBS"])
-    cell.add("PENDING", ["AWAITING_CI"])
+    for result, reasons in [
+        ("VERIFIED", []),
+        ("CONTRADICTED", ["CI_JOB_FAILED"]),
+        ("UNVERIFIABLE", ["CI_FAILED_LOCAL_CLAIM"]),
+        ("UNVERIFIABLE", ["NO_MATCHING_CI_JOBS"]),
+        ("PENDING", ["AWAITING_CI"]),
+    ]:
+        cell.add(outcome_of(result, reasons))
     assert (cell.verified, cell.contradicted, cell.scoped_ci_failed) == (1, 1, 1)
     assert (cell.unverifiable, cell.pending, cell.total) == (1, 1, 5)
-    assert cell.false_rate == 0.5  # local CI failures never count as false
+    assert cell.false_rate == 0.5  # scoped CI failures never count as false
     assert cell.coverage == 0.4
+
+
+def test_a_prs_claims_of_one_type_combine_into_one_outcome():
+    assert combine(["VERIFIED", "CONTRADICTED", "UNVERIFIABLE"]) == "CONTRADICTED"
+    assert combine(["UNVERIFIABLE", "VERIFIED"]) == "VERIFIED"
+    assert combine(["UNVERIFIABLE", "SCOPED_CI_FAILED"]) == "SCOPED_CI_FAILED"
+    assert outcome_of("UNVERIFIABLE", ["CI_FAILED_SUBSET_CLAIM"]) == "SCOPED_CI_FAILED"
 
 
 def test_empty_cell_has_no_rates():
@@ -45,7 +63,7 @@ def claim(kind, result, *reasons):
 
 RECORDS = [
     {
-        "url": "u1",
+        "url": "https://github.com/a/one/pull/1",
         "dataset_agent": "codex",
         "report": {
             "agent": {"name": "codex"},
@@ -53,7 +71,7 @@ RECORDS = [
         },
     },
     {
-        "url": "u2",
+        "url": "https://github.com/b/two/pull/2",
         "dataset_agent": "codex",
         "report": {"agent": None, "claims": [claim("TESTS_PASS", "CONTRADICTED", "CI_JOB_FAILED")]},
     },
@@ -68,14 +86,28 @@ def test_summarize_per_agent_and_type():
     assert (codex["prs"], codex["errors"], codex["detection_agreement"]) == (2, 1, 0.5)
     tests_pass = codex["claims"]["TESTS_PASS"]
     assert tests_pass["false_rate"] == 0.5 and tests_pass["checkable"] == 2
-    assert codex["claims"][ALL]["claims"] == 3
+    assert tests_pass["repos"] == 2
+    assert codex["claims"]["MERGE_HOLDS"]["prs"] == 1
+    assert codex["claims"][ALL]["prs"] == 2  # MERGE_HOLDS is not a claim the agent wrote
+    assert codex["claims"][ALL]["verified"] == 1
     assert summary["agents"]["devin"]["claims"] == {}
+
+
+def test_many_claims_on_one_pr_count_once():
+    many = [claim("TESTS_PASS", "UNVERIFIABLE", "NO_CI_RECORDS")] * 25
+    record = {
+        "url": "https://github.com/a/one/pull/1",
+        "dataset_agent": "codex",
+        "report": {"agent": None, "claims": [*many, claim("TESTS_PASS", "VERIFIED")]},
+    }
+    tests_pass = summarize([record])["agents"]["codex"]["claims"]["TESTS_PASS"]
+    assert (tests_pass["prs"], tests_pass["verified"], tests_pass["unverifiable"]) == (1, 1, 0)
 
 
 def test_markdown_lists_every_agent_and_type():
     text = to_markdown(summarize(RECORDS))
     assert "## codex" in text and "## devin" in text
-    assert "| TESTS_PASS | 2 | 1 | 1 | 0 | 100% | 50% (" in text
+    assert "| TESTS_PASS | 2 | 2 | 1 | 1 | 0 | 100% | 50% (" in text
     assert "never counted as false" in text
 
 
@@ -94,5 +126,5 @@ def test_low_confidence_claims_are_counted_separately():
     codex = summarize([record])["agents"]["codex"]
     assert codex["low_confidence_claims"] == 1
     assert "BUILD_OK" not in codex["claims"]
-    assert codex["claims"][ALL]["claims"] == 2
+    assert codex["claims"][ALL]["prs"] == 1
     assert "1 low-confidence claims not counted" in to_markdown(summarize([record]))
