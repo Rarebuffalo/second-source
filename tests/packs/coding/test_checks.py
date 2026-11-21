@@ -127,7 +127,10 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
         ([check_result("build")], 12, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
         ([check_result("pytest", "skipped")], 12, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
         ([check_result("pytest", "cancelled")], 12, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
-        ([check_result("pytest", ref="other")], 12, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
+        # CI ran only on another commit: nothing on the claimed one.
+        ([check_result("pytest", ref="other")], 12, Result.UNVERIFIABLE, "NO_CI_RECORDS"),
+        # Long after the claim and no CI data at all (for example, deleted workflow runs).
+        ([], 12, Result.UNVERIFIABLE, "NO_CI_RECORDS"),
     ],
     ids=[
         "pass",
@@ -140,6 +143,7 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
         "skipped",
         "cancelled",
         "other-commit",
+        "no-ci-records",
     ],
 )
 def test_tests_pass(engine, evidence, hours, expected, reason):

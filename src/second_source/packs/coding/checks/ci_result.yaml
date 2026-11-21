@@ -17,8 +17,12 @@
 # ✅ `biome lint`, scope=subset) work the same way: matching CI jobs that pass corroborate
 # them, but a failing job may be one the claim never covered (an E2E suite, another package),
 # so failure gives UNVERIFIABLE with reason CI_FAILED_SUBSET_CLAIM.
+#
+# No CI data at all on the commit (NO_CI_RECORDS) is reported apart from CI that ran without a
+# matching job (NO_MATCHING_CI_JOBS): GitHub deletes old workflow runs, so for older PRs the
+# evidence is simply gone, which says nothing about job naming.
 id: coding.ci_result
-version: 1.2.0
+version: 1.3.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -47,6 +51,7 @@ outcomes:
   - {when: "size(failed) > 0", result: CONTRADICTED, reason: CI_JOB_FAILED}
   # CI may not have started yet, or may still be running.
   - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}
+  - {when: "size(checks) == 0", result: UNVERIFIABLE, reason: NO_CI_RECORDS}
   - {when: "total == 0", result: UNVERIFIABLE, reason: NO_MATCHING_CI_JOBS}
   - {when: "size(running) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}
   - {when: "passed_count == 0", result: UNVERIFIABLE, reason: NO_CI_RESULTS}
