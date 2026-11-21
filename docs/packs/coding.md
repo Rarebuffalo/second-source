@@ -103,7 +103,7 @@ Timestamps are timezone-aware UTC.
 | `changed_file` | path | `path`, `status` (`added` / `modified` / `removed` / `renamed`), `additions`, `deletions` | No patches or code are ever stored |
 | `issue_state` | `repo#number` | `repo`, `number`, `state` (`open` / `closed`), `closed_at` (required when closed), `last_reopened_at` | `closed_at` lets checks reject issues that were closed before the PR merged |
 | `pr_state` | PR number | `state` (`open` / `closed`), `merged`, `merged_at`, `merge_sha` | One record per episode |
-| `revert` | reverting commit sha | `reverted_sha`, `at` | Found by scanning the default branch after merge |
+| `revert` | reverting commit sha | `reverted_sha`, `at` | Found among default-branch commits that touch one of the PR's files in the 30 days after merge: "This reverts commit <sha>", "Reverts owner/repo#N", or `Revert "<PR title>"` |
 | `deployment_status` | deployment id | `ref`, `environment`, `state` (`success` / `failure` / `error` / `in_progress` / `queued` / `pending` / `inactive`), `at` | |
 
 Sources report record types they could not refresh in `stale`. Checks then return

@@ -249,20 +249,34 @@ _REVERTS_COMMIT = re.compile(r"this reverts commit ([0-9a-f]{7,40})", re.IGNOREC
 
 
 def revert_evidence(
-    commits: Iterable[Json], merge_sha: str, repo: str, number: int, observed_at: datetime
+    commits: Iterable[Json],
+    merge_sha: str,
+    repo: str,
+    number: int,
+    observed_at: datetime,
+    title: str = "",
 ) -> list[Evidence]:
     """Commits on the base branch that revert the merged PR.
 
-    Two forms are recognised:
+    Three forms are recognised:
     - ``git revert``: "This reverts commit <sha>" naming the merge commit;
-    - GitHub's "Revert" button: a commit mentioning "Reverts owner/repo#<number>".
+    - GitHub's "Revert" button: a commit mentioning "Reverts owner/repo#<number>";
+    - the Revert button followed by a squash merge, whose message may keep only the title:
+      ``Revert "<PR title>"`` or ``Revert "<PR title> (#<number>)"``. The whole quoted title
+      must match, so a short title ("Fix") cannot match an unrelated revert.
     """
     pr_reference = re.compile(rf"\breverts\s+{re.escape(repo)}#{number}\b", re.IGNORECASE)
+    title_revert = (
+        re.compile(rf'^revert\s+"{re.escape(title.strip())}(\s+\(#{number}\))?"', re.IGNORECASE)
+        if title.strip()
+        else None
+    )
     found = []
     for commit in commits:
         message = commit["commit"].get("message") or ""
         named = [sha for sha in _REVERTS_COMMIT.findall(message) if merge_sha.startswith(sha)]
-        if named or pr_reference.search(message):
+        by_title = title_revert is not None and title_revert.match(message.strip())
+        if named or pr_reference.search(message) or by_title:
             found.append(
                 Evidence(
                     record_type="revert",
@@ -275,6 +289,26 @@ def revert_evidence(
                 )
             )
     return found
+
+
+# Files that change in almost every PR. A revert scan filtered on one of them would list many
+# unrelated commits, so another changed file is preferred.
+_BUSY_FILES = re.compile(
+    r"(^|/)(package-lock\.json|yarn\.lock|pnpm-lock\.yaml|cargo\.lock|poetry\.lock|uv\.lock|"
+    r"go\.sum|gemfile\.lock|composer\.lock|changelog(\.[a-z]+)?)$",
+    re.IGNORECASE,
+)
+
+
+def revert_probe_path(files: Iterable[Json]) -> str | None:
+    """One file the PR changed, to narrow the revert scan.
+
+    A full revert touches every file the PR changed, so listing only the commits that touched
+    one of them finds it with a short, exact list instead of every commit on a busy branch.
+    """
+    paths = sorted(file["filename"] for file in files if file.get("filename"))
+    quiet = [path for path in paths if not _BUSY_FILES.search(path)]
+    return (quiet or paths or [None])[0]
 
 
 def deployment_evidence(

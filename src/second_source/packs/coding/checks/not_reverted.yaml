@@ -1,7 +1,11 @@
 # L5: a merged change stays merged — no revert of the merge commit within a window.
 # Applies to the implicit MERGE_HOLDS claim that every merged agent PR makes.
+#
+# Only merges into the default branch are watched. A PR merged into a feature or release branch
+# (often deleted later) has no meaningful branch to scan, so it is UNVERIFIABLE
+# (NOT_DEFAULT_BRANCH) instead of a scan error or a misleading "not reverted".
 id: coding.not_reverted
-version: 1.0.0
+version: 1.1.0
 kind: temporal
 level: L5
 applies_to: [MERGE_HOLDS]
@@ -13,10 +17,15 @@ evidence:
   reverts:
     record_type: revert
     where: "e.reverted_sha == claim.attributes.merge_sha"
+  prs:
+    record_type: pr_state
 derive:
+  other_branch: >-
+    prs.exists(p, has(p.base_ref) && has(p.default_branch) && p.base_ref != p.default_branch)
   revert_count: "size(reverts)"
   window_end: "claim.made_at + duration(string(params.window_days * 24) + 'h')"
 outcomes:
+  - {when: "other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
   - {when: "'revert' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "revert_count > 0", result: CONTRADICTED, reason: REVERTED}
   - {when: "now < window_end", result: PENDING, reason: IN_WINDOW}

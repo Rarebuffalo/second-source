@@ -420,6 +420,9 @@ def revert(reverted_sha="m1", sha="r1"):
         ([], 31, Result.VERIFIED, "NOT_REVERTED"),
         ([revert()], 3, Result.CONTRADICTED, "REVERTED"),
         ([revert(reverted_sha="other")], 31, Result.VERIFIED, "NOT_REVERTED"),
+        # Merged into a feature branch: no branch to watch.
+        ([pr_state(merged=True, base="feature/x")], 31, Result.UNVERIFIABLE, "NOT_DEFAULT_BRANCH"),
+        ([pr_state(merged=True)], 31, Result.VERIFIED, "NOT_REVERTED"),
     ],
 )
 def test_not_reverted(engine, evidence, days, expected, reason):

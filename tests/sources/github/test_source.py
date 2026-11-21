@@ -120,3 +120,24 @@ def test_revert_scan_is_limited_to_the_durability_window(fake_github):
     (request,) = [r for r in fake.requests if r.url.path == "/repos/Octo/App/commits"]
     assert request.url.params["since"] == "2026-11-20T12:00:00Z"
     assert request.url.params["until"] == "2026-12-20T12:00:00Z"  # merge + 30 days
+
+
+def test_revert_scan_lists_only_commits_touching_one_changed_file(fake_github):
+    fake = fake_github()
+    source = make_source(fake)
+    source.fetch_evidence(source.load(REF), [], {"revert", "changed_file"})
+    (request,) = [r for r in fake.requests if r.url.path == "/repos/Octo/App/commits"]
+    assert request.url.params["path"] == "src/parser.py"
+    files = [r for r in fake.requests if r.url.path == "/repos/Octo/App/pulls/7/files"]
+    assert len(files) == 1  # shared by the changed_file and revert fetchers
+
+
+def test_reverts_are_not_scanned_for_merges_into_another_branch(fake_github):
+    pull = fake_github().routes["/repos/Octo/App/pulls/7"]
+    base = {"ref": "feature/x", "repo": {"full_name": "Octo/App", "default_branch": "main"}}
+    fake = fake_github({"/repos/Octo/App/pulls/7": {**pull, "base": base}})
+    source = make_source(fake)
+    loaded = source.load(REF)
+    fake.requested.clear()
+    assert source.fetch_evidence(loaded, [], {"revert"}).records == []
+    assert fake.requested == []

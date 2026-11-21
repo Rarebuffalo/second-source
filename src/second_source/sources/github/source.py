@@ -91,6 +91,9 @@ class GitHubSource:
     ) -> None:
         self.client = client
         self._clock = clock
+        # PR files, shared by the changed_file and revert fetchers within one fetch_evidence
+        # call. Reset on every call: the Action re-checks a PR after new commits.
+        self._files: dict[str, list[Json]] = {}
 
     # ---- step 1 ------------------------------------------------------------------------------
 
@@ -119,6 +122,7 @@ class GitHubSource:
         """Fetch the requested evidence types; failures become stale types, not exceptions."""
         wanted = set(needed)
         result = EvidenceResult()
+        self._files = {}
         fetchers = {
             "pr_state": self._pr_state,
             "check_result": self._check_results,
@@ -167,10 +171,16 @@ class GitHubSource:
             )
         return records
 
+    def _pull_files(self, loaded: LoadedPullRequest) -> list[Json]:
+        key = str(loaded.ref)
+        if key not in self._files:
+            self._files[key] = self.client.get_paginated(
+                f"{self._base(loaded)}/pulls/{loaded.ref.number}/files", max_pages=30
+            )
+        return self._files[key]
+
     def _changed_files(self, loaded: LoadedPullRequest, _claims: Sequence[Claim]) -> list[Evidence]:
-        files = self.client.get_paginated(
-            f"{self._base(loaded)}/pulls/{loaded.ref.number}/files", max_pages=30
-        )
+        files = self._pull_files(loaded)
         now = self._clock()
         return [mappers.changed_file_evidence(file, now) for file in files]
 
@@ -197,11 +207,21 @@ class GitHubSource:
         pull = loaded.pull
         if not loaded.merged or not pull.get("merge_commit_sha"):
             return []
+        base = pull["base"]
+        default_branch = (base.get("repo") or {}).get("default_branch")
+        if default_branch and base["ref"] != default_branch:
+            # Merged into a feature or release branch (often deleted since): there is no
+            # meaningful branch to scan. coding.not_reverted reports NOT_DEFAULT_BRANCH.
+            return []
         merged_at = mappers.parse_time(pull["merged_at"])
         until = merged_at + REVERT_WINDOW if merged_at else None
-        params = {"sha": pull["base"]["ref"], "since": pull["merged_at"]}
+        params = {"sha": base["ref"], "since": pull["merged_at"]}
         if until is not None:
             params["until"] = until.isoformat().replace("+00:00", "Z")
+        # Only commits touching one of the PR's files: a full revert must touch it too.
+        path = mappers.revert_probe_path(self._pull_files(loaded))
+        if path:
+            params["path"] = path
         commits = self.client.get_paginated(
             f"{self._base(loaded)}/commits", params, max_pages=REVERT_MAX_PAGES
         )
@@ -211,6 +231,7 @@ class GitHubSource:
             loaded.ref.full_name,
             loaded.ref.number,
             self._clock(),
+            title=pull.get("title") or "",
         )
 
     def _deployments(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:

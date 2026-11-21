@@ -207,3 +207,24 @@ def test_pr_state_records_the_base_and_default_branch():
     )
     attributes = mappers.pr_state_evidence(feature, NOW).attributes
     assert (attributes["base_ref"], attributes["default_branch"]) == ("v1.0", "main")
+
+
+def test_reverts_by_title_after_a_squash_merge():
+    # Revert button + squash merge: the message may keep only the quoted title.
+    commits = [
+        commit("r1", "2026-11-21T10:00:00Z", 'Revert "Fix parser edge case" (#9)'),
+        commit("r2", "2026-11-21T11:00:00Z", 'Revert "Fix parser edge case (#7)" (#10)'),
+        commit("x1", "2026-11-21T12:00:00Z", 'Revert "Fix parser edge case in lexer" (#11)'),
+        commit("x2", "2026-11-21T13:00:00Z", 'Revert "Fix parser edge case (#70)"'),
+    ]
+    found = mappers.revert_evidence(
+        commits, "abc1234def56", "Octo/App", 7, NOW, title="Fix parser edge case"
+    )
+    assert [e.external_ref for e in found] == ["r1", "r2"]
+
+
+def test_revert_probe_path_avoids_busy_files():
+    files = [{"filename": "package-lock.json"}, {"filename": "src/z.ts"}, {"filename": "src/a.ts"}]
+    assert mappers.revert_probe_path(files) == "src/a.ts"
+    assert mappers.revert_probe_path([{"filename": "yarn.lock"}]) == "yarn.lock"
+    assert mappers.revert_probe_path([]) is None

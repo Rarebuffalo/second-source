@@ -33,7 +33,7 @@ Keeping the mappers pure means almost all logic is tested with JSON fixtures and
 | `check_result` | `GET /repos/{o}/{r}/commits/{ref}/check-runs?filter=latest` and `GET .../commits/{ref}/status` | 2 per referenced commit | `filter=latest` returns the newest run per job |
 | `changed_file` | `GET /repos/{o}/{r}/pulls/{n}/files` | 1+ | Paths and counts only; patches are discarded |
 | `issue_state` | `GET /repos/{repo}/issues/{n}` and `GET .../issues/{n}/events` | 2 per referenced issue | Events give the last `reopened` time |
-| `revert` | `GET /repos/{o}/{r}/commits?sha={base}&since={merged_at}` | 1–3 | Scans up to 300 commits after the merge |
+| `revert` | `GET /repos/{o}/{r}/commits?sha={base}&path={one changed file}&since={merged_at}&until={+30 days}` | 1 | Only commits touching one of the PR's files (a full revert must touch it); shares the PR file list with `changed_file`. Skipped for merges into a non-default branch |
 | `deployment_status` | `GET /repos/{o}/{r}/deployments?sha={ref}` and statuses | 1 + up to 5 | |
 
 Evidence is fetched **only for the record types the extracted claims need**
