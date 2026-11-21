@@ -60,6 +60,13 @@ Extraction is rule-based. v1 uses no AI model.
 6. Claim ids are deterministic: a hash of episode id, origin, type, span and position. The
    same PR always gives the same ids.
 
+7. Every rule has a stable name (for example `tests_pass.plain`, `command.marked`,
+   `fixes_issue.closing_ref`), recorded on the claim as `rule`. Rules whose precision held the
+   target on the golden set are listed in `packs/coding/trusted_rules.yaml`; their claims get
+   `confidence: high`, all others `confidence: low`. Reports label low-confidence claims, and
+   the benchmark leaves them out of its rates. `second-source bench rules` prints per-rule
+   precision, and `--select` regenerates the list.
+
 Precision matters more than recall. When unsure, do not create a claim. The golden set in
 `tests/packs/coding/golden/` measures both, per claim type, with targets of precision ≥ 95%
 and recall ≥ 90%.
