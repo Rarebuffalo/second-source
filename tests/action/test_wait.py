@@ -87,3 +87,10 @@ def test_settled_reports_return_immediately(fake_github):
     check, calls = make_check(fake_github, [runs("completed", "success")])
     wait_for_ci(check, budget_seconds=600, sleep=FakeTime().sleep, clock=lambda: 0.0)
     assert len(calls) == 1
+
+
+def test_an_existing_report_saves_the_first_check(fake_github):
+    check, calls = make_check(fake_github, [runs("completed", "success")])
+    first = check()
+    wait_for_ci(check, budget_seconds=600, sleep=FakeTime().sleep, clock=lambda: 0.0, first=first)
+    assert len(calls) == 1
