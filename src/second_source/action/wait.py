@@ -29,11 +29,15 @@ def wait_for_ci(
     on_update: Callable[[PullRequestReport], None] = lambda _report: None,
     sleep: Callable[[float], None] = time.sleep,
     clock: Callable[[], float] = time.monotonic,
+    first: PullRequestReport | None = None,
 ) -> PullRequestReport:
-    """Run ``check`` until CI has settled or the budget is spent; return the last report."""
+    """Run ``check`` until CI has settled or the budget is spent; return the last report.
+
+    ``first`` is a report the caller already has, which saves one check.
+    """
     deadline = clock() + budget_seconds
     pause = FIRST_PAUSE
-    report = check()
+    report = first if first is not None else check()
     while awaiting_ci(report):
         remaining = deadline - clock()
         if remaining <= 0:
