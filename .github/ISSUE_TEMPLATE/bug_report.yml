@@ -1,0 +1,29 @@
+name: Bug report
+description: Something crashed, errored or behaved unexpectedly (other than a wrong verdict).
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduce
+    attributes:
+      label: How to reproduce
+      description: The command you ran and, if possible, a public PR URL.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output or error
+      description: Never paste tokens. Second Source does not print them, but check before posting.
+      render: text
+  - type: input
+    id: env
+    attributes:
+      label: Version and environment
+      description: "`second-source --version`, Python version, OS."
