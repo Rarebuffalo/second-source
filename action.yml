@@ -1,0 +1,48 @@
+# Second Source GitHub Action (docs/action.md).
+#
+# A composite action: it installs uv, then runs `second-source action` from this repository's
+# own code. It never checks out or runs the pull request's code, which is why the recommended
+# workflow can safely use `pull_request_target` (fork PRs then get a token that can write
+# check runs). Do not add an actions/checkout step to the workflow that uses it.
+name: Second Source
+description: Check whether an AI coding agent's claims in a pull request are true, against CI, Git and issue evidence.
+author: Rarebuffalo
+branding:
+  icon: check-circle
+  color: green
+
+inputs:
+  github-token:
+    description: Token for reading the pull request and writing the check run.
+    default: ${{ github.token }}
+  wait-minutes:
+    description: How long to wait for CI before publishing (0 to 60). Use 0 on private repositories to save Actions minutes.
+    default: "10"
+  only-agents:
+    description: Skip pull requests with no detected coding agent.
+    default: "true"
+  fail-on-contradiction:
+    description: Make the check fail when a claim is contradicted (by default it is advice and never blocks a merge).
+    default: "false"
+  sweep-days:
+    description: How far back (in days) the scheduled sweep re-checks agent pull requests.
+    default: "30"
+
+runs:
+  using: composite
+  steps:
+    - name: Install uv
+      uses: astral-sh/setup-uv@v6
+      with:
+        enable-cache: true
+        cache-dependency-glob: ${{ github.action_path }}/uv.lock
+
+    - name: Check agent claims
+      shell: bash
+      env:
+        INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
+        INPUT_WAIT_MINUTES: ${{ inputs.wait-minutes }}
+        INPUT_ONLY_AGENTS: ${{ inputs.only-agents }}
+        INPUT_FAIL_ON_CONTRADICTION: ${{ inputs.fail-on-contradiction }}
+        INPUT_SWEEP_DAYS: ${{ inputs.sweep-days }}
+      run: uv run --frozen --no-dev --project "$GITHUB_ACTION_PATH" second-source action
