@@ -136,3 +136,15 @@ This keeps the promise "missing or weak evidence is never reported as contradict
   (now bounded to the durability window).
 - Until extraction precision meets the target, every "contradicted" result is checked by a
   person before publication.
+
+## 10. Confidence (after growing the golden set)
+
+- The golden set grew to 402 PRs (385/402 exact labeller agreement). Rules were scored one by
+  one; the 10 that fired at least 5 times on the dev split with precision ≥ 0.95 became
+  trusted, and claims they find are "high confidence".
+- On the untouched test split, high-confidence precision is 1.00 for FIXES_ISSUE and LINT_OK,
+  0.90 for TESTS_ADDED, 0.88 for TESTS_PASS and 0.83 for DOCS_UPDATED; no BUILD_OK rule
+  qualifies yet. Full table: `tests/packs/coding/golden/real/README.md`.
+- The benchmark therefore counts only high-confidence claims in its rates (low-confidence
+  claims are reported as a separate count), and every contradicted claim is still checked by a
+  person before publication, because even trusted rules are below 0.95 for some types.
