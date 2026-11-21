@@ -1,0 +1,9 @@
+Second Source
+Copyright 2026 The Second Source contributors
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This repository includes pull request texts from the AIDev dataset by Hao Li et al.
+(https://huggingface.co/datasets/hao-li/AIDev), licensed under the Creative Commons
+Attribution 4.0 International licence (CC-BY-4.0), in tests/packs/coding/golden/real/.
+Those texts remain under CC-BY-4.0; the labels added to them are part of this product.
