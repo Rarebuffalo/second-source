@@ -128,9 +128,13 @@ def texts_from_pull(
 
     # Title and body can be edited after the PR opens; what we read is their latest version.
     final_ref = head_sha if head_sha and head_sha != pr_ref else None
+    final_at = None
+    if final_ref:
+        head = next((commit for commit in commits if commit["sha"] == final_ref), None)
+        final_at = (_commit_time(head) if head else None) or opened_at
     texts = [
-        TextSource("title", pull.get("title") or "", opened_at, pr_ref, final_ref),
-        TextSource("body", pull.get("body") or "", opened_at, pr_ref, final_ref),
+        TextSource("title", pull.get("title") or "", opened_at, pr_ref, final_ref, final_at),
+        TextSource("body", pull.get("body") or "", opened_at, pr_ref, final_ref, final_at),
     ]
     for commit in commits:
         written_at = _commit_time(commit) or opened_at
@@ -172,6 +176,9 @@ def check_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidence:
                 "status": run.get("status"),
                 "conclusion": run.get("conclusion"),
                 "source": "check_run",
+                # The app that posted it (github-actions, a third-party CI, a bot). Recorded so
+                # expired Actions runs can be told apart from surviving third-party checks.
+                "app": (run.get("app") or {}).get("slug"),
             }
         ),
     )

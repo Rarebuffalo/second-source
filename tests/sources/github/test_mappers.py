@@ -82,6 +82,7 @@ def test_editable_texts_also_carry_the_final_head():
     texts = {t.origin: t for t in mappers.texts_from_pull(pull(), COMMITS, [])}
     # Body and title may have been edited after c2 was pushed, so both commits could be meant.
     assert (texts["body"].final_ref, texts["title"].final_ref) == ("c2", "c2")
+    assert texts["body"].final_at is not None  # c2's commit time: CI on it starts then
     commit_texts = [t for t in mappers.texts_from_pull(pull(), COMMITS, []) if t.origin == "commit"]
     assert all(t.final_ref is None for t in commit_texts)  # a commit message is exact
 

@@ -59,6 +59,7 @@ class TextSource:
     # For editable texts (title, body): the PR head when the text was read, if it differs from
     # ``ref``. The text may have been edited up to then, so either commit could be meant.
     final_ref: str | None = None
+    final_at: datetime | None = None  # when ``final_ref`` was committed (CI starts from then)
 
 
 # --------------------------------------------------------------------------------------------
@@ -742,7 +743,7 @@ def rule_hits(text: str, origin: str = "body") -> set[tuple[str, str]]:
 # the claim but ignored when deciding whether two claims are the same.
 # "Tests pass" and "tests pass locally" are one claim; the first statement made is kept.
 # "rule" records which extraction rule found the claim; it is not part of what was claimed.
-_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule", "confidence"})
+_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule", "confidence", "final_at"})
 
 
 def extract_claims(
@@ -763,6 +764,8 @@ def extract_claims(
                 attributes["ref"] = source.ref
             if claim_type in _SCOPED_TYPES and source.final_ref:
                 attributes["final_ref"] = source.final_ref
+                if source.final_at:
+                    attributes["final_at"] = source.final_at
             if claim_type == FIXES_ISSUE and repo and attributes["repo"] == repo.lower():
                 attributes["repo"] = ""
             attributes["confidence"] = confidence_of(claim_type, attributes["rule"], source.origin)

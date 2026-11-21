@@ -30,10 +30,12 @@
 # - CONTRADICTED needs matching jobs to fail on both commits, so the claim was false at every
 #   point we can see;
 # - a failure on only one of them is UNVERIFIABLE (CLAIM_COMMIT_AMBIGUOUS).
+# This is a heuristic: intermediate commits are not looked at, and the body may have been last
+# edited at one of them. It errs towards UNVERIFIABLE, never towards CONTRADICTED.
 # Claims with a single commit (commit messages, comments, PRs without later commits) behave as
 # before: `final_ref` is absent and both views are the same commit.
 id: coding.ci_result
-version: 1.4.0
+version: 1.5.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -62,17 +64,26 @@ derive:
   passed_count: "size(passed)"
   local: "has(claim.attributes.scope) && claim.attributes.scope == 'local'"
   subset: "has(claim.attributes.scope) && claim.attributes.scope == 'subset'"
-  deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
+  # Wait for CI from when the judged commit appeared: the final head may be much newer than
+  # the PR (a push to an old PR), and its CI starts only then.
+  started: "has(claim.attributes.final_at) ? claim.attributes.final_at : claim.made_at"
+  deadline: "started + duration(string(params.timeout_hours) + 'h')"
+  # Our own check run sits on the head commit too; it is not CI evidence.
+  ci_records: "checks.filter(c, c.name != 'Second Source')"
 outcomes:
   - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
+  # The final head's CI has not reported yet: wait rather than judge on the opening commit.
+  - when: "has(claim.attributes.final_ref) && (total == 0 || size(running) > 0) && now < deadline"
+    result: PENDING
+    reason: AWAITING_CI
   - {when: "failed_somewhere && local", result: UNVERIFIABLE, reason: CI_FAILED_LOCAL_CLAIM}
   - {when: "failed_somewhere && subset", result: UNVERIFIABLE, reason: CI_FAILED_SUBSET_CLAIM}
   - {when: "failed_everywhere", result: CONTRADICTED, reason: CI_JOB_FAILED}
   - {when: "failed_somewhere", result: UNVERIFIABLE, reason: CLAIM_COMMIT_AMBIGUOUS}
   # CI may not have started yet, or may still be running.
   - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}
-  - {when: "size(checks) == 0", result: UNVERIFIABLE, reason: NO_CI_RECORDS}
+  - {when: "size(ci_records) == 0", result: UNVERIFIABLE, reason: NO_CI_RECORDS}
   - {when: "size(relevant) == 0", result: UNVERIFIABLE, reason: NO_MATCHING_CI_JOBS}
   - {when: "size(running) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}
   - {when: "passed_count == 0", result: UNVERIFIABLE, reason: NO_CI_RESULTS}

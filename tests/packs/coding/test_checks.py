@@ -233,6 +233,19 @@ def test_body_claims_with_a_final_head(engine, evidence, expected, reason):
     assert (result.result, result.reasons) == (expected, (reason,))
 
 
+def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
+    # Code review M4: the PR opened long ago (made_at = T0) but the final head was pushed
+    # recently; its CI has not reported, so the claim waits instead of being judged on `ref`.
+    pushed = claim(TESTS_PASS, ref=SHA, final_ref=FINAL, final_at=T0 + timedelta(hours=20))
+    result = verdict(engine, pushed, [check_result("pytest", "failure")], hours=21)
+    assert (result.result, result.reasons) == (Result.PENDING, ("AWAITING_CI",))
+
+
+def test_our_own_check_run_is_not_ci_evidence(engine):
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("Second Source")], hours=12)
+    assert result.reasons == ("NO_CI_RECORDS",)
+
+
 def test_missing_commit_reference_is_unverifiable(engine):
     result = verdict(engine, claim(TESTS_PASS), [check_result("pytest")])
     assert result.reasons == ("NO_COMMIT_REFERENCE",)
