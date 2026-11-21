@@ -83,6 +83,11 @@ def pr_state_evidence(pull: Json, observed_at: datetime) -> Evidence:
                 "merged": merged,
                 "merged_at": parse_time(pull.get("merged_at")),
                 "merge_sha": pull.get("merge_commit_sha") if merged else None,
+                # GitHub closes linked issues only for merges into the default branch.
+                "base_ref": (pull.get("base") or {}).get("ref"),
+                "default_branch": ((pull.get("base") or {}).get("repo") or {}).get(
+                    "default_branch"
+                ),
             }
         ),
     )

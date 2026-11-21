@@ -1,7 +1,9 @@
 # L5: "Fixes #123" stays true — the issue is not reopened within a window after the merge.
 # Repository names are compared case-insensitively (same_repo).
+# An issue that is open (never closed) after a merge into a non-default branch is expected:
+# GitHub only auto-closes issues for default-branch merges (see fixes_issue.yaml).
 id: coding.fixes_issue_durable
-version: 1.1.0
+version: 1.2.0
 kind: temporal
 level: L5
 applies_to: [FIXES_ISSUE]
@@ -18,6 +20,8 @@ evidence:
 derive:
   merge_times: "prs.filter(p, p.merged && has(p.merged_at)).map(p, p.merged_at)"
   window: "duration(string(params.window_days * 24) + 'h')"
+  other_branch: >-
+    prs.exists(p, has(p.base_ref) && has(p.default_branch) && p.base_ref != p.default_branch)
 outcomes:
   - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NOT_MERGED}
@@ -25,6 +29,7 @@ outcomes:
   - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0])"
     result: CONTRADICTED
     reason: ISSUE_REOPENED
+  - {when: "issues.exists(i, i.state == 'open') && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
   - {when: "issues.exists(i, i.state == 'open')", result: CONTRADICTED, reason: ISSUE_OPEN}
   - {when: "now < merge_times[0] + window", result: PENDING, reason: IN_WINDOW}
   - {otherwise: true, result: VERIFIED, reason: ISSUE_STAYED_CLOSED}

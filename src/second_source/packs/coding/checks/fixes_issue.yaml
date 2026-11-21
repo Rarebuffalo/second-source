@@ -4,8 +4,11 @@
 # Repository names are compared case-insensitively (same_repo).
 # An issue that was already closed before the merge proves nothing about this PR, so it is
 # UNVERIFIABLE rather than VERIFIED.
+# GitHub closes linked issues automatically only when a PR merges into the default branch. An
+# issue still open after a merge into another branch (a feature or release branch) is expected,
+# so it is UNVERIFIABLE (NOT_DEFAULT_BRANCH), not CONTRADICTED.
 id: coding.fixes_issue
-version: 1.1.0
+version: 1.2.0
 kind: state
 level: L4
 applies_to: [FIXES_ISSUE]
@@ -26,6 +29,8 @@ derive:
   closed_unmerged: "prs.exists(p, p.state == 'closed' && !p.merged)"
   merge_times: "prs.filter(p, p.merged && has(p.merged_at)).map(p, p.merged_at)"
   issue_open: "issues.exists(i, i.state == 'open')"
+  other_branch: >-
+    prs.exists(p, has(p.base_ref) && has(p.default_branch) && p.base_ref != p.default_branch)
   tolerance: "duration(string(params.tolerance_minutes) + 'm')"
 outcomes:
   - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
@@ -35,6 +40,7 @@ outcomes:
   - {when: "!merged", result: PENDING, reason: NOT_MERGED_YET}
   - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NO_MERGE_TIME}
   - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
+  - {when: "issue_open && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
   - {when: "issue_open", result: CONTRADICTED, reason: ISSUE_STILL_OPEN}
   - when: "issues.exists(i, has(i.closed_at) && i.closed_at >= merge_times[0] - tolerance)"
     result: VERIFIED

@@ -71,8 +71,10 @@ def changed_file(path, status="modified", additions=5):
     )
 
 
-def pr_state(*, merged, state="closed", merged_at=T0 + timedelta(hours=1), merge_sha="m1"):
-    attributes = {"state": state, "merged": merged}
+def pr_state(
+    *, merged, state="closed", merged_at=T0 + timedelta(hours=1), merge_sha="m1", base="main"
+):
+    attributes = {"state": state, "merged": merged, "base_ref": base, "default_branch": "main"}
     if merged:
         attributes.update(merged_at=merged_at, merge_sha=merge_sha)
     return Evidence("pr_state", "7", T0 + timedelta(hours=2), attributes)
@@ -284,6 +286,17 @@ def test_fixes_issue_still_open_after_merge(engine):
     result = verdict(engine, fixes_claim(), [pr_state(merged=True), issue_state(state="open")])
     assert result.result is Result.CONTRADICTED
     assert "ISSUE_STILL_OPEN" in result.reasons
+
+
+def test_fixes_issue_open_after_merge_into_another_branch_is_unverifiable(engine):
+    # GitHub only auto-closes linked issues for merges into the default branch.
+    evidence = [pr_state(merged=True, base="feature/x"), issue_state(state="open")]
+    result = verdict(engine, fixes_claim(), evidence)
+    assert runs_by_check(result)["coding.fixes_issue"] == (
+        Result.UNVERIFIABLE,
+        "NOT_DEFAULT_BRANCH",
+    )
+    assert result.result is not Result.CONTRADICTED
 
 
 def test_fixes_issue_reopened_after_merge(engine):

@@ -61,12 +61,13 @@ def test_pr_state_for_merged_and_open_pulls():
         "merged": True,
         "merged_at": datetime(2026, 11, 20, 12, tzinfo=UTC),
         "merge_sha": "m123",
+        "base_ref": "main",
     }
     still_open = mappers.pr_state_evidence(
         pull(state="open", merged_at=None, closed_at=None, merge_commit_sha="test-merge"), NOW
     )
     # GitHub fills merge_commit_sha with a test merge for open PRs; it must not leak in.
-    assert still_open.attributes == {"state": "open", "merged": False}
+    assert still_open.attributes == {"state": "open", "merged": False, "base_ref": "main"}
 
 
 # ---- texts and refs --------------------------------------------------------------------------
@@ -198,3 +199,11 @@ def test_deployment_uses_latest_status_and_lower_case_environment():
 def test_parse_time():
     assert mappers.parse_time("2026-11-20T09:00:00Z") == datetime(2026, 11, 20, 9, tzinfo=UTC)
     assert mappers.parse_time(None) is None
+
+
+def test_pr_state_records_the_base_and_default_branch():
+    feature = pull(
+        base={"ref": "v1.0", "repo": {"full_name": "Octo/App", "default_branch": "main"}}
+    )
+    attributes = mappers.pr_state_evidence(feature, NOW).attributes
+    assert (attributes["base_ref"], attributes["default_branch"]) == ("v1.0", "main")
