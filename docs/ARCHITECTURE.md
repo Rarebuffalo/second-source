@@ -223,6 +223,7 @@ A pack is a directory containing:
 
 ## 9. Open-source project hygiene
 
+- Licence: Apache-2.0 (`LICENSE`), with third-party attributions in `NOTICE`.
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and issue and PR templates.
 - Semantic versioning for the package, the Action (`v1` major tag) and each pack.
 - Every change is a small, focused commit; `scripts/check.sh` must pass before each one.
@@ -242,6 +243,5 @@ Each step is committed as its own commit, one file per commit where possible.
 
 ## 11. Open decisions
 
-- Licence.
 - Docker vs composite Action (start with composite plus `uv` for speed; measure).
 - Whether the benchmark site lives in this repo or a separate one.
