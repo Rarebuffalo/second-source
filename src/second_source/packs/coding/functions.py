@@ -93,11 +93,20 @@ _TEST_PATH = re.compile(
     r"|\.(test|spec)\.[cm]?[jt]sx?$"  # x.test.ts, x.spec.jsx, x.test.mjs
     r"|(test|tests|spec)\.(java|kt|cs|scala|swift)$"  # FooTest.java, FooSpec.scala
     r"|_spec\.rb$"  # RSpec
+    r"|(^|/)[^/]*[._-]tests?/"  # .NET Foo.Tests/, unit-tests/, integration_tests/
+    r"|(^|/)(e2e|cypress|playwright)/"  # end-to-end suites
+    r"|_(unit)?tests?\.[a-z]+$"  # foo_unittest.cc, foo_test.rs, foo_tests.rs
+    r"|\.cy\.[cm]?[jt]sx?$"  # Cypress: x.cy.ts
+    r"|\.slt$"  # sqllogictest files
 )
 _DOC_PATH = re.compile(
     r"(^|/)(docs?|documentation)/"  # documentation directories
     r"|(^|/)(readme|changelog|contributing)(\.[a-z]+)?$"  # top-level project docs
     r"|\.(md|mdx|rst|adoc)$"  # documentation formats
+    # Changelog fragments (towncrier, changesets, per-PR entry files) are changelog entries,
+    # which count as documentation (golden-set guide, rule 12).
+    r"|(^|/)\.?(changelogs?|changes|newsfragments|changelog\.d|changeset)/"
+    r"|(^|/)changelog_entry\.ya?ml$"
 )
 
 
