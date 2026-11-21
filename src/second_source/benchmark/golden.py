@@ -20,6 +20,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
+from second_source.benchmark.aidev import repo_of
 from second_source.benchmark.stats import wilson_interval
 from second_source.packs.coding.extract import HIGH, TextSource, extract_claims, rule_hits
 
@@ -40,10 +41,14 @@ class GoldenCase:
     agent: str = ""
     notes: str = ""
     origin: str = "body"  # "body" or "commit": which kind of text was labelled
+    # "url" (the original set) or "repo": hash the repository, so a repository's PRs, and a PR's
+    # body and commit messages, always land in the same split.
+    split_by: str = "url"
 
     @property
     def split(self) -> str:
-        return split_for(self.name)
+        url = self.name.split("#", 1)[0]  # "<pr url>#commit-2" belongs with its PR
+        return split_for(repo_of(url) if self.split_by == "repo" else url)
 
 
 @dataclass
@@ -141,6 +146,7 @@ def _case(record: dict[str, Any]) -> GoldenCase:
         agent=record.get("agent", ""),
         notes=record.get("notes", ""),
         origin=record.get("origin", "body"),
+        split_by=record.get("split_by", "url"),
     )
 
 

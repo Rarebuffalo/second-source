@@ -139,3 +139,15 @@ def test_commit_message_cases_are_scored_as_commit_text(tmp_path):
     # ...but outside PR bodies no rule is trusted yet, so nothing is high confidence.
     high = score([case], high_only=True).per_type["TESTS_PASS"]
     assert (high.true_positive, high.false_negative) == (0, 1)
+
+
+def test_repo_split_keeps_a_repository_and_its_commit_items_together():
+    def case(name, split_by):
+        return GoldenCase(name=name, text="", expected=(), split_by=split_by)
+
+    names = [f"https://github.com/o/r/pull/{n}" for n in range(40)]
+    by_repo = {case(name, "repo").split for name in names}
+    assert len(by_repo) == 1  # one repository, one split
+    body = case("https://github.com/o/x/pull/3", "url")
+    commit = case("https://github.com/o/x/pull/3#commit-2", "url")
+    assert body.split == commit.split  # a PR's commit items follow the PR
