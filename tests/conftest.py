@@ -87,6 +87,9 @@ class FakeGitHub:
     """Serves ROUTES (plus overrides); unknown paths return 404. Records requested paths and the
     full requests (for tests that check query parameters)."""
 
+    # Exposed for tests that tweak one response (tests cannot import conftest directly).
+    BASE_ROUTES = ROUTES
+
     def __init__(self, overrides=None):
         self.routes = {**ROUTES, **(overrides or {})}
         self.requested = []
