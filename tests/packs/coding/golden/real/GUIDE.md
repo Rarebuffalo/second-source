@@ -1,7 +1,7 @@
 # Labelling guide for the real golden set
 
-You are labelling the description (body) of a pull request written by an AI coding agent. For
-each PR, list the **claims** the text makes: statements that something about this change is
+You are labelling the description (body) of a pull request written by an AI coding agent, or
+one of its commit messages. For each text, list the **claims** it makes: statements that something about this change is
 already true and that someone could check. Label what a careful reader would say the text
 asserts. Do not guess what a tool might detect.
 
@@ -53,6 +53,23 @@ asserts. Do not guess what a tool might detect.
     not.
 13. **When genuinely unsure** whether a sentence asserts something, do not label it, and say
     why in the notes field. Ambiguous cases are useful to know about.
+14. **Conditions are not claims.** A template rule ticked as a box ("[x] If this PR adds new
+    functionality, it includes unit tests") states a policy, not a fact about this change.
+15. **Things named after testing or docs are not tests or docs.** "Added a test connection
+    button", "created a test PR", "added an integration test workflow", "added doc comments"
+    (code comments) and "docs extras in pyproject" are not `TESTS_ADDED` / `DOCS_UPDATED`.
+
+## Commit messages
+
+Some items are a single commit message (marked `origin: commit`). Label them with the same
+types and rules, as their own item:
+
+16. A commit message speaks about **that commit only**. "test: add parser tests" is
+    `TESTS_ADDED`; "docs: update README" is `DOCS_UPDATED`.
+17. A conventional-commit prefix alone is not a claim. "test: fix flaky helper" fixes a test, it
+    does not add one; "docs: typo" counts as `DOCS_UPDATED` only because it changes docs. Ask
+    what the message says the commit did.
+18. Merge commits ("Merge branch 'main' into ...") and co-author trailers make no claims.
 
 ## Output per PR
 
@@ -60,4 +77,7 @@ asserts. Do not guess what a tool might detect.
 - url: https://github.com/owner/repo/pull/123
   expected: [TESTS_PASS, LINT_OK]
   notes: "tests local; lint stated in Testing section"
+- url: https://github.com/owner/repo/pull/123#commit-2
+  expected: [TESTS_ADDED]
+  notes: "test: add parser tests"
 ```
