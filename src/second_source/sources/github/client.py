@@ -6,6 +6,7 @@ Responsibilities:
 - follow pagination (``Link: <...>; rel="next"``) up to a caller-chosen page limit;
 - reuse cached responses with ETags (``If-None-Match`` → ``304 Not Modified``);
 - detect rate limiting and raise ``RateLimited`` instead of retrying forever;
+- send write requests (POST, PATCH) for the GitHub Action's check runs and comments;
 - retry transient failures (5xx, network errors) a couple of times with backoff.
 
 Everything that varies (HTTP transport, cache, sleep) is injectable so tests never touch the
@@ -141,7 +142,41 @@ class GitHubClient:
                 return items
         raise PageLimitReached(200, path, f"(more than {max_pages} pages)")
 
+    def post(self, path: str, body: dict[str, Any]) -> Any:
+        """Create a resource. Not retried: a repeated POST could create a duplicate."""
+        return self._write("POST", path, body, retry=False)
+
+    def patch(self, path: str, body: dict[str, Any]) -> Any:
+        """Update a resource. Retried on transient failures, because PATCH is idempotent."""
+        return self._write("PATCH", path, body, retry=True)
+
     # ---- internals ---------------------------------------------------------------------------
+
+    def _write(self, method: str, path: str, body: dict[str, Any], *, retry: bool) -> Any:
+        """Send a write request (never cached) and return the JSON response, if any."""
+        attempts = self._retries + 1 if retry else 1
+        for attempt in range(attempts):
+            try:
+                response = self._http.request(method, path, json=body)
+            except httpx.TransportError as error:
+                if attempt == attempts - 1:
+                    raise GitHubError(0, path, f"network error: {error}") from error
+                self._sleep(2**attempt)
+                continue
+            self.stats.requests += 1
+            if response.status_code in (200, 201):
+                return response.json()
+            if response.status_code == 204:
+                return None
+            if response.status_code == 404:
+                raise NotFound(404, path)
+            if _is_rate_limited(response):
+                raise RateLimited(response.status_code, path, "(rate limit exhausted)")
+            if response.status_code >= 500 and attempt < attempts - 1:
+                self._sleep(2**attempt)
+                continue
+            raise GitHubError(response.status_code, path)
+        raise AssertionError("unreachable")  # the loop always returns or raises
 
     def _url(self, path: str, params: dict[str, Any] | None) -> str:
         request = self._http.build_request("GET", path, params=params)
