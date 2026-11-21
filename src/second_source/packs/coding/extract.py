@@ -439,18 +439,27 @@ _LOCAL_SCOPE = re.compile(
 _SCOPED_TYPES = frozenset({TESTS_PASS, BUILD_OK, LINT_OK})
 
 # A claim about part of the checks: "targeted tests pass", "unit tests for the importer pass",
-# "the 19 new tests pass". CI can corroborate it, but an unrelated failing job (an E2E suite, a
+# "the 12 new tests pass". CI can corroborate it, but an unrelated failing job (an E2E suite, a
 # different package in a monorepo) does not make it false, so it gets ``scope=subset``.
+# "Unit"/"integration"/"e2e" stay subsets even with "all": CI job names cannot be told apart
+# reliably (a failing "test" job may be the E2E suite). A count or "new" is a subset unless the
+# text says "all" ("All 120 tests pass") or "new and existing".
 _SUBSET_SCOPE = re.compile(
-    r"\b(targeted|relevant|affected|specific|selected|focused|new|unit|integration|e2e|"
-    r"end-to-end|smoke|\d+)\s+(?:[\w-]+\s+){0,2}?tests?\b"
-    r"|\btests?\s+(for|in|of|under|covering)\b"
+    r"\b(targeted|relevant|affected|specific|selected|focused|unit|integration|e2e|"
+    r"end-to-end|smoke)\s+(?:[\w-]+\s+){0,2}?tests?\b"
+    r"|(?<!\ball\s)(?<!\band\s)(?<![\d,])\b(new|\d[\d,]*)\s+(?!and\s+existing\b)(?:[\w-]+\s+){0,2}?tests?\b"
+    r"|\btests?\s+(for|of|under|covering)\b"
 )
-# Command arguments that select part of a suite: paths, test ids, filters, packages.
+# Command arguments that select part of a suite: paths, test ids, filters, packages. Arguments
+# that mean "everything" ("go test ./...", "--workspace", "--all") are not selectors.
 _SELECTOR_ARGUMENT = re.compile(
     r"/|::|\.(py|[cm]?[jt]sx?|go|rs|rb|java|kt|cs)\b|^-(k|t|p)$|^--(filter|package|testnamepattern|"
-    r"grep|project|workspace|scope)\b|^-[a-z]*k$"
+    r"grep|project|scope)\b|^-[a-z]*k$"
 )
+_WHOLE_SUITE_ARGUMENT = re.compile(r"^(\./\.\.\.|\.\.\.|\.|\./|--workspace|--all|-r|--recursive)$")
+# Script runners run the project's own lint script ("npm run lint"); a tool named directly
+# ("biome lint", "ruff check .") is one linter among possibly several CI lint jobs.
+_SCRIPT_RUNNERS = frozenset({"npm", "pnpm", "yarn", "bun", "make", "just", "task", "npx"})
 
 
 def scope_of(clause: str, heading: str) -> str | None:
@@ -468,10 +477,13 @@ def command_scope(command: str) -> str | None:
     "pytest tests/test_parser.py" checks one file; "biome lint" checks one linter. Either can
     pass while another CI job of the same kind fails.
     """
-    if is_lint_check(command):
+    words = command.lower().split()
+    if not words:
+        return None
+    if is_lint_check(command) and words[0] not in _SCRIPT_RUNNERS:
         return "subset"
-    words = command.lower().split()[1:]
-    return "subset" if any(_SELECTOR_ARGUMENT.search(word) for word in words) else None
+    arguments = [word for word in words[1:] if not _WHOLE_SUITE_ARGUMENT.match(word)]
+    return "subset" if any(_SELECTOR_ARGUMENT.search(word) for word in arguments) else None
 
 
 def is_local(*texts: str) -> bool:

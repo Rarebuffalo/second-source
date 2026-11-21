@@ -199,8 +199,14 @@ def test_claims_about_part_of_the_tests_have_subset_scope(text):
         ("pytest -k parser", "subset"),
         ("pnpm test --filter web", "subset"),
         ("biome lint", "subset"),  # one named linter
+        ("ruff check .", "subset"),
         ("pytest -q", None),
         ("npm test", None),
+        # whole-suite forms (code review M2)
+        ("go test ./...", None),
+        ("cargo test --workspace", None),
+        ("npm run lint", None),  # the project's own lint script
+        ("pnpm lint", None),
     ],
 )
 def test_command_scope(command, scope):
@@ -589,3 +595,18 @@ def test_local_beats_subset_when_statements_disagree():
 def test_a_condition_word_does_not_hide_an_issue_reference(text):
     # Code review M1: "if" describes the issue's subject here, not a hedge on "Fixes".
     assert types(text) == [FIXES_ISSUE]
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "All 120 tests pass.",
+        "All 1,234 tests pass.",
+        "All new and existing tests pass.",
+        "All tests in CI pass.",
+        "All tests pass.",
+    ],
+)
+def test_claims_about_the_whole_suite_have_no_scope(text):
+    (claim,) = [c for c in extract_claims("pr-1", [body(text)]) if c.type == TESTS_PASS]
+    assert "scope" not in claim.attributes
