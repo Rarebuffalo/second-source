@@ -9,6 +9,9 @@ Design points:
 - **Rate limits stop the run cleanly.** A PR whose checking was cut short by the rate limit is
   *not* recorded (its verdicts would be unverifiable only for lack of quota); it is retried on
   the next run.
+- **Evidence is kept.** Each result stores a compact snapshot of the evidence records its
+  verdicts came from (check names and conclusions, changed paths, issue states). GitHub deletes
+  old workflow runs, so without it a published verdict could not be audited a year later.
 - **Errors are recorded, not fatal.** A deleted PR or a broken URL becomes an error record, so
   one bad row never blocks a run, and the summary can count them.
 - **Only permanent errors are final.** A deleted PR (``not_found``) or an invalid URL will not
@@ -28,12 +31,12 @@ from typing import Any
 
 from second_source.benchmark.aidev import AidevPullRequest
 from second_source.pipeline import check_pull_request
-from second_source.report.render import to_json
+from second_source.report.render import evidence_snapshot, to_json
 from second_source.sources.github.client import GitHubError, RateLimited
 from second_source.sources.github.source import GitHubSource, PullRequestNotFound
 from second_source.sources.github.urls import parse_pull_request
 
-RESULT_SCHEMA_VERSION = "1"
+RESULT_SCHEMA_VERSION = "2"  # 2: adds the evidence snapshot
 
 
 @dataclass
@@ -126,7 +129,7 @@ def _check_one(
         return {**base, "error": f"github: {error}"}, None
     if report.rate_limited:
         return base, "GitHub rate limit reached"
-    return {**base, "report": to_json(report)}, None
+    return {**base, "report": to_json(report), "evidence": evidence_snapshot(report)}, None
 
 
 def read_results(path: Path) -> list[dict[str, Any]]:

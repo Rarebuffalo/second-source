@@ -15,7 +15,7 @@ from datetime import UTC, datetime
 from functools import lru_cache
 
 from second_source.core.engine import Engine
-from second_source.core.model import Claim, Episode, Verdict
+from second_source.core.model import Claim, Episode, Evidence, Verdict
 from second_source.packs import coding
 from second_source.packs.coding.detection import AgentMatch, detect_agent
 from second_source.packs.coding.extract import extract_claims, merge_claim
@@ -40,6 +40,7 @@ class PullRequestReport:
     rate_limited: bool = False  # evidence fetching stopped at the rate limit (see stale)
     head_sha: str = ""  # the PR's head commit, where the GitHub Action attaches its check run
     labels: tuple[str, ...] = ()  # PR labels (the Action records disputes as a label)
+    evidence: tuple[Evidence, ...] = ()  # the records the verdicts were computed from
 
     def verdict_for(self, claim: Claim) -> Verdict:
         return next(v for v in self.verdicts if v.claim_id == claim.id)
@@ -93,4 +94,5 @@ def check_pull_request(
         rate_limited=evidence.rate_limited,
         head_sha=(loaded.pull.get("head") or {}).get("sha", ""),
         labels=tuple(label["name"] for label in loaded.pull.get("labels", [])),
+        evidence=tuple(evidence.records),
     )

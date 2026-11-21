@@ -95,7 +95,10 @@ This keeps the promise "missing or weak evidence is never reported as contradict
 - **Cheap:** the on-disk ETag cache is on, so re-runs cost almost no rate limit. With a token,
   GitHub allows 5,000 requests per hour, which is roughly 800–1,200 PRs per hour.
 - Records per PR: agent (dataset label and our detection), every claim with verdict, reasons and
-  check ids, stale evidence types, API requests, and the time checked. No tokens, no patches.
+  check ids, stale evidence types, API requests, and the time checked, plus a compact
+  **evidence snapshot** (check names and conclusions, changed paths, issue states, revert
+  matches). GitHub deletes old workflow runs, so the snapshot keeps every published verdict
+  auditable after the live data is gone. No tokens, no patches.
 
 ## 6. Statistics
 

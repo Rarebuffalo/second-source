@@ -1,5 +1,6 @@
 """Tests for the resumable batch runner (benchmark/runner.py) against the shared fake GitHub."""
 
+import json
 from datetime import UTC, datetime
 
 import httpx
@@ -97,3 +98,18 @@ def test_permanent_errors_are_not_retried(fake_github, tmp_path):
     run(fake_github(), [pull(MISSING), pull("not a url")], out)
     summary = run(fake_github(), [pull(MISSING), pull("not a url")], out)
     assert (summary.skipped, summary.checked, summary.errors) == (2, 0, 0)
+
+
+def test_results_keep_an_evidence_snapshot(fake_github, tmp_path):
+    out = tmp_path / "results.jsonl"
+    run(fake_github(), [pull(GOOD)], out)
+    (record,) = read_results(out)
+    assert record["schema_version"] == "2"
+    by_type = {}
+    for item in record["evidence"]:
+        by_type.setdefault(item["type"], []).append(item)
+    jobs = {item["attributes"]["name"] for item in by_type["check_result"]}
+    assert {"pytest", "ruff"} <= jobs
+    paths = {item["attributes"]["path"] for item in by_type["changed_file"]}
+    assert "tests/test_parser.py" in paths
+    json.dumps(record)  # everything is JSON-safe (datetimes as ISO strings)

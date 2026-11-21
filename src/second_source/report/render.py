@@ -233,6 +233,25 @@ def to_json(report: PullRequestReport) -> dict[str, Any]:
     }
 
 
+def evidence_snapshot(report: PullRequestReport) -> list[dict[str, Any]]:
+    """The evidence records behind the verdicts, JSON-safe and compact.
+
+    Stored with benchmark results so a verdict stays auditable after GitHub deletes the source
+    data (old workflow runs expire; repositories get deleted or renamed).
+    """
+    snapshot = []
+    for record in report.evidence:
+        item: dict[str, Any] = {
+            "type": record.record_type,
+            "ref": record.external_ref,
+            "attributes": {key: _plain(value) for key, value in record.attributes.items()},
+        }
+        if record.occurred_at is not None:
+            item["occurred_at"] = record.occurred_at.isoformat()
+        snapshot.append(item)
+    return snapshot
+
+
 def _plain(value: Any) -> Any:
     """Make attribute values JSON-safe (datetimes become ISO strings)."""
     return value.isoformat() if hasattr(value, "isoformat") else value
