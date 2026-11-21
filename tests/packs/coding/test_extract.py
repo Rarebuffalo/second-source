@@ -501,14 +501,14 @@ def test_a_commit_claim_repeated_in_the_body_becomes_high_confidence():
     commit = body("Tests pass.", origin="commit", at=T0)
     pr_body = body("Tests pass.", at=T0 + timedelta(minutes=5))
     (claim,) = extract_claims("pr-1", [commit, pr_body])
-    assert claim.origin == "commit"  # the earliest statement is kept
     assert claim.attributes["confidence"] == "high"
+    assert claim.origin == "body"  # the trusted statement is the one quoted
 
 
 def test_a_repeated_claim_is_upgraded_when_a_trusted_rule_finds_it():
     text = "Verified with the existing unit tests.\n\nAll tests pass."
     (claim,) = extract_claims("pr-1", [body(text)])
-    assert claim.span == "Verified with the existing unit tests."  # earliest statement kept
+    assert claim.span == "All tests pass."  # the trusted statement replaces the earlier one
     assert (claim.attributes["rule"], claim.attributes["confidence"]) == (
         "tests_pass.plain",
         "high",
@@ -561,3 +561,23 @@ def test_ci_claims_from_editable_texts_carry_the_final_head():
         "c2",
     )
     assert "final_ref" not in claims[FIXES_ISSUE].attributes
+
+
+def test_a_repeated_claim_keeps_the_most_protective_scope():
+    # Review H1: the body's subset claim must not merge into the commit's unscoped one.
+    commit = body("Fix parser. Tests pass.", origin="commit", at=T0)
+    pr_body = body("Targeted tests pass.", at=T0 + timedelta(minutes=5))
+    (claim,) = extract_claims("pr-1", [commit, pr_body])
+    assert claim.attributes["scope"] == "subset"
+    assert (claim.attributes["confidence"], claim.span) == ("high", "Targeted tests pass.")
+
+
+def test_a_command_keeps_its_scope_when_prose_in_the_sentence_also_matches():
+    (claim,) = extract_claims("pr-1", [body("Lint checks passing (`biome lint`).")])
+    assert claim.type == LINT_OK and claim.attributes["scope"] == "subset"
+
+
+def test_local_beats_subset_when_statements_disagree():
+    text = "Targeted tests pass.\n\nAll tests pass locally."
+    (claim,) = extract_claims("pr-1", [body(text)])
+    assert claim.attributes["scope"] == "local"

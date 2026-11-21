@@ -582,7 +582,7 @@ _KNOWN_RUNNERS = frozenset(
         "go", "cargo", "make", "just", "mvn", "gradle", "./gradlew", "gradlew", "dotnet",
         "bundle", "rake", "rspec", "mix", "ruff", "eslint", "flake8", "pylint", "mypy", "black",
         "prettier", "tsc", "golangci-lint", "pre-commit", "bazel", "swift", "xcodebuild",
-        "composer", "phpunit",
+        "composer", "phpunit", "biome", "oxlint", "pyright", "rubocop", "stylelint",
     }
 )  # fmt: skip
 
@@ -745,12 +745,7 @@ def extract_claims(
             substance = {k: v for k, v in attributes.items() if k not in _DESCRIPTIVE_ATTRIBUTES}
             key = sha256_hex([episode_id, claim_type, substance])
             if key in seen:
-                # Same claim said again. Keep the earliest statement, but if a trusted rule
-                # found it this time, the claim has earned high confidence.
-                kept = claims[seen[key]]
-                if attributes["confidence"] == HIGH and kept.attributes["confidence"] == LOW:
-                    upgraded = {**kept.attributes, "rule": attributes["rule"], "confidence": HIGH}
-                    claims[seen[key]] = replace(kept, attributes=upgraded)
+                claims[seen[key]] = _merge_statement(claims[seen[key]], attributes, source, span)
                 continue
             seen[key] = len(claims)
             claims.append(
@@ -765,6 +760,40 @@ def extract_claims(
                 )
             )
     return claims
+
+
+# Narrower scopes protect a claim from contradiction; when statements disagree, the most
+# protective one wins ("local" > "subset" > none).
+_SCOPE_RANK = {"local": 2, "subset": 1}
+
+
+def _merge_statement(
+    kept: Claim, attributes: dict[str, Any], source: TextSource, span: str
+) -> Claim:
+    """Fold a repeated statement of the same claim into the claim already kept.
+
+    - **Scope:** the most protective scope of all statements is kept. "Targeted tests pass" in
+      the body must not lose its ``subset`` scope because a commit said "tests pass" first,
+      and a ✅ `pnpm lint` command keeps its scope when prose in the same sentence also matched.
+    - **Trust:** if this statement was found by a trusted rule and the kept one was not, the
+      claim becomes high confidence, and the trusted statement (its span, origin and time)
+      replaces the kept one, so a report quotes the text that earned the trust.
+    """
+    merged = dict(kept.attributes)
+    scopes = [kept.attributes.get("scope"), attributes.get("scope")]
+    scope = max(scopes, key=lambda value: _SCOPE_RANK.get(value or "", 0))
+    if scope:
+        merged["scope"] = scope
+    if attributes["confidence"] == HIGH and kept.attributes["confidence"] == LOW:
+        merged.update(rule=attributes["rule"], confidence=HIGH)
+        return replace(
+            kept,
+            attributes=merged,
+            origin=source.origin,
+            made_at=source.written_at,
+            span=span[:MAX_SPAN],
+        )
+    return replace(kept, attributes=merged)
 
 
 def merge_claim(episode_id: str, merged_at: datetime, merge_sha: str) -> Claim:
