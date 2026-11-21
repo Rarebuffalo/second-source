@@ -48,6 +48,13 @@ failing CI contradicts them. (See docs/benchmark.md, section 4.)
 `MERGE_HOLDS` is an implicit claim: merging a PR asserts that the change is good. Making it
 a claim lets the L5 "stayed true" checks use the same engine as everything else.
 
+**Merges into a non-default branch.** GitHub closes linked issues only for merges into the
+default branch, and a feature branch may be deleted later, so `FIXES_ISSUE` (issue still open)
+and `MERGE_HOLDS` (revert scan) give `UNVERIFIABLE` with reason `NOT_DEFAULT_BRANCH` for those
+PRs. Known cost: a repository that renamed its default branch (`master` → `main`) keeps the old
+name on old PRs, so their claims become `NOT_DEFAULT_BRANCH` too. That is safe (never a false
+contradiction) but lowers coverage for such repositories.
+
 ## 3. Extraction rules
 
 Extraction is rule-based. v1 uses no AI model.
