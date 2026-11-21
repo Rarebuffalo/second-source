@@ -166,3 +166,21 @@ def test_golden_can_count_only_high_confidence_claims(tmp_path):
     )
     _code, out, _err, _tokens = bench(["golden", str(cases), "--split", "all", "--high-confidence"])
     assert "BUILD_OK      precision=1.00 recall=0.00" in out
+
+
+def test_sample_can_cap_repositories_and_exclude_earlier_repositories(viewer, tmp_path):
+    first = tmp_path / "first.jsonl"
+    common = ["sample", "--per-agent", "3", "--seed", "1", "--agents", "claude_code"]
+    bench([*common, "-o", str(first)], viewer=viewer())
+    second = tmp_path / "second.jsonl"
+    args = [*common, "--exclude-repos-from", str(first), "--max-per-repo", "1"]
+    code, _out, _err, _tokens = bench([*args, "-o", str(second)], viewer=viewer())
+
+    def repos(path):
+        rows = [json.loads(line) for line in path.read_text().splitlines()[1:]]
+        return [row["url"].split("/")[4] for row in rows]
+
+    assert code == 0
+    again = repos(second)
+    assert len(again) == len(set(again)) == 3  # one per repository
+    assert not set(repos(first)) & set(again)  # no repository seen before

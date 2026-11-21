@@ -37,8 +37,12 @@ check time, exactly as for a single `second-source check`.
 - **Filters:** non-empty body (no text, no claims). Golden-set samples may be open or closed;
   benchmark samples are **merged PRs only**, because the durability claim and most evidence only
   make sense after a merge.
-- **Output:** one JSON line per PR (`samples/<name>.jsonl`), including the dataset revision and
-  seed in a header record.
+- **Repository cap** (`--max-per-repo`, 3 for published runs): at most N PRs per repository
+  per agent. Run 1 had no cap and one repository supplied 49 of 200 Codex PRs, so an agent's
+  rate mostly described a few projects. `--exclude-repos-from` skips every repository of earlier
+  files, so a new golden set or holdout shares no repository with what was tuned on.
+- **Output:** one JSON line per PR (`samples/<name>.jsonl`), including the dataset revision,
+  seed and cap in a header record.
 
 ## 3. Real golden set (measuring extraction honestly)
 

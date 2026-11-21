@@ -3,7 +3,7 @@
 import httpx
 import pytest
 
-from second_source.benchmark.aidev import AidevClient, AidevError
+from second_source.benchmark.aidev import AidevClient, AidevError, repo_of
 from second_source.benchmark.sample import (
     Block,
     draw_sample,
@@ -122,3 +122,41 @@ def test_excluded_urls_are_skipped_and_replaced(viewer):
     assert len(grown.rows) == 4
     assert not {row.url for row in first.rows} & {row.url for row in grown.rows}
     assert grown.header["excluded"] == 4
+
+
+def test_max_per_repo_caps_each_repository(viewer):
+    # The fake table spreads rows over 13 repositories (org/repo0 .. org/repo12).
+    rows = sample_block(
+        client_for(viewer()),
+        Block("cursor", 600, 700),
+        count=20,
+        seed=1,
+        accept=lambda _pull: True,
+        max_per_repo=1,
+    )
+    repos = [row.repo for row in rows]
+    assert len(repos) == len(set(repos)) == 13  # one per repository, then the draw runs dry
+
+
+def test_excluded_repositories_are_skipped(viewer):
+    rows = sample_block(
+        client_for(viewer()),
+        Block("cursor", 600, 700),
+        count=10,
+        seed=1,
+        accept=lambda _pull: True,
+        exclude_repos=frozenset({"org/repo0", "org/repo1"}),
+    )
+    assert len(rows) == 10
+    assert not {"org/repo0", "org/repo1"} & {row.repo for row in rows}
+
+
+def test_header_records_the_repository_cap(viewer):
+    sample = draw_sample(client_for(viewer()), per_agent=3, seed=1, max_per_repo=2)
+    assert sample.header["max_per_repo"] == 2
+    assert sample.header["excluded_repos"] == 0
+
+
+def test_repo_of_reads_owner_and_name():
+    assert repo_of("https://github.com/Octo/App/pull/7") == "octo/app"
+    assert repo_of("not a url") == ""

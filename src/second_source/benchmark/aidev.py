@@ -41,6 +41,12 @@ AGENT_NAMES = {
 }
 
 
+def repo_of(url: str) -> str:
+    """``owner/name`` of a GitHub pull request URL, lower-cased; "" if it is not one."""
+    parts = url.lower().split("/")
+    return "/".join(parts[3:5]) if len(parts) > 4 and parts[2].endswith("github.com") else ""
+
+
 class AidevError(Exception):
     """The dataset viewer API failed after retries, or answered with something unexpected."""
 
@@ -60,6 +66,11 @@ class AidevPullRequest:
     @property
     def merged(self) -> bool:
         return bool(self.merged_at)
+
+    @property
+    def repo(self) -> str:
+        """``owner/name`` from the URL, lower-cased (GitHub names are case-insensitive)."""
+        return repo_of(self.url)
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> AidevPullRequest:

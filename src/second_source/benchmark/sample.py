@@ -8,6 +8,10 @@ The curated AIDev table stores each agent's rows as one contiguous block. So we:
 2. **Draw rows:** for each agent, pick random row offsets inside its block (without
    replacement) and keep rows that pass the filters, until the agent's quota is full or the
    draw budget is spent.
+3. **Cap repositories:** at most ``max_per_repo`` PRs per repository per agent. Without a cap
+   one busy repository dominated an agent (49 of 200 Codex PRs in run 1), so per-agent rates
+   described a handful of projects. Whole repositories can also be excluded, which keeps a new
+   golden set or holdout disjoint from everything seen before.
 
 Each agent has its own random stream, seeded from ``(seed, agent)``. The same seed and dataset
 revision therefore always give the same sample, and changing one agent's quota does not change
@@ -18,6 +22,7 @@ from __future__ import annotations
 
 import json
 import random
+from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -108,21 +113,29 @@ def sample_block(
     seed: int,
     accept: Filter,
     exclude: frozenset[str] = frozenset(),
+    exclude_repos: frozenset[str] = frozenset(),
+    max_per_repo: int | None = None,
 ) -> list[AidevPullRequest]:
     """Up to ``count`` random rows from one block that pass ``accept``.
 
-    Rows whose URL is in ``exclude`` (for example PRs already in a golden set) are skipped and
-    do not count towards ``count``, so a set can grow without duplicates.
+    Rows whose URL is in ``exclude`` (for example PRs already in a golden set) or whose
+    repository is in ``exclude_repos`` are skipped and do not count towards ``count``, so a set
+    can grow without duplicates. ``max_per_repo`` caps PRs per repository.
     """
     rng = random.Random(f"{seed}:{block.agent}")
     budget = min(block.size, count * DRAWS_PER_ROW)
     chosen: list[AidevPullRequest] = []
+    per_repo: Counter[str] = Counter()
     for offset in rng.sample(range(block.start, block.end), budget):
         if len(chosen) == count:
             break
         pull = client.page(offset, 1).rows[0]
-        if pull.url not in exclude and accept(pull):
-            chosen.append(pull)
+        if pull.url in exclude or pull.repo in exclude_repos or not accept(pull):
+            continue
+        if max_per_repo is not None and per_repo[pull.repo] >= max_per_repo:
+            continue
+        per_repo[pull.repo] += 1
+        chosen.append(pull)
     return chosen
 
 
@@ -134,10 +147,14 @@ def draw_sample(
     filter_name: str = "has_body",
     agents: Iterable[str] | None = None,
     exclude: Iterable[str] = (),
+    exclude_repos: Iterable[str] = (),
+    max_per_repo: int | None = None,
 ) -> Sample:
     """Draw ``per_agent`` PRs for each agent (all agents in the table unless given), skipping
-    any PR whose URL is in ``exclude``."""
+    any PR whose URL is in ``exclude`` or whose repository is in ``exclude_repos``, with at most
+    ``max_per_repo`` PRs per repository per agent."""
     excluded = frozenset(exclude)
+    excluded_repos = frozenset(repo.lower() for repo in exclude_repos)
     accept = FILTERS[filter_name]
     blocks = locate_blocks(client)
     wanted = set(agents) if agents is not None else {block.agent for block in blocks}
@@ -151,7 +168,14 @@ def draw_sample(
         if block.agent not in wanted:
             continue
         chosen = sample_block(
-            client, block, count=per_agent, seed=seed, accept=accept, exclude=excluded
+            client,
+            block,
+            count=per_agent,
+            seed=seed,
+            accept=accept,
+            exclude=excluded,
+            exclude_repos=excluded_repos,
+            max_per_repo=max_per_repo,
         )
         rows.extend(chosen)
         if len(chosen) < per_agent:
@@ -167,6 +191,8 @@ def draw_sample(
         "blocks": [[block.agent, block.start, block.end] for block in blocks],
         "shortfall": shortfall,
         "excluded": len(excluded),
+        "excluded_repos": len(excluded_repos),
+        "max_per_repo": max_per_repo,
         "tool_version": __version__,
     }
     return Sample(header=header, rows=tuple(rows), shortfall=shortfall)

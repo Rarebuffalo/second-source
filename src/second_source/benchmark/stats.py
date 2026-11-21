@@ -35,6 +35,8 @@ from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from second_source.benchmark.aidev import repo_of
+
 Z_95 = 1.959963984540054  # two-sided 95% normal quantile
 SCOPED_CI_FAILED = frozenset({"CI_FAILED_LOCAL_CLAIM", "CI_FAILED_SUBSET_CLAIM"})
 ALL = "all"  # pseudo claim type: every claim an agent wrote (not MERGE_HOLDS)
@@ -146,12 +148,6 @@ class AgentStats:
     claims: dict[str, Cell] = field(default_factory=lambda: defaultdict(Cell))
 
 
-def _repo_of(url: str) -> str:
-    """``owner/name`` from a pull request URL, lower-cased; "" if it is not one."""
-    parts = url.lower().split("/")
-    return "/".join(parts[3:5]) if len(parts) > 4 and "github.com" in parts[2] else ""
-
-
 def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
     """Aggregate runner result records into the published summary structure."""
     agents: dict[str, AgentStats] = defaultdict(AgentStats)
@@ -165,7 +161,7 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         detected = (report.get("agent") or {}).get("name")
         if detected == record["dataset_agent"]:
             stats.detected_as_dataset_agent += 1
-        repo = _repo_of(record["url"])
+        repo = repo_of(record["url"])
         by_type: dict[str, list[str]] = defaultdict(list)
         for claim in report["claims"]:
             if claim.get("attributes", {}).get("confidence", "high") != "high":

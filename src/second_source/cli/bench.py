@@ -1,6 +1,6 @@
 """``second-source bench``: reproduce the Agent Claim Truth benchmark (docs/benchmark.md).
 
-    second-source bench sample  --per-agent 200 --seed 1 --filter merged_with_body -o s.jsonl
+    second-source bench sample  --per-agent 200 --seed 1 --max-per-repo 3 -o s.jsonl
     second-source bench run     s.jsonl -o results.jsonl [--limit 10] [--anonymous]
     second-source bench summarize results.jsonl -o summary/
     second-source bench golden  cases.jsonl [--split dev|test|all]
@@ -20,7 +20,7 @@ from typing import TextIO
 import yaml
 
 from second_source.benchmark import golden, stats
-from second_source.benchmark.aidev import AidevClient, AidevError
+from second_source.benchmark.aidev import AidevClient, AidevError, repo_of
 from second_source.benchmark.runner import read_results, run_benchmark
 from second_source.benchmark.sample import FILTERS, draw_sample, read_sample, write_sample
 from second_source.sources.github.auth import TokenResult
@@ -58,6 +58,18 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
         action="append",
         default=[],
         help="JSON Lines file whose records' url fields are skipped (repeatable)",
+    )
+    sample.add_argument(
+        "--exclude-repos-from",
+        type=Path,
+        action="append",
+        default=[],
+        help="JSON Lines file whose records' repositories are skipped entirely (repeatable)",
+    )
+    sample.add_argument(
+        "--max-per-repo",
+        type=int,
+        help="at most this many PRs per repository per agent (default: no cap)",
     )
     sample.add_argument("-o", "--output", type=Path, required=True)
 
@@ -113,6 +125,7 @@ def run_command(args: argparse.Namespace, context: BenchContext) -> int:
 def _sample(args: argparse.Namespace, context: BenchContext) -> int:
     agents = [a.strip() for a in args.agents.split(",")] if args.agents else None
     exclude = {url for path in args.exclude_from for url in _urls_in(path)}
+    exclude_repos = {repo_of(url) for path in args.exclude_repos_from for url in _urls_in(path)}
     try:
         with context.aidev_factory() as client:
             sample = draw_sample(
@@ -122,6 +135,8 @@ def _sample(args: argparse.Namespace, context: BenchContext) -> int:
                 filter_name=args.filter,
                 agents=agents,
                 exclude=exclude,
+                exclude_repos=exclude_repos,
+                max_per_repo=args.max_per_repo,
             )
     except (AidevError, ValueError) as error:
         print(f"error: {error}", file=context.err)
