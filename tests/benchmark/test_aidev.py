@@ -99,3 +99,11 @@ def test_requests_are_paced(viewer):
     client.page(1, 1)  # 0.25s later: waits the remaining 0.75s
     client.page(2, 1)  # long after: no wait
     assert sleeps == [0.75]
+
+
+def test_rows_are_redacted_before_they_are_stored():
+    fake_key = "ASIA" + "EXAMPLEFAKE00003"
+    body = f"![shot](https://b.s3.amazonaws.com/x.png?X-Amz-Credential={fake_key}%2F2025)"
+    pull = AidevPullRequest.from_row({"html_url": "u", "agent": "Devin", "body": body})
+    assert fake_key not in pull.body
+    assert "X-Amz-Credential=REDACTED" in pull.body
