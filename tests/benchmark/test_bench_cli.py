@@ -196,4 +196,4 @@ def test_commits_adds_commit_messages_for_labelling(viewer, tmp_path):
     records = [json.loads(line) for line in out.read_text().splitlines()]
     assert code == 0 and f"{len(records)} PRs" in stdout and records
     assert all(len(record["commits"]) == 2 for record in records)
-    assert records[0]["commits"][0].startswith("commit 0 of ")
+    assert records[0]["commits"][0]["message"].startswith("commit 0 of ")

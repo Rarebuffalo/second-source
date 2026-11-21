@@ -171,7 +171,7 @@ def _commits(args: argparse.Namespace, context: BenchContext) -> int:
                 messages = client.commit_messages(row.id)[: args.per_pr]
                 record = {"url": row.url, "agent": row.agent, "commits": messages}
                 out.write(json.dumps(record, ensure_ascii=False) + "\n")
-    except AidevError as error:
+    except (AidevError, ValueError) as error:
         print(f"error: {error}", file=context.err)
         return EXIT_ERROR
     print(f"wrote commit messages for {len(sample.rows)} PRs to {args.output}", file=context.out)

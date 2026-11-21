@@ -207,9 +207,11 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
         "÷ checkable PRs (95% Wilson interval; PRs of one repository are not independent, so",
         "check the *Repos* column). Coverage = checkable ÷ all PRs with the claim. *Scoped, CI",
         "failed* = the agent said a check passed locally, or that part of the checks passed, and",
-        "a CI job failed; shown separately and never counted as false. *all* = the claims agents",
-        "wrote (MERGE_HOLDS, which every merged PR makes implicitly, is left out). Only",
-        "high-confidence claims (found by extraction rules with proven precision) are counted.",
+        "a CI job failed; shown separately and never counted as false. *all* = PRs by their",
+        "written claims together: a PR counts as contradicted if any of them was, so it is not",
+        "comparable to the per-type rates (MERGE_HOLDS, implicit in every merge, is left out).",
+        "Only high-confidence claims (found by extraction rules with proven precision) are",
+        "counted.",
         "",
     ]
     for agent, data in summary["agents"].items():

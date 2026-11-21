@@ -168,8 +168,9 @@ class AidevClient:
         except (KeyError, TypeError, ValueError) as error:
             raise AidevError(f"unexpected response shape: {error!r}") from error
 
-    def commit_messages(self, pr_id: str, limit: int = MAX_PAGE) -> list[str]:
-        """Commit messages of one PR from AIDev's ``pr_commits`` table, in table order.
+    def commit_messages(self, pr_id: str, limit: int = MAX_PAGE) -> list[dict[str, str]]:
+        """Commits of one PR (``{"sha", "message"}``) from AIDev's ``pr_commits`` table, in
+        table order. The sha is kept so labels stay tied to an exact commit.
 
         Read with the dataset viewer's filter endpoint, so commit texts can be labelled without
         any GitHub requests. Messages are redacted like PR bodies.
@@ -186,7 +187,13 @@ class AidevClient:
         }
         data = self._get_json(FILTER_URL, params)
         try:
-            return [redact_secrets(item["row"].get("message") or "") for item in data["rows"]]
+            return [
+                {
+                    "sha": str(item["row"].get("sha") or ""),
+                    "message": redact_secrets(item["row"].get("message") or ""),
+                }
+                for item in data["rows"]
+            ]
         except (KeyError, TypeError) as error:
             raise AidevError(f"unexpected response shape: {error!r}") from error
 

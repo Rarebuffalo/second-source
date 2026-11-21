@@ -114,10 +114,12 @@ def test_commit_messages_use_the_filter_endpoint():
 
     def handler(request):
         seen.append(request)
-        rows = [{"row": {"pr_id": "42", "message": "test: add parser tests"}}]
+        rows = [{"row": {"pr_id": "42", "sha": "abc", "message": "test: add parser tests"}}]
         return httpx.Response(200, json={"rows": rows, "num_rows_total": 1})
 
-    assert client_for(handler).commit_messages("42") == ["test: add parser tests"]
+    assert client_for(handler).commit_messages("42") == [
+        {"sha": "abc", "message": "test: add parser tests"}
+    ]
     params = seen[0].url.params
     assert seen[0].url.path == "/filter"
     assert params["config"] == "pr_commits" and params["where"] == "\"pr_id\"='42'"
