@@ -122,3 +122,20 @@ def test_high_only_scoring_drops_low_confidence_claims():
     assert everything["BUILD_OK"].true_positive == 1
     assert high["BUILD_OK"].false_negative == 1  # no trusted BUILD_OK rule yet
     assert high["TESTS_PASS"].true_positive == 1
+
+
+def test_commit_message_cases_are_scored_as_commit_text(tmp_path):
+    path = tmp_path / "cases.jsonl"
+    record = {
+        "url": "https://github.com/o/r/pull/1#commit-1",
+        "body": "Tests pass.",
+        "expected": ["TESTS_PASS"],
+        "origin": "commit",
+    }
+    path.write_text(json.dumps(record) + "\n")
+    (case,) = load_cases(path)
+    assert case.origin == "commit"
+    assert score([case]).per_type["TESTS_PASS"].true_positive == 1  # the rule fires
+    # ...but outside PR bodies no rule is trusted yet, so nothing is high confidence.
+    high = score([case], high_only=True).per_type["TESTS_PASS"]
+    assert (high.true_positive, high.false_negative) == (0, 1)

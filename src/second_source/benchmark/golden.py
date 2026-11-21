@@ -39,6 +39,7 @@ class GoldenCase:
     expected: tuple[str, ...]
     agent: str = ""
     notes: str = ""
+    origin: str = "body"  # "body" or "commit": which kind of text was labelled
 
     @property
     def split(self) -> str:
@@ -90,12 +91,14 @@ class Score:
 _REPO_IN_URL = re.compile(r"github\.com/([^/]+/[^/]+)/pull/")
 
 
-def predict(text: str, url: str = "", *, high_only: bool = False) -> Counter[str]:
+def predict(
+    text: str, url: str = "", *, high_only: bool = False, origin: str = "body"
+) -> Counter[str]:
     """Claim types extracted from one PR body. The repository is taken from the PR URL, as the
     pipeline does, so "Fixes #12" and "Fixes owner/repo#12" count as one claim. With
     ``high_only`` only claims found by trusted rules count (what the benchmark publishes)."""
     found = _REPO_IN_URL.search(url)
-    source = TextSource(origin="body", text=text, written_at=_WRITTEN_AT)
+    source = TextSource(origin=origin, text=text, written_at=_WRITTEN_AT)
     claims = extract_claims("golden", [source], repo=found.group(1) if found else None)
     if high_only:
         claims = [claim for claim in claims if claim.attributes.get("confidence") == HIGH]
@@ -106,7 +109,7 @@ def score(cases: Iterable[GoldenCase], *, high_only: bool = False) -> Score:
     result = Score()
     for case in cases:
         expected = Counter(case.expected)
-        predicted = predict(case.text, case.name, high_only=high_only)
+        predicted = predict(case.text, case.name, high_only=high_only, origin=case.origin)
         for claim_type in expected | predicted:
             metrics = result.per_type.setdefault(claim_type, Metrics())
             hits = min(expected[claim_type], predicted[claim_type])
@@ -137,6 +140,7 @@ def _case(record: dict[str, Any]) -> GoldenCase:
         expected=tuple(record["expected"]),
         agent=record.get("agent", ""),
         notes=record.get("notes", ""),
+        origin=record.get("origin", "body"),
     )
 
 
@@ -181,6 +185,7 @@ def merge_labels(
             "url": url,
             "agent": row["agent"],
             "body": row["body"],
+            "origin": row.get("origin", "body"),
             "labeller_a": a,
             "labeller_b": b,
             "notes_a": labels_a[url].get("notes", ""),
@@ -236,7 +241,7 @@ def score_rules(cases: Iterable[GoldenCase]) -> dict[RuleKey, RuleMetrics]:
     metrics: dict[RuleKey, RuleMetrics] = {}
     for case in cases:
         expected = set(case.expected)
-        for claim_type, rule in rule_hits(case.text):
+        for claim_type, rule in rule_hits(case.text, origin=case.origin):
             entry = metrics.setdefault((claim_type, rule), RuleMetrics(claim_type))
             if claim_type in expected:
                 entry.correct += 1

@@ -702,13 +702,13 @@ def _candidates(
     yield from _code_sentence_claims(source.text)
 
 
-def rule_hits(text: str) -> set[tuple[str, str]]:
+def rule_hits(text: str, origin: str = "body") -> set[tuple[str, str]]:
     """Every (claim type, rule name) that fires anywhere in ``text``.
 
     Unlike ``extract_claims`` this keeps all matching rules, not just the first per clause, so
     each rule can be scored on its own against a golden set.
     """
-    source = TextSource(origin="body", text=text, written_at=datetime.min)
+    source = TextSource(origin=origin, text=text, written_at=datetime.min)
     return {
         (kind, attributes["rule"]) for kind, attributes, _ in _candidates(source, all_rules=True)
     }
