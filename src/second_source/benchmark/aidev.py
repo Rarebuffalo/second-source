@@ -19,6 +19,7 @@ from typing import Any
 import httpx
 
 from second_source import __version__
+from second_source.benchmark.redact import redact_secrets
 
 DATASET = "hao-li/AIDev"
 CONFIG = "pull_request"  # the curated table (repositories with more than 100 stars)
@@ -62,12 +63,14 @@ class AidevPullRequest:
 
     @classmethod
     def from_row(cls, row: dict[str, Any]) -> AidevPullRequest:
+        """Map a dataset row. Credentials that agents leaked into PR text (for example signed
+        screenshot links) are redacted here, before anything is stored."""
         label = row.get("agent") or ""
         return cls(
             url=row["html_url"],
             agent=AGENT_NAMES.get(label, label),
-            title=row.get("title") or "",
-            body=row.get("body") or "",
+            title=redact_secrets(row.get("title") or ""),
+            body=redact_secrets(row.get("body") or ""),
             state=row.get("state") or "",
             created_at=row.get("created_at"),
             merged_at=row.get("merged_at"),
