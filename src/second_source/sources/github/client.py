@@ -189,13 +189,16 @@ class GitHubClient:
 
         for attempt in range(self._retries + 1):
             try:
-                response = self._http.get(url, headers=headers)
+                # Renamed or transferred repositories answer with a 301 pointing at the new
+                # location (/repositories/<id>/...). Follow it for reads; the token is kept
+                # because the redirect stays on api.github.com. Writes never follow redirects.
+                response = self._http.get(url, headers=headers, follow_redirects=True)
             except httpx.TransportError as error:
                 if attempt == self._retries:
                     raise GitHubError(0, url, f"network error: {error}") from error
                 self._sleep(2**attempt)
                 continue
-            self.stats.requests += 1
+            self.stats.requests += 1 + len(response.history)  # each redirect hop is a request
 
             if response.status_code == 304 and cached:
                 self.stats.not_modified += 1

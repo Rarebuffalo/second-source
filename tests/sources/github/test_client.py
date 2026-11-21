@@ -199,3 +199,32 @@ def test_writes_report_missing_resources_and_rate_limits():
 
 def test_no_content_responses_return_none():
     assert make_client(lambda _r: httpx.Response(204)).patch("/x", {}) is None
+
+
+def test_reads_follow_redirects_for_renamed_repositories():
+    # GitHub answers requests for a renamed repository with a 301 to /repositories/<id>/...
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.path, request.headers.get("authorization")))
+        if request.url.path == "/repos/old/name/pulls/1":
+            return httpx.Response(
+                301, headers={"Location": "https://api.github.com/repositories/42/pulls/1"}
+            )
+        return httpx.Response(200, json={"number": 1})
+
+    client = make_client(handler, token="secret-token")
+    assert client.get("/repos/old/name/pulls/1") == {"number": 1}
+    assert [path for path, _auth in seen] == ["/repos/old/name/pulls/1", "/repositories/42/pulls/1"]
+    assert all(auth == "Bearer secret-token" for _path, auth in seen)  # same host keeps the token
+    assert client.stats.requests == 2
+
+
+def test_writes_do_not_follow_redirects():
+    def handler(request):
+        return httpx.Response(
+            307, headers={"Location": "https://api.github.com/repositories/42/check-runs"}
+        )
+
+    with pytest.raises(GitHubError):
+        make_client(handler).post("/repos/old/name/check-runs", {"name": "x"})
