@@ -10,9 +10,14 @@ Method: docs/benchmark.md, section 3. Labelling rules: [GUIDE.md](GUIDE.md).
    - round 1 (120 PRs): `second-source bench sample --per-agent 20 --seed 20261120 --filter has_body`
    - round 2 (282 PRs): `second-source bench sample --per-agent 47 --seed 20261121 --filter has_body --exclude-from cases.jsonl`
 2. Two labellers labelled every body independently from the guide, without seeing the
-   extraction rules (`labeller_a`, `labeller_b` in each record).
-3. Where they disagreed, a third read against the guide decided `expected`; the reason is in
-   `adjudication`. `second-source bench merge-labels` rebuilds the cases from the labeller files.
+   extraction rules or each other's labels (`labeller_a`, `labeller_b` in each record).
+   **Who labelled:** both labellers were AI model sessions (Claude subagents), each given only
+   the guide and the texts. No person labelled the set. This is ground truth made by a model,
+   not a model in the verdict path: Second Source's verdicts stay rule-based. Because both
+   labellers are the same model, their agreement overstates independence; a human audit of a
+   random subset is planned and will be reported here.
+3. Where they disagreed, the building session read the case against the guide and decided
+   `expected`; the reason is in `adjudication`. `second-source bench merge-labels` rebuilds the cases from the labeller files.
 4. Each case is in the `dev` or `test` split by a hash of its URL
    (`second_source.benchmark.golden.split_for`). Rules are tuned on `dev` only; `test` is
    scored once, to report.
@@ -33,7 +38,17 @@ under the same licence. The labels are ours.
 ## Results
 
 Labeller agreement before adjudication: 113 of 120 PRs exactly equal in round 1, 272 of 282 in
-round 2 (385 of 402 overall, 96%).
+round 2 (385 of 402 overall, 96%). Exact agreement is inflated when most PRs have no claim of a
+type, so Cohen's kappa per type (presence, chance-corrected; `bench merge-labels` prints it):
+
+| Type | kappa |
+|---|---|
+| TESTS_PASS | 0.980 |
+| BUILD_OK | 0.966 |
+| LINT_OK | 0.966 |
+| TESTS_ADDED | 0.985 |
+| FIXES_ISSUE | 0.991 |
+| DOCS_UPDATED | 0.925 |
 
 ### Round 2 (402 PRs; dev 212, test 190)
 
