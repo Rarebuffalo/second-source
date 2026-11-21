@@ -4,11 +4,28 @@ version = "0.1.0"
 description = "Independent verification of AI agents' claims against the systems they act on."
 readme = "README.md"
 requires-python = ">=3.12"
+authors = [{ name = "Second Source contributors" }]
+keywords = ["ai-agents", "verification", "coding-agents", "pull-requests", "ci", "llm", "evaluation"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Console",
+    "Intended Audience :: Developers",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Software Development :: Quality Assurance",
+    "Topic :: Software Development :: Testing",
+]
 dependencies = [
     "pyyaml>=6.0",
     "cel-python>=0.2",
     "httpx>=0.27",
 ]
+
+[project.urls]
+Homepage = "https://github.com/Rarebuffalo/second-source"
+Issues = "https://github.com/Rarebuffalo/second-source/issues"
+Documentation = "https://github.com/Rarebuffalo/second-source/tree/main/docs"
 
 [project.scripts]
 second-source = "second_source.cli.main:run"
