@@ -165,9 +165,7 @@ _NOT_AN_ASSERTION = re.compile(
     # partial or quantified statements ("most tests pass" is not "tests pass")
     r"partially|partial|related|most|mostly|some|several|few|majority|except|excluding|"
     r"apart from|"
-    # conditions: "included tests if applicable", and template lines such as "If this pull
-    # request adds new functionality, it includes unit tests" (a rule, not a statement)
-    r"if|whether|where applicable)\b"
+    r"where applicable)\b"
     r"|n't\b"
 )
 # A partial count ("19/22 tests passing") is a hedge, however positive the wording.
@@ -202,11 +200,20 @@ def asserted_part(clause: str) -> str:
 _RELATIVE_CLAUSE = re.compile(r"^\s*which\b", re.IGNORECASE)
 
 
-def is_assertion(clause: str) -> bool:
+# Conditions: "included tests if applicable", and template lines such as "If this pull request
+# adds new functionality, it includes unit tests" (a rule, not a statement). Issue references
+# are exempt (see is_assertion): "Fixes #42: the app crashes if the token expires" names the
+# issue's subject, and the closing keyword itself is unconditional.
+_CONDITION = re.compile(r"\b(if|whether)\b")
+
+
+def is_assertion(clause: str, *, conditions_allowed: bool = False) -> bool:
     if clause.rstrip().endswith("?") or _RELATIVE_CLAUSE.match(clause):
         return False
     lowered = _POSITIVE_NO.sub(" ", _QUOTED_TEXT.sub(" ", clause.lower()))
     if any(int(done) < int(total) for done, total in _COUNT.findall(lowered)):
+        return False
+    if not conditions_allowed and _CONDITION.search(lowered):
         return False
     return not _NOT_AN_ASSERTION.search(lowered)
 
@@ -699,6 +706,11 @@ def _candidates(
             matches = _match_clause(asserted_part(clause), scope, all_rules=all_rules)
             for claim_type, attributes in matches:
                 yield claim_type, attributes, clause
+        elif is_assertion(clause, conditions_allowed=True):
+            # Only a condition word disqualified the clause: issue references still count.
+            for claim_type, attributes in _match_clause(asserted_part(clause), None):
+                if claim_type == FIXES_ISSUE:
+                    yield claim_type, attributes, clause
     yield from _code_sentence_claims(source.text)
 
 

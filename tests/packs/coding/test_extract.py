@@ -581,3 +581,11 @@ def test_local_beats_subset_when_statements_disagree():
     text = "Targeted tests pass.\n\nAll tests pass locally."
     (claim,) = extract_claims("pr-1", [body(text)])
     assert claim.attributes["scope"] == "local"
+
+
+@pytest.mark.parametrize(
+    "text", ["Fixes #42: app crashes if the token expires", "Fixes #12 (crash if config missing)"]
+)
+def test_a_condition_word_does_not_hide_an_issue_reference(text):
+    # Code review M1: "if" describes the issue's subject here, not a hedge on "Fixes".
+    assert types(text) == [FIXES_ISSUE]
