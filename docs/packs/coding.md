@@ -63,7 +63,9 @@ Extraction is rule-based. v1 uses no AI model.
 7. Every rule has a stable name (for example `tests_pass.plain`, `command.marked`,
    `fixes_issue.closing_ref`), recorded on the claim as `rule`. Rules whose precision held the
    target on the golden set are listed in `packs/coding/trusted_rules.yaml`; their claims get
-   `confidence: high`, all others `confidence: low`. Reports label low-confidence claims, and
+   `confidence: high`, all others `confidence: low`. Precision was measured on PR bodies only,
+   so claims from titles, commit messages and comments are always `low` (unless the body says
+   the same thing). Reports label low-confidence claims, and
    the benchmark leaves them out of its rates. `second-source bench rules` prints per-rule
    precision, and `--select` regenerates the list.
 

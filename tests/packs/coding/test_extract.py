@@ -454,6 +454,21 @@ def test_claims_from_unproven_rules_are_low_confidence():
     assert claim.attributes["confidence"] == "low"
 
 
+@pytest.mark.parametrize("origin", ["commit", "comment", "title"])
+def test_trusted_rules_give_low_confidence_outside_pr_bodies(origin):
+    # Rule precision was measured on PR bodies; commit messages and comments are unmeasured.
+    (claim,) = extract_claims("pr-1", [body("Tests pass.", origin=origin)])
+    assert claim.attributes["confidence"] == "low"
+
+
+def test_a_commit_claim_repeated_in_the_body_becomes_high_confidence():
+    commit = body("Tests pass.", origin="commit", at=T0)
+    pr_body = body("Tests pass.", at=T0 + timedelta(minutes=5))
+    (claim,) = extract_claims("pr-1", [commit, pr_body])
+    assert claim.origin == "commit"  # the earliest statement is kept
+    assert claim.attributes["confidence"] == "high"
+
+
 def test_a_repeated_claim_is_upgraded_when_a_trusted_rule_finds_it():
     text = "Verified with the existing unit tests.\n\nAll tests pass."
     (claim,) = extract_claims("pr-1", [body(text)])

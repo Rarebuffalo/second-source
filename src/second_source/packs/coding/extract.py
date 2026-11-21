@@ -435,8 +435,15 @@ def trusted_rules() -> frozenset[tuple[str, str]]:
     return frozenset((entry["type"], entry["rule"]) for entry in document.get("trusted", []))
 
 
-def confidence_of(claim_type: str, rule: str) -> str:
-    return HIGH if (claim_type, rule) in trusted_rules() else LOW
+# Rule precision was measured on PR bodies only. Titles, commit messages and comments are a
+# different genre ("test: add test app", "fix: add test"), so a rule's trust does not carry
+# over: claims from those texts stay low confidence until they are labelled and measured.
+MEASURED_ORIGINS = frozenset({"body"})
+
+
+def confidence_of(claim_type: str, rule: str, origin: str = "body") -> str:
+    trusted = origin in MEASURED_ORIGINS and (claim_type, rule) in trusted_rules()
+    return HIGH if trusted else LOW
 
 
 ISSUE_RULE = "fixes_issue.closing_ref"
@@ -679,7 +686,7 @@ def extract_claims(
                 attributes["ref"] = source.ref
             if claim_type == FIXES_ISSUE and repo and attributes["repo"] == repo.lower():
                 attributes["repo"] = ""
-            attributes["confidence"] = confidence_of(claim_type, attributes["rule"])
+            attributes["confidence"] = confidence_of(claim_type, attributes["rule"], source.origin)
             substance = {k: v for k, v in attributes.items() if k not in _DESCRIPTIVE_ATTRIBUTES}
             key = sha256_hex([episode_id, claim_type, substance])
             if key in seen:
