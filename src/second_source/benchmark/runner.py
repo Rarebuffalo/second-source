@@ -11,6 +11,10 @@ Design points:
   the next run.
 - **Errors are recorded, not fatal.** A deleted PR or a broken URL becomes an error record, so
   one bad row never blocks a run, and the summary can count them.
+- **Only permanent errors are final.** A deleted PR (``not_found``) or an invalid URL will not
+  change, so it counts as done. Any other error (an unexpected GitHub response, often a bug on
+  our side) is retried on the next run; the newer record replaces the older one when results
+  are read.
 """
 
 from __future__ import annotations
@@ -40,16 +44,20 @@ class RunSummary:
     stopped: str | None = None  # why the run ended early (rate limit, limit reached)
 
 
+PERMANENT_ERRORS = ("not_found", "invalid url")
+
+
+def _is_final(record: dict[str, Any]) -> bool:
+    """True for a checked PR or a permanent error; other errors are retried."""
+    error = record.get("error")
+    return error is None or str(error).startswith(PERMANENT_ERRORS)
+
+
 def completed_urls(path: Path) -> set[str]:
-    """URLs that already have a result in ``path`` (an absent file means none)."""
+    """URLs that already have a final result in ``path`` (an absent file means none)."""
     if not path.exists():
         return set()
-    done = set()
-    with path.open(encoding="utf-8") as handle:
-        for line in handle:
-            if line.strip():
-                done.add(json.loads(line)["url"])
-    return done
+    return {record["url"] for record in read_results(path) if _is_final(record)}
 
 
 def run_benchmark(
@@ -122,5 +130,12 @@ def _check_one(
 
 
 def read_results(path: Path) -> list[dict[str, Any]]:
+    """One record per URL, the newest one (a retried error is replaced by its later result),
+    in the order URLs first appear."""
+    latest: dict[str, dict[str, Any]] = {}
     with path.open(encoding="utf-8") as handle:
-        return [json.loads(line) for line in handle if line.strip()]
+        for line in handle:
+            if line.strip():
+                record = json.loads(line)
+                latest[record["url"]] = record  # dicts keep first-insertion order
+    return list(latest.values())

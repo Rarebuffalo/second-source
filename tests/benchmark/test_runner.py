@@ -75,3 +75,25 @@ def test_limit_caps_new_checks_only(fake_github, tmp_path):
 
 def test_completed_urls_of_a_missing_file_is_empty(tmp_path):
     assert completed_urls(tmp_path / "none.jsonl") == set()
+
+
+def test_unexpected_errors_are_retried_and_replaced_by_the_later_result(fake_github, tmp_path):
+    out = tmp_path / "results.jsonl"
+    # First run: GitHub answers with something unexpected (as with renamed repositories before
+    # the client followed redirects), so the PR gets an error record that is not final.
+    broken = fake_github({"/repos/Octo/App/pulls/7": httpx.Response(418)})
+    assert run(broken, [pull(GOOD)], out).errors == 1
+    assert completed_urls(out) == set()
+
+    summary = run(fake_github(), [pull(GOOD)], out)
+    assert (summary.checked, summary.skipped) == (1, 0)
+    records = read_results(out)
+    assert len(records) == 1 and "report" in records[0]  # the newer record wins
+    assert completed_urls(out) == {GOOD}
+
+
+def test_permanent_errors_are_not_retried(fake_github, tmp_path):
+    out = tmp_path / "results.jsonl"
+    run(fake_github(), [pull(MISSING), pull("not a url")], out)
+    summary = run(fake_github(), [pull(MISSING), pull("not a url")], out)
+    assert (summary.skipped, summary.checked, summary.errors) == (2, 0, 0)

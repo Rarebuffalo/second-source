@@ -85,7 +85,9 @@ This keeps the promise "missing or weak evidence is never reported as contradict
 - Runs the same `check_pull_request` pipeline as the CLI and the Action, so every published
   number is reproducible with `second-source check <url>`.
 - **Resumable:** results are appended one JSON line per PR; already-checked PRs are skipped. A
-  rate limit stops the run cleanly; running again continues where it stopped.
+  rate limit stops the run cleanly; running again continues where it stopped. Permanent errors
+  (deleted PR, invalid URL) are final; any other error is retried on the next run, and the
+  newer record replaces the older one.
 - **Cheap:** the on-disk ETag cache is on, so re-runs cost almost no rate limit. With a token,
   GitHub allows 5,000 requests per hour, which is roughly 800–1,200 PRs per hour.
 - Records per PR: agent (dataset label and our detection), every claim with verdict, reasons and
