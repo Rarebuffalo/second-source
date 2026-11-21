@@ -32,7 +32,11 @@ written. The source supplies it (see section 4), and extraction copies it onto t
 locally", or a claim under a "## Local verification" heading). Passing CI still verifies a
 local claim, but failing CI makes it `UNVERIFIABLE` with reason `CI_FAILED_LOCAL_CLAIM`
 instead of `CONTRADICTED`: local and CI environments differ, so it is a signal, not proof.
-Claims that do not say where they ran are read as claims about the change itself, and
+`scope` is `subset` when the claim covers only part of the checks: "targeted tests pass",
+"unit tests for X pass", "the 12 new tests pass", a command that selects files or tests
+(✅ `pytest tests/test_x.py`), or one named linter (✅ `biome lint`). Failing CI gives
+`UNVERIFIABLE` with reason `CI_FAILED_SUBSET_CLAIM`, because the failing job may be one the
+claim never covered. Claims that do neither are read as claims about the change itself, and
 failing CI contradicts them. (See docs/benchmark.md, section 4.)
 
 `MERGE_HOLDS` is an implicit claim: merging a PR asserts that the change is good. Making it

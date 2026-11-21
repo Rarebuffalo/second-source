@@ -425,8 +425,43 @@ _LOCAL_SCOPE = re.compile(
     r"|\bsandbox\b"
 )
 
-# Claim types that can say where they ran.
+# Claim types that can say where they ran, or that only part of the checks ran.
 _SCOPED_TYPES = frozenset({TESTS_PASS, BUILD_OK, LINT_OK})
+
+# A claim about part of the checks: "targeted tests pass", "unit tests for the importer pass",
+# "the 19 new tests pass". CI can corroborate it, but an unrelated failing job (an E2E suite, a
+# different package in a monorepo) does not make it false, so it gets ``scope=subset``.
+_SUBSET_SCOPE = re.compile(
+    r"\b(targeted|relevant|affected|specific|selected|focused|new|unit|integration|e2e|"
+    r"end-to-end|smoke|\d+)\s+(?:[\w-]+\s+){0,2}?tests?\b"
+    r"|\btests?\s+(for|in|of|under|covering)\b"
+)
+# Command arguments that select part of a suite: paths, test ids, filters, packages.
+_SELECTOR_ARGUMENT = re.compile(
+    r"/|::|\.(py|[cm]?[jt]sx?|go|rs|rb|java|kt|cs)\b|^-(k|t|p)$|^--(filter|package|testnamepattern|"
+    r"grep|project|workspace|scope)\b|^-[a-z]*k$"
+)
+
+
+def scope_of(clause: str, heading: str) -> str | None:
+    """``local`` for checks run on the agent's machine, ``subset`` for part of the checks."""
+    if is_local(clause, heading):
+        return "local"
+    if _SUBSET_SCOPE.search(clause.lower()):
+        return "subset"
+    return None
+
+
+def command_scope(command: str) -> str | None:
+    """``subset`` for a command that selects part of a suite or names one lint tool.
+
+    "pytest tests/test_parser.py" checks one file; "biome lint" checks one linter. Either can
+    pass while another CI job of the same kind fails.
+    """
+    if is_lint_check(command):
+        return "subset"
+    words = command.lower().split()[1:]
+    return "subset" if any(_SELECTOR_ARGUMENT.search(word) for word in words) else None
 
 
 def is_local(*texts: str) -> bool:
@@ -476,7 +511,7 @@ def rule_names() -> list[str]:
 
 
 def _match_clause(
-    clause: str, local: bool, *, all_rules: bool = False
+    clause: str, scope: str | None, *, all_rules: bool = False
 ) -> Iterator[tuple[str, dict[str, Any]]]:
     """Yield (claim type, attributes) for every claim found in one clause.
 
@@ -491,8 +526,8 @@ def _match_clause(
         matched.sort(key=lambda name: confidence_of(claim_type, name) != HIGH)
         for name in matched if all_rules else matched[:1]:
             attributes: dict[str, Any] = {"rule": name}
-            if local and claim_type in _SCOPED_TYPES:
-                attributes["scope"] = "local"
+            if scope and claim_type in _SCOPED_TYPES:
+                attributes["scope"] = scope
             yield claim_type, attributes
 
     for found in _ISSUE_REF.finditer(lowered):
@@ -622,7 +657,7 @@ def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]
             if not is_assertion(prose):
                 continue
             span = sentence.strip()
-            attributes = {"scope": "local"} if is_local(sentence, heading) else {}
+            local = is_local(sentence, heading)
 
             if _MARKED_CODE.search(sentence):
                 rule = "command.marked"  # ✅ right next to the command
@@ -634,6 +669,8 @@ def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]
                 for command in filter(_looks_like_command, _INLINE_COMMAND.findall(sentence)):
                     claim_type = _command_type(command)
                     if claim_type:
+                        scope = "local" if local else command_scope(command)
+                        attributes = {"scope": scope} if scope else {}
                         yield claim_type, {**attributes, "rule": rule}, span
 
             for claim_type in _changed_file_claims(sentence, prose, heading):
@@ -655,8 +692,8 @@ def _candidates(
     """Every (claim type, attributes, span) found in one text source, in reading order."""
     for clause, heading in clauses_in_sections(clean(source.text)):
         if is_assertion(clause):
-            local = is_local(clause, heading)
-            matches = _match_clause(asserted_part(clause), local, all_rules=all_rules)
+            scope = scope_of(clause, heading)
+            matches = _match_clause(asserted_part(clause), scope, all_rules=all_rules)
             for claim_type, attributes in matches:
                 yield claim_type, attributes, clause
     yield from _code_sentence_claims(source.text)

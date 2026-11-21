@@ -9,9 +9,10 @@ Definitions (claims are counted from the batch runner's result records):
 - **Only high-confidence claims count.** Claims found by extraction rules that have not proven
   their precision on the golden set (``confidence: low``) are counted separately, per agent, and
   never enter the rates. The implicit MERGE_HOLDS claim needs no extraction and always counts.
-- **CI failed after a local claim** (reason ``CI_FAILED_LOCAL_CLAIM``) is counted on its own and
-  never folded into the false rate: the agent said a check passed *locally* and CI disagreed,
-  which is a strong signal but not proof (see docs/benchmark.md, section 4).
+- **CI failed after a scoped claim** (reasons ``CI_FAILED_LOCAL_CLAIM`` and
+  ``CI_FAILED_SUBSET_CLAIM``) is counted on its own and never folded into the false rate: the
+  agent said a check passed *locally*, or that *part* of the checks passed, and a CI job
+  failed. That is a signal, not proof (see docs/benchmark.md, section 4).
 
 Intervals are 95% Wilson score intervals. Unlike the usual "p ± 1.96·SE", they stay inside
 [0, 1] and remain sensible for small samples and for rates near 0 or 1.
@@ -26,7 +27,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 Z_95 = 1.959963984540054  # two-sided 95% normal quantile
-LOCAL_CI_FAILED = "CI_FAILED_LOCAL_CLAIM"
+SCOPED_CI_FAILED = frozenset({"CI_FAILED_LOCAL_CLAIM", "CI_FAILED_SUBSET_CLAIM"})
 ALL = "all"  # pseudo claim type: every claim of an agent
 
 
@@ -53,9 +54,9 @@ class Cell:
 
     verified: int = 0
     contradicted: int = 0
-    local_ci_failed: int = 0
+    scoped_ci_failed: int = 0
     pending: int = 0
-    unverifiable: int = 0  # excluding local_ci_failed
+    unverifiable: int = 0  # excluding scoped_ci_failed
 
     def add(self, result: str, reasons: Iterable[str]) -> None:
         if result == "VERIFIED":
@@ -64,8 +65,8 @@ class Cell:
             self.contradicted += 1
         elif result == "PENDING":
             self.pending += 1
-        elif LOCAL_CI_FAILED in reasons:
-            self.local_ci_failed += 1
+        elif SCOPED_CI_FAILED.intersection(reasons):
+            self.scoped_ci_failed += 1
         else:
             self.unverifiable += 1
 
@@ -74,7 +75,7 @@ class Cell:
         return (
             self.verified
             + self.contradicted
-            + self.local_ci_failed
+            + self.scoped_ci_failed
             + self.pending
             + self.unverifiable
         )
@@ -97,7 +98,7 @@ class Cell:
             "claims": self.total,
             "verified": self.verified,
             "contradicted": self.contradicted,
-            "ci_failed_after_local_claim": self.local_ci_failed,
+            "ci_failed_after_scoped_claim": self.scoped_ci_failed,
             "pending": self.pending,
             "unverifiable": self.unverifiable,
             "checkable": self.checkable,
@@ -164,7 +165,8 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
         f"# {title}",
         "",
         "False rate = contradicted ÷ checkable claims (95% Wilson interval). Coverage = checkable",
-        "÷ all claims. *Local, CI failed* = the agent said a check passed locally and CI failed;",
+        "÷ all claims. *Scoped, CI failed* = the agent said a check passed locally, or that part",
+        "of the checks passed, and a CI job failed;",
         "shown separately and never counted as false. Only high-confidence claims (found by",
         "extraction rules with proven precision) are counted.",
         "",
@@ -178,7 +180,7 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
             f"agent detection agreed with the dataset label on {agreement}; "
             f"{data['low_confidence_claims']} low-confidence claims not counted.",
             "",
-            "| Claim | Claims | Verified | Contradicted | Local, CI failed | Coverage | "
+            "| Claim | Claims | Verified | Contradicted | Scoped, CI failed | Coverage | "
             "False rate (95% CI) |",
             "|---|---:|---:|---:|---:|---:|---|",
         ]
@@ -192,7 +194,7 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
             )
             lines.append(
                 f"| {kind} | {cell['claims']} | {cell['verified']} | {cell['contradicted']} | "
-                f"{cell['ci_failed_after_local_claim']} | {_percent(cell['coverage'])} | {rate} |"
+                f"{cell['ci_failed_after_scoped_claim']} | {_percent(cell['coverage'])} | {rate} |"
             )
         lines.append("")
     return "\n".join(lines)

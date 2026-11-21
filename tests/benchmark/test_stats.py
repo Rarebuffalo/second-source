@@ -20,14 +20,14 @@ def test_wilson_edge_cases():
         wilson_interval(3, 2)
 
 
-def test_cell_counts_local_ci_failures_separately():
+def test_cell_counts_scoped_ci_failures_separately():
     cell = Cell()
     cell.add("VERIFIED", [])
     cell.add("CONTRADICTED", ["CI_JOB_FAILED"])
     cell.add("UNVERIFIABLE", ["CI_FAILED_LOCAL_CLAIM"])
     cell.add("UNVERIFIABLE", ["NO_MATCHING_CI_JOBS"])
     cell.add("PENDING", ["AWAITING_CI"])
-    assert (cell.verified, cell.contradicted, cell.local_ci_failed) == (1, 1, 1)
+    assert (cell.verified, cell.contradicted, cell.scoped_ci_failed) == (1, 1, 1)
     assert (cell.unverifiable, cell.pending, cell.total) == (1, 1, 5)
     assert cell.false_rate == 0.5  # local CI failures never count as false
     assert cell.coverage == 0.4

@@ -20,6 +20,7 @@ from second_source.packs.coding.extract import (
     TextSource,
     clauses,
     clean,
+    command_scope,
     extract_claims,
     is_assertion,
     is_local,
@@ -173,6 +174,41 @@ def test_local_scope_is_recorded_from_the_section_heading():
 
 def test_local_scope_applies_to_command_status_lines():
     text = "**Testing (in the sandbox):**\n- ✅ `pytest -q`"
+    (claim,) = extract_claims("pr-1", [body(text)])
+    assert claim.attributes["scope"] == "local"
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Targeted tests passing.",
+        "Unit tests for v3-importer-commons (19 tests) all passing.",
+        "The 12 new tests pass.",
+        "Unit tests pass.",
+    ],
+)
+def test_claims_about_part_of_the_tests_have_subset_scope(text):
+    (claim,) = [c for c in extract_claims("pr-1", [body(text)]) if c.type == TESTS_PASS]
+    assert claim.attributes["scope"] == "subset"
+
+
+@pytest.mark.parametrize(
+    ("command", "scope"),
+    [
+        ("pytest tests/test_parser.py", "subset"),
+        ("pytest -k parser", "subset"),
+        ("pnpm test --filter web", "subset"),
+        ("biome lint", "subset"),  # one named linter
+        ("pytest -q", None),
+        ("npm test", None),
+    ],
+)
+def test_command_scope(command, scope):
+    assert command_scope(command) == scope
+
+
+def test_a_local_command_stays_local():
+    text = "**Local checks:**\n- ✅ `pytest tests/test_parser.py`"
     (claim,) = extract_claims("pr-1", [body(text)])
     assert claim.attributes["scope"] == "local"
 

@@ -12,8 +12,13 @@
 # Local claims ("tests pass locally", scope=local): passing CI corroborates them, but failing
 # CI does not prove them false, because local and CI environments differ. They get the
 # distinct UNVERIFIABLE reason CI_FAILED_LOCAL_CLAIM, which the benchmark reports separately.
+#
+# Subset claims ("targeted tests pass", "unit tests for X pass", ✅ `pytest tests/test_x.py`,
+# ✅ `biome lint`, scope=subset) work the same way: matching CI jobs that pass corroborate
+# them, but a failing job may be one the claim never covered (an E2E suite, another package),
+# so failure gives UNVERIFIABLE with reason CI_FAILED_SUBSET_CLAIM.
 id: coding.ci_result
-version: 1.1.0
+version: 1.2.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -32,11 +37,13 @@ derive:
   total: "size(relevant)"
   passed_count: "size(passed)"
   local: "has(claim.attributes.scope) && claim.attributes.scope == 'local'"
+  subset: "has(claim.attributes.scope) && claim.attributes.scope == 'subset'"
   deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
 outcomes:
   - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
   - {when: "size(failed) > 0 && local", result: UNVERIFIABLE, reason: CI_FAILED_LOCAL_CLAIM}
+  - {when: "size(failed) > 0 && subset", result: UNVERIFIABLE, reason: CI_FAILED_SUBSET_CLAIM}
   - {when: "size(failed) > 0", result: CONTRADICTED, reason: CI_JOB_FAILED}
   # CI may not have started yet, or may still be running.
   - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}

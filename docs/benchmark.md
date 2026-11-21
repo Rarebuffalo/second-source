@@ -74,6 +74,10 @@ macOS: 201 passed". A local run is a different statement from "CI is green":
     interesting signal, so the benchmark counts it separately and reports it next to
     contradictions, clearly labelled;
   - everything else as for unscoped claims.
+- **Subset claims** (`scope=subset`: "targeted tests pass", "unit tests for X pass", a command
+  that selects files, one named linter) follow the same rules with reason
+  `CI_FAILED_SUBSET_CLAIM`: an unrelated failing job (an E2E suite, another package in a
+  monorepo) does not make them false. Both reasons are counted together as "scoped, CI failed".
 - Unscoped claims keep today's behaviour: failing CI contradicts them.
 
 This keeps the promise "missing or weak evidence is never reported as contradicted".
@@ -97,7 +101,7 @@ This keeps the promise "missing or weak evidence is never reported as contradict
 
 `second-source bench summarize <results.jsonl>` writes `summary.json` and `summary.md`.
 
-- Per agent × claim type: counts of verified, contradicted, CI-failed-local, pending and
+- Per agent × claim type: counts of verified, contradicted, scoped-CI-failed, pending and
   unverifiable.
 - **Headline rate:** contradicted ÷ (verified + contradicted), the share of *checkable* claims
   that were false, with a 95% **Wilson** interval. Wilson stays sensible for small counts and

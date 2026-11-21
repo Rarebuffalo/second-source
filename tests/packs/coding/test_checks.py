@@ -176,6 +176,20 @@ def test_local_claim_with_passing_ci_is_verified(engine):
     assert verdict(engine, local, [check_result("pytest")]).result is Result.VERIFIED
 
 
+@pytest.mark.parametrize("claim_type", [TESTS_PASS, LINT_OK])
+def test_subset_claim_with_failing_ci_is_not_contradicted(engine, claim_type):
+    # "Targeted tests pass" or "biome lint passes" may say nothing about the job that failed.
+    job = {TESTS_PASS: "e2e tests", LINT_OK: "eslint"}[claim_type]
+    subset = claim(claim_type, ref=SHA, scope="subset")
+    result = verdict(engine, subset, [check_result(job, "failure")])
+    assert (result.result, result.reasons) == (Result.UNVERIFIABLE, ("CI_FAILED_SUBSET_CLAIM",))
+
+
+def test_subset_claim_with_passing_ci_is_verified(engine):
+    subset = claim(TESTS_PASS, ref=SHA, scope="subset")
+    assert verdict(engine, subset, [check_result("pytest")]).result is Result.VERIFIED
+
+
 def test_missing_commit_reference_is_unverifiable(engine):
     result = verdict(engine, claim(TESTS_PASS), [check_result("pytest")])
     assert result.reasons == ("NO_COMMIT_REFERENCE",)
