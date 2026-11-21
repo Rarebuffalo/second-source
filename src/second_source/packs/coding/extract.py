@@ -187,11 +187,16 @@ _QUOTED_TEXT = re.compile(r'"[^"\n]*"|“[^”\n]*”')
 
 
 # "... to ensure / to verify X" says why something was done; X itself is not asserted.
-_PURPOSE = re.compile(r"\bto\s+(?:ensure|guarantee|verify|confirm|make sure|check|validate)\b")
+_PURPOSE = re.compile(
+    r"\bto\s+(?:ensure|guarantee|verify|confirm|make sure|check|validate)\b"
+    # "... (PR #70996) which added schema tests": a relative clause describing another change.
+    r"|\b(?:which|that)\s+(?:had\s+|has\s+)?(?:added|adds|introduced|introduces|created|creates)\b"
+)
 
 
 def asserted_part(clause: str) -> str:
-    """The part of a clause before any purpose phrase ("ran tests to ensure X" → "ran tests")."""
+    """The part of a clause before any purpose phrase or relative clause ("ran tests to ensure
+    X" → "ran tests"; "follows #12 which added tests" → "follows #12")."""
     found = _PURPOSE.search(clause.lower())
     return clause if found is None else clause[: found.start()]
 
@@ -634,7 +639,10 @@ def _looks_like_command(code: str) -> bool:
 def _looks_like_path(code: str) -> bool:
     """True if inline code is a file path (``docs/setup.md``, ``README.md``)."""
     code = code.strip()
-    return " " not in code and bool(re.search(r"\.[a-z0-9]{1,6}$|/", code, re.IGNORECASE))
+    if " " in code:
+        return False
+    # File extensions are lower case in practice; "ButtonIconSize.Md" is a code identifier.
+    return "/" in code or bool(re.search(r"\.[a-z0-9]{1,6}$", code))
 
 
 def _command_type(command: str) -> str | None:

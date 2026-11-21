@@ -610,3 +610,16 @@ def test_a_condition_word_does_not_hide_an_issue_reference(text):
 def test_claims_about_the_whole_suite_have_no_scope(text):
     (claim,) = [c for c in extract_claims("pr-1", [body(text)]) if c.type == TESTS_PASS]
     assert "scope" not in claim.attributes
+
+
+def test_a_relative_clause_about_another_change_is_not_a_claim():
+    text = (
+        "Found while reviewing commit ff9e (PR airbytehq/airbyte#70996) which added schema tests."
+    )
+    assert types(text) == []
+
+
+def test_code_identifiers_are_not_file_names():
+    text = "Update header icons from `ButtonIconSize.Lg` to `ButtonIconSize.Md` for the banner."
+    assert DOCS_UPDATED not in types(text)
+    assert types("Updated `docs/setup.md` with the new flag.") == [DOCS_UPDATED]
