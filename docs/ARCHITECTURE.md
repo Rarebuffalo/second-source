@@ -1,8 +1,8 @@
 # Second Source architecture
 
 This document is for contributors. It describes how the code is organised, the contracts
-between parts, and the order in which we build them. The product reasoning lives in the
-planning documents in this folder (Strategy v4, PRD 3.1, Tech Spec 3.1).
+between its parts, and the order in which it is being built. Sections marked *(planned)*
+describe parts that do not exist yet.
 
 ## 1. What we are building
 
@@ -18,8 +18,8 @@ There are three ways to use it, and all of them share one engine:
 | Surface | Who it is for | How it runs | Cost |
 |---|---|---|---|
 | CLI: `second-source check <PR URL>` | Anyone who wants to try it in 10 seconds | Locally via `uvx` / `pipx` | Free |
-| GitHub Action | Repositories that want every agent PR checked | In the repo's own GitHub Actions | Free on public repos |
-| Benchmark (Agent Claim Truth) | Everyone comparing agents | Batch pipeline, results published as a static site and dataset | Free |
+| GitHub Action *(planned)* | Repositories that want every agent PR checked | In the repo's own GitHub Actions | Free on public repos |
+| Benchmark (Agent Claim Truth): `second-source bench` | Everyone comparing agents | Batch pipeline; results to be published as a static site and dataset | Free |
 
 ## 2. Design principles
 
@@ -43,49 +43,57 @@ There are three ways to use it, and all of them share one engine:
 
 ```
 src/second_source/
-  core/          domain-neutral engine (pure)
+  core/          domain-neutral engine (pure: no network, clock or filesystem)
     model.py       Episode, Claim, Evidence, CheckRun, Verdict, enums
     hashing.py     canonical JSON + SHA-256 for replayable inputs
-    evidence.py    de-duplication, freshness helpers
+    evidence.py    de-duplication of evidence records
     expr.py        CEL wrapper: value conversion, compile cache, function registry
-    checks.py      check definition schema, loading/validation, evaluation -> CheckRun
+    checks.py      check definition schema, validation, evaluation -> CheckRun
     aggregate.py   CheckRuns -> Verdict
     engine.py      Engine: registry of checks, verify(episode, claims, evidence, now)
-    pack.py        pack manifest loading (checks + functions + claim types)
-  packs/
-    coding/        coding-agent pack: agent detection, claim grammar, checks, CEL helpers
-  sources/
-    github/        GitHub API client (REST + GraphQL, ETag cache, rate limits) and mappers:
-                   PR -> Episode, PR text -> raw text, check runs/issues/commits -> Evidence
-  report/          renderers: Markdown (check summary, job summary, terminal), JSON
-  cli/             `second-source` command (check, explain, bench)
-  action/          GitHub Action entrypoint (reads event, runs pipeline, writes check run)
-benchmark/       batch pipeline (AIDev sampling via the dataset viewer API, runner, statistics)
-site/            static leaderboard (GitHub Pages)
-action.yml       GitHub Action metadata (must sit at repo root)
+    pack.py        pack loading (pack.yaml + check files + functions hook)
+  packs/coding/  coding-agent pack
+    detection.py   which agent opened a PR (author, body marker, commit trailer, branch)
+    extract.py     rule-based claim extraction; every rule is named
+    functions.py   CEL helpers (job and path classifiers, repo and environment matching)
+    checks/        one YAML file per check
+    trusted_rules.yaml  rules whose measured precision makes their claims high confidence
+  sources/github/  GitHub REST client (ETag cache, pagination, rate limits), auth chain,
+                   URL parsing, mappers (API JSON -> Episode, texts, Evidence), source
+  pipeline.py    one PR end to end; shared by the CLI, the benchmark and the Action
+  report/        renderers: terminal text, Markdown, versioned JSON
+  benchmark/     AIDev sampling, golden-set scoring and label merging, per-rule precision,
+                 resumable batch runner, statistics (Wilson intervals)
+  cli/           `second-source check` and `second-source bench ...`
 tests/
   core/            unit tests for the engine
   fixtures/        non-coding fixture suite (customer-support refunds)
-  packs/coding/    grammar and check tests, golden set
-  sources/github/  recorded API fixtures (no live network in tests)
+  packs/coding/    extraction, detection and check tests; seed and real golden sets
+  sources/github/  client, cache, auth, mapper and source tests against a fake API
+  benchmark/       sampling, runner, statistics and bench CLI tests
+scripts/check.sh   the quality gate: ruff lint, ruff format check, full test suite
 ```
 
-**Dependency direction:** `core` ← `packs` ← `sources` ← `cli` / `action` / `benchmark`.
+Planned: `action.yml` and an Action entrypoint (M4), and a static benchmark site (M5).
+
+**Dependency direction:** `core` ← `packs` ← `sources` ← `pipeline` ← `cli` / `benchmark`.
 `core` imports nothing from the other packages. Packs may import `core` only.
 
 ## 4. Data flow (one pull request)
 
 ```
-PR URL or Action event
-  -> sources.github.load_episode()        Episode + raw texts (title, body, commits, comments)
-  -> packs.coding.detect_agent()          which agent wrote it (or skip if human)
-  -> packs.coding.extract_claims()        Claims with spans and the commit each refers to
-  -> sources.github.fetch_evidence()      only the evidence the claims need
-  -> core.engine.verify(now=...)          CheckRuns -> Verdicts
-  -> report.markdown / report.json        output for terminal, check run, job summary
+PR URL (or, later, an Action event)
+  -> GitHubSource.load(ref)               PR, commits, comments -> texts and agent signals
+  -> detect_agent(signals)                which agent wrote it (None for a human PR)
+  -> extract_claims(...) + merge_claim()  Claims with spans, the commit each refers to,
+                                          the rule that found it and its confidence
+  -> GitHubSource.fetch_evidence(...)     only the evidence types the claims need
+  -> Engine.verify(..., now=...)          CheckRuns -> Verdicts
+  -> report.render: to_text / to_markdown / to_json
 ```
 
-Fetching is driven by the claims. If a PR claims nothing, we make almost no API calls.
+`pipeline.check_pull_request()` runs these steps. Fetching is driven by the claims: if a
+PR claims nothing, it makes almost no API calls.
 
 ## 5. Core contracts
 
@@ -101,10 +109,12 @@ Fetching is driven by the claims. If a PR claims nothing, we make almost no API 
 
 ### 5.2 Check definitions (YAML + CEL)
 
+A simplified example (the real one is `packs/coding/checks/ci_result.yaml`):
+
 ```yaml
 id: coding.tests_pass
 version: 1.0.0
-kind: state            # rule | state | temporal | judge | human
+kind: state            # rule | state | temporal (judge and human are reserved)
 level: L4
 applies_to: [TESTS_PASS]
 params:
@@ -179,14 +189,15 @@ A pack is a directory containing:
 
 ## 6. GitHub source
 
-- Uses REST for simple reads and GraphQL to batch where it saves calls.
+- Uses the REST API only; a typical PR costs 4–10 requests (see docs/sources/github.md).
 - Uses conditional requests (ETags) with a small on-disk cache in the CLI and benchmark.
 - Authentication, in order of preference:
   1. `GITHUB_TOKEN` from the environment (used by the Action);
   2. the token from `gh auth token` if the GitHub CLI is logged in;
   3. no authentication (60 requests per hour, enough for a few PRs).
-- On hitting a rate limit it stops cleanly. Affected claims become `UNVERIFIABLE` with reason
-  `API_LIMIT`.
+- On hitting a rate limit it stops cleanly. The evidence types it could not fetch are marked
+  stale, and claims that need them become `UNVERIFIABLE` with reason `SOURCE_STALE`. The
+  batch runner does not record such PRs; it retries them on the next run.
 - It never checks out or runs PR code.
 
 ## 7. Error handling
@@ -195,7 +206,7 @@ A pack is a directory containing:
 |---|---|
 | Core check evaluation | `UNVERIFIABLE(ENGINE_ERROR)`; continue with other checks |
 | Source (network, API) | Retries with backoff, then marks affected evidence types as stale |
-| Action | Never fails the user's workflow because of our bugs. Posts a neutral check saying "could not verify" |
+| Action *(planned)* | Never fails the user's workflow because of our bugs. Posts a neutral check saying "could not verify" |
 | CLI | Clear message and a non-zero exit code. `--json` gives machine-readable errors |
 
 ## 8. Testing
@@ -204,36 +215,33 @@ A pack is a directory containing:
 - **Non-coding fixture suite.** Customer-support refund claims with payment evidence. It must
   pass without any change to `core`.
 - **Replay tests.** Identical inputs give an identical `inputs_hash` and result.
-- **Golden set** for the coding pack. Labelled claims with precision and recall targets
-  (≥ 95% / ≥ 90%).
-- **GitHub fixtures.** Recorded, sanitised API responses. Tests never hit the network.
+- **Golden sets** for the coding pack: a small seed set, and a real set of 402 labelled agent
+  PRs from AIDev split into dev (gated) and test (reported). Target precision is ≥ 0.95. See
+  `tests/packs/coding/golden/real/README.md` for the method and current results.
+- **Fake GitHub API.** Tests run against an in-process fake; they never hit the network.
 - **Lint and format** with ruff. Type hints throughout.
 
 ## 9. Open-source project hygiene
 
-- Licence: to be decided before the first public push (Apache-2.0 recommended: permissive,
-  with a patent grant, and friendly to a later enterprise offering).
-- Before going public we add `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, issue and
-  PR templates, and labelled "good first issue"s.
+- `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and issue and PR templates.
 - Semantic versioning for the package, the Action (`v1` major tag) and each pack.
-- The README leads with a 10-second try-out (`uvx second-source check <PR URL>`), a GIF and the
-  benchmark link.
+- Every change is a small, focused commit; `scripts/check.sh` must pass before each one.
 
 ## 10. Build plan
 
 Each step is committed as its own commit, one file per commit where possible.
 
-| Milestone | Steps |
-|---|---|
-| M0 Core engine | model → hashing → evidence → expr → checks → aggregate → engine → pack loader → tests (unit, non-coding fixtures, replay) → CI workflow |
-| M1 Coding pack | agent detection rules → claim grammar → referenced-commit resolution → checks (tests pass, build/lint, tests added, fixes issue, docs updated, deployed) → durability checks → golden set |
-| M2 GitHub source + CLI | API client (auth chain, ETag cache, rate limits) → mappers → `second-source check <PR URL>` → Markdown/JSON reports → recorded fixtures |
-| M3 Benchmark | AIDev sampling (dataset viewer API, see docs/benchmark.md) → batch runner with cache → statistics (Wilson intervals) → result files |
-| M4 Action | `action.yml` → entrypoint (event parsing, wait-for-CI, check run + job summary) → daily durability mode → dispute command → one-click setup link |
-| M5 Launch | static site → dataset release → README, GIF and docs → open-source hygiene files → Marketplace listing |
+| Milestone | Status | Steps |
+|---|---|---|
+| M0 Core engine | done | model → hashing → evidence → expr → checks → aggregate → engine → pack loader → tests (unit, non-coding fixtures, replay) → CI workflow |
+| M1 Coding pack | done | agent detection rules → claim grammar → referenced-commit resolution → checks (tests pass, build/lint, tests added, fixes issue, docs updated, deployed) → durability checks → golden set |
+| M2 GitHub source + CLI | done | API client (auth chain, ETag cache, rate limits) → mappers → `second-source check <PR URL>` → Markdown/JSON reports → recorded fixtures |
+| M3 Benchmark | in progress | AIDev sampling (dataset viewer API, see docs/benchmark.md) → batch runner with cache → statistics (Wilson intervals) → result files |
+| M4 Action | next | `action.yml` → entrypoint (event parsing, wait-for-CI, check run + job summary) → daily durability mode → dispute command → one-click setup link |
+| M5 Launch | planned | static site → dataset release → README, GIF and docs → open-source hygiene files → Marketplace listing |
 
 ## 11. Open decisions
 
-- Licence (before the first public push).
+- Licence.
 - Docker vs composite Action (start with composite plus `uv` for speed; measure).
 - Whether the benchmark site lives in this repo or a separate one.
