@@ -5,6 +5,9 @@ one of its commit messages. For each text, list the **claims** it makes: stateme
 already true and that someone could check. Label what a careful reader would say the text
 asserts. Do not guess what a tool might detect.
 
+(The labellers of the published sets are AI model sessions given only this guide and the
+texts, plus a human audit of a random subset; see the golden-set README.)
+
 ## Claim types
 
 | Type | The text asserts that... | Examples that count |

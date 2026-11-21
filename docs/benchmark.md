@@ -55,8 +55,12 @@ golden set is built from AIDev PR bodies:
    report, never to tune. Its numbers are the ones we publish.
 3. **Label independently.** Two labellers who never see the extraction rules label every PR
    from a written guide (`tests/packs/coding/golden/real/GUIDE.md`). Disagreements are settled
-   by a third read against the guide. We report inter-labeller agreement, so readers can judge
-   the labels themselves.
+   by a third read against the guide. We report inter-labeller agreement (exact and Cohen's
+   kappa per type), so readers can judge the labels themselves. **The labellers are AI model
+   sessions**, each given only the guide and the texts; no person labels the set, and the
+   adjudicator is the building session. That makes the ground truth model-made (verdicts stay
+   rule-based), and two sessions of one model agree more than independent people would, so a
+   human audit of a random subset is reported alongside.
 4. **Gate.** `test_golden_real.py` scores both splits. Precision is gated hard (≥ 0.95, because
    a false claim leads to a false accusation). Recall is gated with a floor that ratchets up as
    rules improve; it is reported, not hidden.
