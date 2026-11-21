@@ -113,3 +113,14 @@ def test_results_keep_an_evidence_snapshot(fake_github, tmp_path):
     paths = {item["attributes"]["path"] for item in by_type["changed_file"]}
     assert "tests/test_parser.py" in paths
     json.dumps(record)  # everything is JSON-safe (datetimes as ISO strings)
+
+
+def test_snapshots_keep_the_file_list_even_without_a_file_claim(fake_github, tmp_path):
+    no_claims = dict(fake_github.BASE_ROUTES["/repos/Octo/App/pulls/7"], body="Refactor.")
+    fake = fake_github(
+        {"/repos/Octo/App/pulls/7": no_claims, "/repos/Octo/App/pulls/7/commits": []}
+    )
+    out = tmp_path / "results.jsonl"
+    run(fake, [pull(GOOD)], out)
+    (record,) = read_results(out)
+    assert any(item["type"] == "changed_file" for item in record["evidence"])

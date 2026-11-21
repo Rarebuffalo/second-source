@@ -58,8 +58,14 @@ def check_pull_request(
     *,
     engine: Engine | None = None,
     now: datetime | None = None,
+    extra_evidence: frozenset[str] = frozenset(),
 ) -> PullRequestReport:
-    """Verify every claim in a pull request. Raises PullRequestNotFound for missing PRs."""
+    """Verify every claim in a pull request. Raises PullRequestNotFound for missing PRs.
+
+    ``extra_evidence`` names evidence types to fetch even when no claim needs them. The
+    benchmark uses it to keep every PR's file list in its evidence snapshot, so integrity
+    signals (CI config or tests changed) can be re-scored later without new requests.
+    """
     engine = engine or default_engine()
     checked_at = now or datetime.now(UTC)
     # The client may be shared across many PRs (benchmark runs), so count this PR's requests
@@ -77,7 +83,8 @@ def check_pull_request(
         # Merging asserts the change is good; durability checks verify it over time.
         claims.append(merge_claim(episode.id, merged_at, merge_sha))
 
-    evidence = source.fetch_evidence(loaded, claims, engine.evidence_types_for(claims))
+    needed = set(engine.evidence_types_for(claims)) | set(extra_evidence)
+    evidence = source.fetch_evidence(loaded, claims, needed)
     verdicts = engine.verify(
         episode, claims, evidence.records, now=checked_at, stale=frozenset(evidence.stale)
     )

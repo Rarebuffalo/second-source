@@ -37,6 +37,9 @@ from second_source.sources.github.source import GitHubSource, PullRequestNotFoun
 from second_source.sources.github.urls import parse_pull_request
 
 RESULT_SCHEMA_VERSION = "2"  # 2: adds the evidence snapshot
+# Always snapshot the PR's file list (one request), even when no claim needs it: integrity
+# checks (CI config changed, tests removed) can then be re-scored offline.
+SNAPSHOT_EVIDENCE = frozenset({"changed_file"})
 
 
 @dataclass
@@ -120,7 +123,7 @@ def _check_one(
     except ValueError as error:
         return {**base, "error": f"invalid url: {error}"}, None
     try:
-        report = check_pull_request(ref, source, now=clock())
+        report = check_pull_request(ref, source, now=clock(), extra_evidence=SNAPSHOT_EVIDENCE)
     except RateLimited:
         return base, "GitHub rate limit reached"
     except PullRequestNotFound:
