@@ -65,6 +65,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="use the public API without any token, even if one is available",
     )
     bench.add_parser(commands)
+    commands.add_parser(
+        "action", help="run as the GitHub Action (reads its inputs from the environment)"
+    )
     return parser
 
 
@@ -82,6 +85,10 @@ def main(
     err = stderr or sys.stderr
     args = build_parser().parse_args(argv)
 
+    if args.command == "action":
+        from second_source.action.main import run_action  # only needed inside Actions
+
+        return run_action(os.environ if env is None else env, out=out)
     if args.command == "bench":
         context = bench.BenchContext(
             client_factory=client_factory,
