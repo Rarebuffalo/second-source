@@ -1,0 +1,48 @@
+name: Wrong verdict
+description: A claim was marked contradicted, verified, pending or unverifiable when it should not have been.
+labels: ["wrong verdict"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks! Wrong verdicts are the most useful reports we get: each one becomes a test case.
+  - type: input
+    id: pr
+    attributes:
+      label: Pull request
+      description: URL of the pull request you checked.
+      placeholder: https://github.com/owner/repo/pull/123
+    validations:
+      required: true
+  - type: input
+    id: claim
+    attributes:
+      label: Claim
+      description: The claim as Second Source showed it, e.g. "Tests pass".
+    validations:
+      required: true
+  - type: dropdown
+    id: got
+    attributes:
+      label: Verdict shown
+      options: [contradicted, verified, pending, unverifiable, "not found (claim was missed)", "invented (text is not a claim)"]
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: What should it be, and why?
+      description: Point to the evidence (CI run, changed files, issue) or the wording.
+    validations:
+      required: true
+  - type: textarea
+    id: output
+    attributes:
+      label: Output
+      description: Paste `second-source check <url>` output (or `--json`).
+      render: text
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Output of `second-source --version`.
