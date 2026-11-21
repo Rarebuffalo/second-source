@@ -19,13 +19,13 @@ from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 
+from second_source.action.commands import DISPUTED_LABEL
 from second_source.core.model import Claim, Result
 from second_source.pipeline import PullRequestReport
 from second_source.report.render import WORDS, to_markdown
 from second_source.sources.github.client import GitHubClient
 
 CHECK_NAME = "Second Source"
-DISPUTED_LABEL = "second-source: disputed"
 MAX_SUMMARY = 65_000  # GitHub limits check run output text to 65,535 characters
 
 

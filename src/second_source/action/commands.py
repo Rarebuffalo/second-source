@@ -9,6 +9,10 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
+from urllib.parse import urlencode
+
+from second_source.sources.github.client import GitHubClient
+from second_source.sources.github.urls import PullRequestRef
 
 PREFIX = "/second-source"
 # Author associations GitHub reports for people with write access to the repository.
@@ -48,3 +52,30 @@ def may_run(command: Command, pr_author: str) -> bool:
         command.author_association in TRUSTED_ASSOCIATIONS
         or command.author.lower() == pr_author.lower()
     )
+
+
+# ---- disputes -------------------------------------------------------------------------------
+
+PROJECT_URL = "https://github.com/Rarebuffalo/second-source"
+DISPUTED_LABEL = "second-source: disputed"
+
+
+def wrong_verdict_link(pr_url: str, reason: str) -> str:
+    """A link to the project's "wrong verdict" issue form with the PR and reason filled in."""
+    query = urlencode({"template": "wrong_verdict.yml", "pr": pr_url, "expected": reason})
+    return f"{PROJECT_URL}/issues/new?{query}"
+
+
+def apply_dispute(client: GitHubClient, ref: PullRequestRef, command: Command) -> None:
+    """Record a dispute: label the PR (the label is the only state) and reply with a link
+    for reporting the wrong verdict to the project."""
+    base = f"/repos/{ref.owner}/{ref.repo}/issues/{ref.number}"
+    client.post(f"{base}/labels", {"labels": [DISPUTED_LABEL]})
+    reason = command.argument or "(no reason given)"
+    reply = (
+        f"Thanks @{command.author}, this PR is now marked **disputed** and the Second Source "
+        f"check says so.\n\nReason: {reason}\n\nIf a verdict is wrong because Second Source "
+        f"misread a claim or the evidence, please [report it here]"
+        f"({wrong_verdict_link(ref.url, reason)}) so the rules can be fixed."
+    )
+    client.post(f"{base}/comments", {"body": reply})
