@@ -156,4 +156,5 @@ The golden set and benchmark samples use the AIDev dataset by Hao Li et al.
 
 ## Licence
 
-A licence has not been chosen yet. Until a `LICENSE` file is added, all rights are reserved.
+[Apache-2.0](LICENSE). The AIDev-derived PR texts in the golden set remain under CC-BY-4.0
+(see [NOTICE](NOTICE)).
