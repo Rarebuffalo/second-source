@@ -87,6 +87,12 @@ _JS_SUITE_SKIP = re.compile(
     r"^\s*(await\s+)?(test\.)?(describe|context|suite)\.skip\b|^\s*(await\s+)?(xdescribe|xcontext)\s*\("
 )
 _PYTESTMARK = re.compile(r"^\s*pytestmark\s*=")
+# Lines that belong to a group's header, at the group's own indentation: decorators and
+# annotations stacked above it, the class line, and the opening describe line.
+_GROUP_HEADER = re.compile(
+    r"^\s*(@|(public\s+|final\s+|abstract\s+)*class\s|(await\s+)?(test\.)?(describe|context|suite)\b"
+    r"|(xdescribe|xcontext)\b)"
+)
 _PY_SELF_TEST = re.compile(r"\b(pytester|testdir)\.(makepyfile|makefile|inline_run|runpytest)\b")
 _DECLARING_SKIP = {
     # Suites (describe/context/suite) are not test cases.
@@ -135,6 +141,7 @@ _SAME_COMMAND_WEAKENING = re.compile(
 _BUILD_SKIP_FLAG = re.compile(r"\s-DskipTests\b|\s-Dmaven\.test\.skip=true|(?<=\S)\s+-x\s+test\b")
 _BUILD_TOOL = re.compile(r"\b(mvnw?|gradlew?)\b")
 _CONTINUE_ON_ERROR = re.compile(r"^(\s*)continue-on-error:\s*(true|\$\{\{\s*true\s*\}\})\s*(#.*)?$")
+_YAML_KEY = re.compile(r"^[\w.-]+:\s*(#.*)?$")  # a mapping key on its own line (job header)
 _JOB_KEY = re.compile(
     r"^(\s*)(runs-on|steps|needs|strategy):"
 )  # timeout-minutes is also a step key
@@ -228,6 +235,7 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     counts: dict[str, Any] = {"patch_available": True}
     markers: list[int] = []
     js_self_test = language == "js" and bool(_JS_SELF_TEST.search(patch))
+    file_wide_suite_skip = False
     # Gate families removed and added in this file. Whether a gate was deleted outright is
     # decided per PR in summarize(): moving fail_under from setup.cfg to pyproject.toml, or from
     # a --cov-fail-under flag into config, is not a deletion.
@@ -254,7 +262,16 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
         framework_hunk = language == "python" and any(
             _PY_SELF_TEST.search(text) for _s, text, _n in hunk
         )
+        # A skipped group (describe.skip, a skipped class) covers the new cases indented under
+        # it, until the indentation returns to the group's level.
+        group_indent: int | None = None
+        group_body = False  # seen a line inside the group: a later header starts another group
         for index, (sign, text, new_line) in enumerate(hunk):
+            if group_indent is not None and sign != "-" and text.strip():
+                if _indent(text) > group_indent:
+                    group_body = True
+                elif group_body or not _GROUP_HEADER.match(text):
+                    group_indent = None
             starts_in_string = old_in_string if sign == "-" else new_in_string
             if language == "python" and len(_TRIPLE_QUOTE.findall(text)) % 2:
                 if sign != "+":
@@ -274,6 +291,10 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                     bump("test_skips_added" if sign == "+" else "test_skips_removed", new_line)
                     if sign == "+" and _is_suite_skip(language, text, hunk, index):
                         bump("suite_skips_added")
+                        if language == "python" and _PYTESTMARK.search(text):
+                            file_wide_suite_skip = True
+                        else:
+                            group_indent, group_body = _indent(text), False
                 # A test case is a declaration; a skip marker counts as one only when it declares
                 # the test on the same line ("it.skip('x', …)"), not as a separate decorator.
                 declares_skip = (
@@ -283,6 +304,8 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 )
                 if declares_skip or (language in _TEST_CASE and _TEST_CASE[language].search(text)):
                     bump("test_cases_added" if sign == "+" else "test_cases_removed")
+                    if sign == "+" and group_indent is not None and _indent(text) > group_indent:
+                        bump("suite_skipped_cases")
                 if _ASSERT.search(text):
                     bump("asserts_added" if sign == "+" else "asserts_removed")
             if sign == "+" and not test_file and language and _LINT_SUPPRESSION.search(text):
@@ -317,9 +340,8 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 before = removed_gates[key][0]
                 if (number < before) if stricter else (number > before):
                     counts["coverage_gate_lowered"] = True
-    if counts.get("suite_skips_added"):
-        # One marker that skips a group (a describe, a test class, a whole module): the new test
-        # cases of this file are all skipped with it.
+    if file_wide_suite_skip:
+        # A module-level pytestmark skip covers every new case of the file.
         counts["suite_skipped_cases"] = counts.get("test_cases_added", 0)
     if file_removed_gates:
         counts["gates_removed"] = sorted(file_removed_gates)  # fixed family names, not code
@@ -328,6 +350,10 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     if markers:
         counts["marker_lines"] = markers
     return counts
+
+
+def _indent(text: str) -> int:
+    return len(text) - len(text.lstrip())
 
 
 def _is_suite_skip(
@@ -374,7 +400,7 @@ def _tolerates_failures(
         for row in rows:
             line = hunk[row][1]
             stripped = line.lstrip()
-            if stripped and len(line) - len(stripped) < indent and stripped.endswith(":"):
+            if stripped and len(line) - len(stripped) < indent and _YAML_KEY.match(stripped):
                 break
             found.append(row)
         return found

@@ -579,3 +579,57 @@ def test_a_skip_over_a_group_marks_the_files_new_cases_as_skipped(path, lines):
 )
 def test_old_and_new_lines_track_strings_separately(lines):
     assert facts("tests/test_x.py", "modified", patch(*lines))["test_skips_added"] == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        # Guard re-check 3, T2: skipping an old group while adding new tests elsewhere.
+        (
+            "tests/test_x.py",
+            [
+                "+@pytest.mark.skip(reason='flaky')",
+                " class TestOld:",
+                "     def test_old(self):",
+                "         assert 1",
+                "+class TestNew:",
+                "+    def test_a(self):",
+                "+        assert 1",
+                "+    def test_b(self):",
+                "+        assert 1",
+            ],
+        ),
+        (
+            "web/a.test.ts",
+            [
+                "-describe('old', () => {",
+                "+describe.skip('old', () => {",
+                "   it('old', () => {})",
+                " })",
+                "+it('new one', () => {})",
+                "+it('new two', () => {})",
+            ],
+        ),
+    ],
+)
+def test_a_skip_on_an_old_group_does_not_cover_new_tests_outside_it(path, lines):
+    result = facts(path, "modified", patch(*lines))
+    assert result["suite_skips_added"] == 1
+    assert result.get("suite_skipped_cases", 0) == 0
+
+
+def test_a_job_header_with_a_comment_still_ends_the_job():
+    # T1: the previous job's pytest must not make a non-test job's flag count.
+    lines = [
+        "   test:",
+        "     steps:",
+        "       - run: pytest",
+        "   docs:  # documentation",
+        "     runs-on: ubuntu-latest",
+        "+    continue-on-error: true",
+        "     steps:",
+        "       - run: mkdocs build",
+    ]
+    assert "ci_failures_tolerated" not in facts(
+        ".github/workflows/ci.yml", "modified", patch(*lines)
+    )
