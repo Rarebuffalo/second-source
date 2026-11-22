@@ -1,7 +1,7 @@
 # Optional guard: the integrity guards could not look (file list unreadable, or GitHub sent no
 # diff for a test, CI or test-config file). Shown so a clean result is not over-trusted.
 id: coding.integrity_inspection
-version: 1.1.0
+version: 1.2.0
 kind: state
 role: guard
 required: false
@@ -14,7 +14,8 @@ derive:
   # Field reads are guarded by has(): an older or newer summary must not error.
   s: "size(summary) > 0 ? summary[0] : {}"
   missing: "'changed_files_summary' in stale || size(summary) == 0"
-  partial: "!missing && (has(s.uninspected) ? s.uninspected : 0) > 0"
+  # A summary without the field (another source, an old snapshot) was not inspected either.
+  partial: "!missing && (has(s.uninspected) ? s.uninspected > 0 : true)"
 outcomes:
   - {when: "missing || partial", result: UNVERIFIABLE, reason: NOT_INSPECTED}
   - {otherwise: true, result: VERIFIED, reason: INSPECTED}

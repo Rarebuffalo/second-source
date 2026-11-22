@@ -151,6 +151,13 @@ class Cell:
             "coverage": self.coverage,
             "false_rate": self.false_rate,
             "false_rate_ci95": [low, high] if self.checkable else None,
+            # Comparable with runs made before the integrity guards existed: withdrawn claims
+            # counted as verified, as they would have been then.
+            "false_rate_without_guards": (
+                self.contradicted / (self.checkable + self.withdrawn)
+                if self.checkable + self.withdrawn
+                else None
+            ),
         }
 
 

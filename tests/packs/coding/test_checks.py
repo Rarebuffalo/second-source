@@ -574,3 +574,9 @@ def test_a_summary_missing_fields_withdraws_nothing(engine):
     partial = Evidence("changed_files_summary", "7", T0, {"files": 3})
     result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), partial])
     assert result.result is Result.VERIFIED
+
+
+def test_a_summary_without_the_inspection_field_counts_as_not_inspected(engine):
+    partial = Evidence("changed_files_summary", "7", T0, {"files": 3})
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), partial])
+    assert "NOT_INSPECTED" in result.caveats
