@@ -26,10 +26,13 @@ import json
 from collections.abc import Callable, Iterable
 from dataclasses import dataclass
 from datetime import UTC, datetime
+from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from second_source import __version__
 from second_source.benchmark.aidev import AidevPullRequest
+from second_source.packs import coding
 from second_source.pipeline import check_pull_request
 from second_source.report.render import evidence_snapshot, to_json
 from second_source.sources.github.client import GitHubError, RateLimited
@@ -117,6 +120,10 @@ def _check_one(
         "schema_version": RESULT_SCHEMA_VERSION,
         "url": row.url,
         "dataset_agent": row.agent,
+        # Which code produced the verdicts: a run resumed after an upgrade mixes versions, and
+        # the summary must be able to tell (stats split or warn on them).
+        "tool_version": __version__,
+        "pack_version": _pack_version(),
     }
     try:
         ref = parse_pull_request(row.url)
@@ -133,6 +140,11 @@ def _check_one(
     if report.rate_limited:
         return base, "GitHub rate limit reached"
     return {**base, "report": to_json(report), "evidence": evidence_snapshot(report)}, None
+
+
+@lru_cache(maxsize=1)
+def _pack_version() -> str:
+    return coding.load().version
 
 
 def read_results(path: Path) -> list[dict[str, Any]]:

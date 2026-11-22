@@ -159,3 +159,34 @@ def test_testreceipt_comparable_cell_counts_body_claims_by_year():
     assert (cells["2025"]["checkable"], cells["2025"]["contradicted"]) == (2, 1)
     assert (cells["2026"]["checkable"], cells["2026"]["contradicted"]) == (1, 0)
     assert "Comparable to testreceipt" in to_markdown(summarize(records))
+
+
+def test_withdrawn_verifications_are_counted_apart_from_the_false_rate():
+    def record(n, claim):
+        return {
+            "url": f"https://github.com/o/r{n}/pull/1",
+            "dataset_agent": "codex",
+            "tool_version": "0.1.0",
+            "pack_version": "0.4.0" if n else "0.3.0",
+            "report": {"agent": None, "claims": [claim]},
+        }
+
+    withdrawn = {
+        **claim("TESTS_PASS", "UNVERIFIABLE", "PR_SKIPS_TESTS"),
+        "withdrawn": ["PR_SKIPS_TESTS"],
+    }
+    summary = summarize(
+        [
+            record(0, claim("TESTS_PASS", "VERIFIED")),
+            record(1, withdrawn),
+            record(2, claim("TESTS_PASS", "CONTRADICTED")),
+        ]
+    )
+    cell = summary["agents"]["codex"]["claims"]["TESTS_PASS"]
+    assert (cell["withdrawn_by_integrity_guard"], cell["checkable"], cell["false_rate"]) == (
+        1,
+        2,
+        0.5,
+    )
+    assert len(summary["code_versions"]) == 2
+    assert "Mixed code versions" in to_markdown(summary)

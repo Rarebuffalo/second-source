@@ -233,14 +233,24 @@ def changed_file_evidence(file: Json, observed_at: datetime) -> Evidence:
 
 
 def files_summary_evidence(
-    file_records: Sequence[Evidence], number: int, observed_at: datetime
+    file_records: Sequence[Evidence],
+    number: int,
+    observed_at: datetime,
+    expected_files: int | None = None,
 ) -> Evidence:
-    """One record with the PR's integrity totals (CEL cannot sum per-file counts)."""
+    """One record with the PR's integrity totals (CEL cannot sum per-file counts).
+
+    ``expected_files`` is the PR's own file count: GitHub's file list stops at 3,000 without an
+    error, so a shorter list means files were never inspected.
+    """
+    totals = diff_facts.summarize([dict(record.attributes) for record in file_records])
+    if expected_files is not None and expected_files > len(file_records):
+        totals["uninspected"] += expected_files - len(file_records)
     return Evidence(
         record_type="changed_files_summary",
         external_ref=str(number),
         observed_at=observed_at,
-        attributes=diff_facts.summarize([dict(record.attributes) for record in file_records]),
+        attributes=totals,
     )
 
 

@@ -5,6 +5,7 @@ Payloads follow the shapes in GitHub's REST API documentation, trimmed to the fi
 
 from datetime import UTC, datetime
 
+from second_source.packs.coding import diff_facts
 from second_source.sources.github import mappers
 
 NOW = datetime(2026, 11, 21, tzinfo=UTC)
@@ -288,3 +289,25 @@ def test_a_title_match_never_overrides_an_explicit_revert_reference():
     ]
     found = mappers.revert_evidence(commits, "abc1234def56", "Octo/App", 7, NOW, title="Fix bug")
     assert [e.external_ref for e in found] == ["r1"]
+
+
+def test_a_truncated_file_list_counts_as_uninspected():
+    record = mappers.changed_file_evidence(
+        {
+            "filename": "src/a.py",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 0,
+            "patch": "@@ -1 +1 @@\n+x",
+        },
+        NOW,
+    )
+    summary = mappers.files_summary_evidence([record], 7, NOW, expected_files=3001)
+    assert summary.attributes["uninspected"] == 3000
+
+
+def test_a_snapshot_without_facts_is_not_read_as_clean():
+    old_snapshot = [
+        {"path": "tests/test_a.py", "status": "modified", "additions": 3, "deletions": 0}
+    ]
+    assert diff_facts.summarize(old_snapshot)["uninspected"] == 1

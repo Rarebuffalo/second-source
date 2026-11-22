@@ -340,7 +340,8 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
             changed_ci.append(path)
         if is_lint_config_path(path):
             total["lint_config_changed"] = True
-        if (test_file or config) and not file.get("patch_available", True):
+        # A record without facts (an old snapshot) was not inspected: never read it as clean.
+        if (test_file or config) and not file.get("patch_available", False):
             total["uninspected"] += 1
         if test_file:
             if status == "removed":

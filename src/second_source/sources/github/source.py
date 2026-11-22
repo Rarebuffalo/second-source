@@ -197,7 +197,15 @@ class GitHubSource:
     def _files_summary(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         """PR-level integrity totals, from the same (shared, cached) file list."""
         files = self._changed_files(loaded, claims)
-        return [mappers.files_summary_evidence(files, loaded.ref.number, self._clock())]
+        expected = loaded.pull.get("changed_files")
+        return [
+            mappers.files_summary_evidence(
+                files,
+                loaded.ref.number,
+                self._clock(),
+                expected_files=int(expected) if isinstance(expected, int) else None,
+            )
+        ]
 
     def _issue_states(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []

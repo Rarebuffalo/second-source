@@ -30,7 +30,7 @@ Intervals are 95% Wilson score intervals. Unlike the usual "p ± 1.96·SE", they
 from __future__ import annotations
 
 import math
-from collections import defaultdict
+from collections import Counter, defaultdict
 from collections.abc import Iterable, Mapping
 from dataclasses import dataclass, field
 from typing import Any
@@ -43,7 +43,14 @@ ALL = "all"  # pseudo claim type: every claim an agent wrote (not MERGE_HOLDS)
 IMPLICIT_TYPES = frozenset({"MERGE_HOLDS"})  # claims no agent wrote; never part of ALL
 
 # How a PR's several claims of one type combine into one outcome, strongest first.
-_OUTCOME_ORDER = ("CONTRADICTED", "VERIFIED", "SCOPED_CI_FAILED", "PENDING", "UNVERIFIABLE")
+_OUTCOME_ORDER = (
+    "CONTRADICTED",
+    "VERIFIED",
+    "WITHDRAWN",
+    "SCOPED_CI_FAILED",
+    "PENDING",
+    "UNVERIFIABLE",
+)
 
 
 def wilson_interval(successes: int, trials: int, z: float = Z_95) -> tuple[float, float]:
@@ -63,8 +70,11 @@ def wilson_interval(successes: int, trials: int, z: float = Z_95) -> tuple[float
     return low, high
 
 
-def outcome_of(result: str, reasons: Iterable[str]) -> str:
-    """One claim's verdict as a counting outcome (scoped CI failures kept apart)."""
+def outcome_of(result: str, reasons: Iterable[str], withdrawn: bool = False) -> str:
+    """One claim's verdict as a counting outcome. Scoped CI failures and verifications withdrawn
+    by an integrity guard are kept apart, so neither silently moves the false rate."""
+    if result == "UNVERIFIABLE" and withdrawn:
+        return "WITHDRAWN"
     if result == "UNVERIFIABLE" and SCOPED_CI_FAILED.intersection(reasons):
         return "SCOPED_CI_FAILED"
     return result if result in _OUTCOME_ORDER else "UNVERIFIABLE"
@@ -82,6 +92,7 @@ class Cell:
     verified: int = 0
     contradicted: int = 0
     scoped_ci_failed: int = 0
+    withdrawn: int = 0  # CI passed, but the PR shaped its own evidence (integrity guards)
     pending: int = 0
     unverifiable: int = 0  # excluding scoped_ci_failed
     repos: set[str] = field(default_factory=set)  # repositories of the checkable PRs
@@ -93,6 +104,8 @@ class Cell:
             self.contradicted += 1
         elif outcome == "PENDING":
             self.pending += 1
+        elif outcome == "WITHDRAWN":
+            self.withdrawn += 1
         elif outcome == "SCOPED_CI_FAILED":
             self.scoped_ci_failed += 1
         else:
@@ -106,6 +119,7 @@ class Cell:
             self.verified
             + self.contradicted
             + self.scoped_ci_failed
+            + self.withdrawn
             + self.pending
             + self.unverifiable
         )
@@ -130,6 +144,7 @@ class Cell:
             "verified": self.verified,
             "contradicted": self.contradicted,
             "ci_failed_after_scoped_claim": self.scoped_ci_failed,
+            "withdrawn_by_integrity_guard": self.withdrawn,
             "pending": self.pending,
             "unverifiable": self.unverifiable,
             "checkable": self.checkable,
@@ -197,7 +212,9 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
             if claim.get("attributes", {}).get("confidence", "high") != "high":
                 stats.low_confidence_claims += 1
                 continue
-            by_type[claim["type"]].append(outcome_of(claim["result"], claim["reasons"]))
+            by_type[claim["type"]].append(
+                outcome_of(claim["result"], claim["reasons"], bool(claim.get("withdrawn")))
+            )
         for kind, outcomes in by_type.items():
             stats.claims[kind].add(combine(outcomes), repo)
         written = [
@@ -206,7 +223,15 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         if written:
             stats.claims[ALL].add(combine(written), repo)
 
+    versions = Counter(
+        f"{record.get('tool_version', 'unknown')}/pack {record.get('pack_version', 'unknown')}"
+        for record in records
+        if "report" in record
+    )
     return {
+        # More than one entry means the run mixes code versions (resumed after an upgrade);
+        # re-score the stored evidence with one version before publishing.
+        "code_versions": dict(sorted(versions.items())),
         "testreceipt_comparable": _testreceipt_cells(records),
         "agents": {
             agent: {
@@ -245,6 +270,10 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
         "counted.",
         "",
     ]
+    versions = summary.get("code_versions") or {}
+    if len(versions) > 1:
+        mixed = ", ".join(f"{name} ({count} PRs)" for name, count in versions.items())
+        lines += [f"> **Mixed code versions:** {mixed}. Re-score before publishing.", ""]
     cells = summary.get("testreceipt_comparable") or {}
     if cells:
         lines += [
