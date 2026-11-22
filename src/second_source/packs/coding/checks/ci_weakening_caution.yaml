@@ -1,0 +1,25 @@
+# Optional guard: CI made to tolerate test failures, or a build command made to skip tests.
+#
+# continue-on-error on a test step or job, and -DskipTests / -x test added to an existing
+# command, can make "tests pass" mean less. Both depend on reading workflow structure from a diff
+# and have legitimate uses (a non-blocking experimental job, a build step that tests elsewhere),
+# so they are cautions until benchmark run 2 measures their precision (docs/packs/coding.md).
+id: coding.ci_weakening_caution
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [TESTS_PASS]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  # Field reads are guarded by has(): an older or newer summary must not error.
+  s: "size(summary) > 0 ? summary[0] : {}"
+  tolerated: "has(s.ci_failures_tolerated) ? s.ci_failures_tolerated : 0"
+  build_skips: "has(s.build_tests_skipped) ? s.build_tests_skipped : 0"
+outcomes:
+  - {when: "tolerated > 0", result: UNVERIFIABLE, reason: CI_TOLERATES_TEST_FAILURES}
+  - {when: "build_skips > 0", result: UNVERIFIABLE, reason: BUILD_SKIPS_TESTS}
+  - {otherwise: true, result: VERIFIED, reason: NO_CI_WEAKENING}

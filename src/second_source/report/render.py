@@ -47,6 +47,8 @@ GUARD_TEXT = {
     "LINT_SUPPRESSIONS_ADDED": "this PR adds lint suppressions",
     "LINT_CONFIG_CHANGED": "this PR changed lint configuration",
     "MATCHING_JOB_SKIPPED": "some matching CI jobs were skipped",
+    "CI_TOLERATES_TEST_FAILURES": "this PR lets CI continue when tests fail",
+    "BUILD_SKIPS_TESTS": "this PR makes a build command skip tests",
     "NOT_INSPECTED": "the diff could not be inspected for test changes",
     "GUARD_ERROR": "an integrity guard could not be evaluated",
 }

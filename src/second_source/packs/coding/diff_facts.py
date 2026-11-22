@@ -122,10 +122,12 @@ _SAME_COMMAND_WEAKENING = re.compile(
 # Build-tool flags that skip tests. Routine on build-only steps (package an artifact, test
 # elsewhere), so they count only when the PR added them to a command that ran without them
 # (a removed line in the same hunk with the same tool and without the flag).
-_BUILD_SKIP_FLAG = re.compile(r"-DskipTests\b|-Dmaven\.test\.skip=true|(gradlew?\b.*)\s-x\s+test\b")
+_BUILD_SKIP_FLAG = re.compile(r"\s-DskipTests\b|\s-Dmaven\.test\.skip=true|(?<=\S)\s+-x\s+test\b")
 _BUILD_TOOL = re.compile(r"\b(mvnw?|gradlew?)\b")
 _CONTINUE_ON_ERROR = re.compile(r"^(\s*)continue-on-error:\s*(true|\$\{\{\s*true\s*\}\})\s*(#.*)?$")
-_JOB_KEY = re.compile(r"^(\s*)(runs-on|steps|needs|strategy|timeout-minutes):")
+_JOB_KEY = re.compile(
+    r"^(\s*)(runs-on|steps|needs|strategy):"
+)  # timeout-minutes is also a step key
 _STEP_START = re.compile(r"^(\s*)-\s")  # a list item; steps are those at the steps' indentation
 _STEP_KEYS = re.compile(r"^\s*-\s+(name|run|uses):")
 _TEST_COMMAND = re.compile(
@@ -234,7 +236,6 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
         commands = _command_rows(hunk) if command_file else []
         step_of = _step_numbers(hunk) if command_file else []
         steps_with_tests = {step_of[i] for i, is_command in enumerate(commands) if is_command}
-        job_indents = {len(m.group(1)) for _s, t, _n in hunk if (m := _JOB_KEY.match(t))}
         in_string = False  # inside a Python triple-quoted string (within this hunk)
         for index, (sign, text, new_line) in enumerate(hunk):
             starts_in_string = in_string
@@ -260,10 +261,14 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
             if sign == "+" and not test_file and language and _LINT_SUPPRESSION.search(text):
                 bump("lint_suppressions_added")
             if command_file and sign == "+":
-                if _weakens(
-                    text, index, commands, removed_lines, step_of, steps_with_tests, job_indents
-                ):
+                # The test command itself weakened: withdraws "tests pass".
+                if commands[index] and _SAME_COMMAND_WEAKENING.search(text):
                     bump("test_cmd_weakened", new_line)
+                # Tolerated failures and build-flag test skips: cautions until measured.
+                if _tolerates_failures(text, index, hunk, commands, step_of, steps_with_tests):
+                    bump("ci_failures_tolerated", new_line)
+                if _skips_tests_in_build(text, removed_lines):
+                    bump("build_tests_skipped", new_line)
             if gate_file:
                 gate = _gate(path, text)
                 if gate:
@@ -294,31 +299,51 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     return counts
 
 
-def _weakens(
+def _tolerates_failures(
     text: str,
     index: int,
+    hunk: list[tuple[str, str, int | None]],
     commands: list[bool],
-    removed_lines: list[str],
     step_of: list[int],
     steps_with_tests: set[int],
-    job_indents: set[int],
 ) -> bool:
-    """Whether an added line in a CI or test-config file weakens a test run."""
-    if commands[index] and _SAME_COMMAND_WEAKENING.search(text):
-        return True
-    tool = _BUILD_TOOL.search(text)
-    if tool and _BUILD_SKIP_FLAG.search(text):
-        # Only a test run the PR changed: the same tool ran without the flag before.
-        return any(
-            tool.group(1) in removed and not _BUILD_SKIP_FLAG.search(removed)
-            for removed in removed_lines
-        )
+    """An added continue-on-error in the same workflow step as a test command, or at job level
+    in a job (within the hunk) that runs tests."""
     flag = _CONTINUE_ON_ERROR.match(text)
-    if flag:
-        if len(flag.group(1)) in job_indents:  # job level: the whole job may fail
-            return any(commands)
+    if not flag:
+        return False
+    indent = len(flag.group(1))
+    job_level = any(len(m.group(1)) == indent for _s, t, _n in hunk if (m := _JOB_KEY.match(t)))
+    if not job_level:
         return step_of[index] in steps_with_tests
-    return False
+
+    # Job level: look for a test command in the same job only, scanning both ways until a key at
+    # a shallower indentation than the job's own keys (the job header, or the next job).
+    def job_rows(rows: range) -> list[int]:
+        found = []
+        for row in rows:
+            line = hunk[row][1]
+            stripped = line.lstrip()
+            if stripped and len(line) - len(stripped) < indent and stripped.endswith(":"):
+                break
+            found.append(row)
+        return found
+
+    same_job = job_rows(range(index + 1, len(hunk))) + job_rows(range(index - 1, -1, -1))
+    return any(commands[row] for row in same_job)
+
+
+def _skips_tests_in_build(text: str, removed_lines: list[str]) -> bool:
+    """-DskipTests / -x test added to a command that ran before without it: the same command,
+    with the flag removed, appears on a removed line of the hunk."""
+    if not (_BUILD_TOOL.search(text) and _BUILD_SKIP_FLAG.search(text)):
+        return False
+    stripped = _normalise(_BUILD_SKIP_FLAG.sub(" ", text))
+    return any(_normalise(removed) == stripped for removed in removed_lines)
+
+
+def _normalise(command: str) -> str:
+    return " ".join(command.split())
 
 
 def _command_rows(hunk: list[tuple[str, str, int | None]]) -> list[bool]:
@@ -334,17 +359,29 @@ def _command_rows(hunk: list[tuple[str, str, int | None]]) -> list[bool]:
 
 
 def _step_numbers(hunk: list[tuple[str, str, int | None]]) -> list[int]:
-    """Per row: the workflow step it belongs to. Steps start at list items at the steps'
-    indentation (the first item with name:/run:/uses:), so a "- --fix" inside a step's with:
-    does not start a new step."""
-    indent = next(
-        (
-            len(m.group(1))
-            for _s, text, _n in hunk
-            if (m := _STEP_START.match(text)) and _STEP_KEYS.search(text)
-        ),
-        None,
-    )
+    """Per row: the workflow step it belongs to. Steps start at list items at the indentation
+    of the first item after a "steps:" line (so a matrix "include: - name:" or a "- --fix"
+    inside a step's with: does not start a step). Without a "steps:" line in the hunk, the
+    first item with name:/run:/uses: sets the indentation."""
+    indent = None
+    after_steps = False
+    for _sign, text, _line in hunk:
+        if re.match(r"^\s*steps:\s*$", text):
+            after_steps = True
+            continue
+        item = _STEP_START.match(text)
+        if item and after_steps:
+            indent = len(item.group(1))
+            break
+    if indent is None:
+        indent = next(
+            (
+                len(m.group(1))
+                for _s, text, _n in hunk
+                if (m := _STEP_START.match(text)) and _STEP_KEYS.search(text)
+            ),
+            None,
+        )
     numbers: list[int] = []
     step = 0
     for _sign, text, _line in hunk:
@@ -397,6 +434,8 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
         "test_cases_removed": 0,
         "asserts_added": 0,
         "test_cmd_weakened": 0,
+        "ci_failures_tolerated": 0,  # continue-on-error on a test step or test job
+        "build_tests_skipped": 0,  # -DskipTests / -x test added to an existing command
         "lint_suppressions_added": 0,
         "removed_test_files": 0,
         "test_source_changed": 0,  # test files in a known language with added lines
@@ -441,6 +480,8 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
             "test_cases_removed",
             "asserts_added",
             "test_cmd_weakened",
+            "ci_failures_tolerated",
+            "build_tests_skipped",
             "lint_suppressions_added",
         ):
             total[key] += file.get(key, 0)

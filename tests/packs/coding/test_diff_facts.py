@@ -65,15 +65,15 @@ def test_test_cases_and_assertions_are_counted_both_ways():
 
 def test_weakening_counts_only_near_a_test_command():
     near = patch("   - run: pytest -q", "+    continue-on-error: true")
-    assert facts(".github/workflows/ci.yml", "modified", near)["test_cmd_weakened"] == 1
+    assert facts(".github/workflows/ci.yml", "modified", near)["ci_failures_tolerated"] == 1
     far = patch(
         "+    continue-on-error: true", *[f" line {n}" for n in range(10)], " - run: pytest"
     )
-    assert "test_cmd_weakened" not in facts(".github/workflows/ci.yml", "modified", far)
+    assert "ci_failures_tolerated" not in facts(".github/workflows/ci.yml", "modified", far)
     shell = patch("+\tgo test ./... || true")
     assert facts("Makefile", "modified", shell)["test_cmd_weakened"] == 1
     # The same text in an ordinary source file is not a CI change.
-    assert "test_cmd_weakened" not in facts("src/run.py", "modified", near)
+    assert "ci_failures_tolerated" not in facts("src/run.py", "modified", near)
 
 
 def test_a_lowered_coverage_gate_is_detected_but_a_raised_one_is_not():
@@ -199,13 +199,33 @@ def test_no_newline_marker_is_ignored():
     ],
 )
 def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
-    assert "test_cmd_weakened" not in facts(path, "modified", patch(*lines))
+    result = facts(path, "modified", patch(*lines))
+    assert not any(
+        key in result
+        for key in ("test_cmd_weakened", "ci_failures_tolerated", "build_tests_skipped")
+    )
 
 
 @pytest.mark.parametrize(
-    ("path", "lines"),
+    ("path", "lines", "key"),
     [
-        (".github/workflows/ci.yml", ["+      - run: pytest || true  # flaky"]),
+        # The test command itself weakened (withdraws "tests pass").
+        (
+            ".github/workflows/ci.yml",
+            ["+      - run: pytest || true  # flaky"],
+            "test_cmd_weakened",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            ["+      - run: pytest \\", "+          --deselect tests/test_db.py"],
+            "test_cmd_weakened",
+        ),
+        (
+            ".github/actions/test/action.yml",
+            ["+      run: pytest -k 'not slow'"],
+            "test_cmd_weakened",
+        ),
+        # Tolerated failures and build-flag skips (cautions).
         (
             ".github/workflows/ci.yml",
             [
@@ -213,21 +233,8 @@ def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
                 "         run: pytest",
                 "+        continue-on-error: ${{ true }}",
             ],
+            "ci_failures_tolerated",
         ),
-        (
-            ".github/workflows/ci.yml",
-            ["+      - run: pytest \\", "+          --deselect tests/test_db.py"],
-        ),
-        # The PR added the flag to a command that ran the tests before.
-        (
-            ".github/workflows/ci.yml",
-            ["-      - run: mvn -B verify", "+      - run: mvn -B verify -DskipTests"],
-        ),
-        (
-            ".github/workflows/ci.yml",
-            ["-      - run: ./gradlew build", "+      - run: ./gradlew build -x test"],
-        ),
-        # A whole test job made non-blocking (guard re-check R6).
         (
             ".github/workflows/ci.yml",
             [
@@ -238,12 +245,22 @@ def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
                 "       - uses: actions/checkout@v4",
                 "       - run: pytest",
             ],
+            "ci_failures_tolerated",
         ),
-        (".github/actions/test/action.yml", ["+      run: pytest -k 'not slow'"]),
+        (
+            ".github/workflows/ci.yml",
+            ["-      - run: mvn -B verify", "+      - run: mvn -B verify -DskipTests"],
+            "build_tests_skipped",
+        ),
+        (
+            ".github/workflows/ci.yml",
+            ["-      - run: ./gradlew build", "+      - run: ./gradlew build -x test"],
+            "build_tests_skipped",
+        ),
     ],
 )
-def test_weakened_test_runs_are_detected(path, lines):
-    assert facts(path, "modified", patch(*lines))["test_cmd_weakened"] == 1
+def test_weakened_test_runs_are_detected(path, lines, key):
+    assert facts(path, "modified", patch(*lines))[key] == 1
 
 
 @pytest.mark.parametrize(
@@ -337,7 +354,11 @@ def test_large_patches_stay_fast():
     ],
 )
 def test_build_only_and_unrelated_steps_do_not_weaken(path, lines):
-    assert "test_cmd_weakened" not in facts(path, "modified", patch(*lines))
+    result = facts(path, "modified", patch(*lines))
+    assert not any(
+        key in result
+        for key in ("test_cmd_weakened", "ci_failures_tolerated", "build_tests_skipped")
+    )
 
 
 @pytest.mark.parametrize(
@@ -452,3 +473,51 @@ def test_a_gate_deleted_from_the_pr_is_a_lowered_gate():
 )
 def test_a_gate_moved_between_files_is_not_lowered(files):
     assert pr_summary(*files)["coverage_gate_lowered"] is False
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        # Guard re-check 2, S2: a new non-blocking job next to the test job.
+        [
+            "       - run: pytest",
+            "+  docs:",
+            "+    runs-on: ubuntu-latest",
+            "+    continue-on-error: true",
+            "+    steps:",
+            "+      - run: mkdocs build",
+        ],
+        # A lint step with timeout-minutes (a step key, not a job key).
+        [
+            "       - name: Lint",
+            "         timeout-minutes: 5",
+            "+        continue-on-error: true",
+            "         run: ruff check .",
+            "       - name: Test",
+            "         run: pytest",
+        ],
+        # A matrix include list before the steps.
+        [
+            "     strategy:",
+            "       matrix:",
+            "         include:",
+            "           - name: py311",
+            "     steps:",
+            "       - name: Lint",
+            "+        continue-on-error: true",
+            "         run: ruff check .",
+            "       - name: Test",
+            "         run: pytest",
+        ],
+    ],
+)
+def test_continue_on_error_outside_the_test_step_or_job_is_not_counted(lines):
+    assert "ci_failures_tolerated" not in facts(
+        ".github/workflows/ci.yml", "modified", patch(*lines)
+    )
+
+
+def test_an_unrelated_removed_build_line_does_not_pair_with_a_new_skip_flag():
+    # S3: removing "mvn -v" is not "the deploy ran with tests before".
+    lines = ["-      - run: mvn -v", "+      - run: mvn -B deploy -DskipTests"]
+    assert "build_tests_skipped" not in facts(".github/workflows/ci.yml", "modified", patch(*lines))

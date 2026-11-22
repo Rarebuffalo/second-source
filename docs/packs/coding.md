@@ -137,7 +137,8 @@ produce CONTRADICTED.
 
 | Guard | Kind | Claims | Reason when it fires |
 |---|---|---|---|
-| `coding.integrity_guard` | withdraws (required) | TESTS_PASS | `PR_SKIPS_TESTS` (an unconditional skip or `.only` added in a test file), `PR_WEAKENS_TEST_COMMAND` (`continue-on-error`, `\|\| true`, `--deselect`, `-k not` … within 6 lines of a test command), `PR_LOWERS_COVERAGE_GATE` |
+| `coding.integrity_guard` | withdraws (required) | TESTS_PASS | `PR_SKIPS_TESTS` (an unconditional skip or `.only` added in a test file), `PR_WEAKENS_TEST_COMMAND` (`\|\| true`, `--deselect`, `-k not`, `--ignore` … on the test command itself), `PR_LOWERS_COVERAGE_GATE` (a weaker number for a real coverage key, or a gate deleted in the PR and added nowhere) |
+| `coding.ci_weakening_caution` | caution | TESTS_PASS | `CI_TOLERATES_TEST_FAILURES` (`continue-on-error` on a test step or test job), `BUILD_SKIPS_TESTS` (`-DskipTests` / `-x test` added to an existing command) |
 | `coding.tests_added_guard` | withdraws (required) | TESTS_ADDED | `ADDED_TESTS_ARE_SKIPPED` |
 | `coding.ci_config_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `PR_CHANGES_CI_CONFIG` (workflow or test config files) |
 | `coding.tests_removed_caution` | caution | TESTS_PASS | `PR_REMOVES_TESTS` (≥ 2 more test cases removed than added, code kept) |

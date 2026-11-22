@@ -580,3 +580,11 @@ def test_a_summary_without_the_inspection_field_counts_as_not_inspected(engine):
     partial = Evidence("changed_files_summary", "7", T0, {"files": 3})
     result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), partial])
     assert "NOT_INSPECTED" in result.caveats
+
+
+def test_tolerated_ci_failures_and_build_skips_are_cautions(engine):
+    totals = {"ci_failures_tolerated": 1, "build_tests_skipped": 1}
+    result = verdict(
+        engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), summary(**totals)]
+    )
+    assert (result.result, result.caveats) == (Result.VERIFIED, ("CI_TOLERATES_TEST_FAILURES",))

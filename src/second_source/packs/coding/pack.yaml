@@ -30,4 +30,5 @@ checks:
   - checks/lint_caution.yaml
   - checks/integrity_inspection.yaml
   - checks/matching_jobs_caution.yaml
+  - checks/ci_weakening_caution.yaml
 functions: second_source.packs.coding.functions:register

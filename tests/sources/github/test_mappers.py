@@ -197,7 +197,11 @@ def test_a_pr_summary_adds_up_integrity_counts():
     summary = mappers.files_summary_evidence(records, 7, NOW)
     assert summary.record_type == "changed_files_summary"
     totals = summary.attributes
-    assert (totals["test_skips_net"], totals["test_cmd_weakened"], totals["code_net"]) == (1, 1, 4)
+    assert (totals["test_skips_net"], totals["ci_failures_tolerated"], totals["code_net"]) == (
+        1,
+        1,
+        4,
+    )
     assert totals["ci_config_changed"] is True
     assert totals["ci_config_files"] == [".github/workflows/ci.yml"]
 
