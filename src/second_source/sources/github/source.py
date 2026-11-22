@@ -95,6 +95,7 @@ class GitHubSource:
         # PR files, shared by the changed_file and revert fetchers within one fetch_evidence
         # call. Reset on every call: the Action re-checks a PR after new commits.
         self._files: dict[str, list[Json]] = {}
+        self._mapped: dict[str, list[Evidence]] = {}
 
     # ---- step 1 ------------------------------------------------------------------------------
 
@@ -124,6 +125,7 @@ class GitHubSource:
         wanted = set(needed)
         result = EvidenceResult()
         self._files = {}
+        self._mapped = {}
         fetchers = {
             "pr_state": self._pr_state,
             "check_result": self._check_results,
@@ -182,9 +184,15 @@ class GitHubSource:
         return self._files[key]
 
     def _changed_files(self, loaded: LoadedPullRequest, _claims: Sequence[Claim]) -> list[Evidence]:
-        files = self._pull_files(loaded)
-        now = self._clock()
-        return [mappers.changed_file_evidence(file, now) for file in files]
+        # Mapped once per fetch: reading every patch is the costly part, and the summary
+        # fetcher needs the same records.
+        key = f"{loaded.ref}:records"
+        if key not in self._mapped:
+            now = self._clock()
+            self._mapped[key] = [
+                mappers.changed_file_evidence(file, now) for file in self._pull_files(loaded)
+            ]
+        return self._mapped[key]
 
     def _files_summary(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         """PR-level integrity totals, from the same (shared, cached) file list."""

@@ -1,5 +1,7 @@
 """Tests for integrity facts from unified diffs (packs/coding/diff_facts.py)."""
 
+import time
+
 import pytest
 
 from second_source.packs.coding.diff_facts import facts
@@ -162,3 +164,127 @@ def test_sql_comments_removed_are_content_not_headers():
 def test_no_newline_marker_is_ignored():
     lines = ["+def test_a():", "+    assert 1", "\\ No newline at end of file"]
     assert facts("tests/test_a.py", "added", patch(*lines))["test_cases_added"] == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        # Guard code review H4: everyday CI that does not weaken a test run.
+        (
+            ".github/workflows/ci.yml",
+            [
+                "       - run: pip install pytest pytest-cov",
+                "+      - run: docker rm -f db || true",
+            ],
+        ),
+        (
+            ".github/workflows/ci.yml",
+            [
+                "         run: npm test",
+                "+      - name: Cleanup",
+                "+        run: pkill -f server || true",
+            ],
+        ),
+        (
+            ".github/workflows/ci.yml",
+            [
+                "       - name: Lint",
+                "+        continue-on-error: true",
+                "         run: ruff check .",
+                "       - name: Test",
+                "         run: pytest",
+            ],
+        ),
+        ("tox.ini", [" commands = pytest", "+    flake8 --ignore=E501"]),
+    ],
+)
+def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
+    assert "test_cmd_weakened" not in facts(path, "modified", patch(*lines))
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        (".github/workflows/ci.yml", ["+      - run: pytest || true  # flaky"]),
+        (
+            ".github/workflows/ci.yml",
+            [
+                "       - name: Test",
+                "         run: pytest",
+                "+        continue-on-error: ${{ true }}",
+            ],
+        ),
+        (
+            ".github/workflows/ci.yml",
+            ["+      - run: pytest \\", "+          --deselect tests/test_db.py"],
+        ),
+        (".github/workflows/ci.yml", ["+      - run: mvn -B verify -DskipTests"]),
+        (".github/workflows/ci.yml", ["+      - run: ./gradlew build -x test"]),
+        (".github/actions/test/action.yml", ["+      run: pytest -k 'not slow'"]),
+    ],
+)
+def test_weakened_test_runs_are_detected(path, lines):
+    assert facts(path, "modified", patch(*lines))["test_cmd_weakened"] == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "line"),
+    [
+        # Guard code review M1: markers in comments, strings and prose.
+        ("src/__tests__/a.test.ts", "+  // it.skip('flaky on CI', () => {})"),
+        ("tests/rules/no-skip.test.js", "+    code: \"describe.skip('x', () => {})\","),
+        ("tests/test_doc.py", "+    @pytest.mark.skip is used for slow tests"),
+    ],
+)
+def test_skip_markers_in_comments_strings_and_prose_do_not_count(path, line):
+    assert "test_skips_added" not in facts(path, "modified", patch(line))
+
+
+def test_framework_self_tests_do_not_count_their_skip_strings():
+    lines = [
+        "+    pytester.makepyfile('''",
+        "+        @pytest.mark.skip(reason='x')",
+        "+        def test_a(): pass",
+        "+    ''')",
+    ]
+    assert "test_skips_added" not in facts("testing/test_skipping.py", "modified", patch(*lines))
+
+
+@pytest.mark.parametrize(
+    ("path", "line"),
+    [
+        ("tests/test_x.py", "+pytestmark = pytest.mark.skip(reason='later')"),
+        ("tests/test_x.py", "+@mark.skip"),
+        ("web/a.test.ts", "+  it.skip.each([1, 2])('handles %s', (n) => {"),
+        ("web/a.test.ts", "+  await test.skip('slow path', async () => {"),
+    ],
+)
+def test_more_skip_forms_are_detected(path, line):
+    assert facts(path, "modified", patch(line))["test_skips_added"] == 1
+
+
+def test_a_unicode_line_separator_does_not_create_a_diff_line():
+    # Guard code review L1: " " inside a string must not become a fabricated "+" line.
+    line = "+x = ' +@pytest.mark.skip'"
+    assert "test_skips_added" not in facts("tests/test_x.py", "modified", patch(line))
+
+
+def test_skipped_js_tests_still_count_as_added_tests():
+    # Guard code review M2: two running and two skipped tests are four added test cases.
+    lines = [
+        "+  it('a', () => {})",
+        "+  it('b', () => {})",
+        "+  it.skip('c', () => {})",
+        "+  xit('d', () => {})",
+    ]
+    result = facts("src/parser.test.ts", "added", patch(*lines))
+    assert (result["test_cases_added"], result["test_skips_added"]) == (4, 2)
+
+
+def test_large_patches_stay_fast():
+    # Guard code review M3: a minified one-line config and a 20,000-line workflow hunk.
+    started = time.monotonic()
+    facts("jest.config.js", "modified", patch("+" + "lines: a " * 20_000))
+    hunk = [f"+      - run: pytest -k t{n}" if n % 2 else f"+      echo {n}" for n in range(20_000)]
+    facts(".github/workflows/ci.yml", "modified", patch(*hunk))
+    assert time.monotonic() - started < 3.0

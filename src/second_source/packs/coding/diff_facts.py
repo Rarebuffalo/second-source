@@ -57,19 +57,28 @@ def language_of(path: str) -> str | None:
 
 _Q = r"""['"`]"""  # a string literal starts here: "it.skip('name'" but not "it.skip()"
 
+# Declaration-level markers, anchored at the start of the line (after an optional "await"), so
+# a marker inside a comment or a string ("code: \"describe.skip('x')\"") does not count. A
+# Python decorator must end the line ("@pytest.mark.skip is used for…" in a docstring is prose).
 _SKIP = {
     "python": re.compile(
-        r"^\s*@pytest\.mark\.(skip|xfail)\b(?!if)|^\s*@unittest\.(skip\b(?!If|Unless)|expectedFailure)"
+        r"^\s*@(pytest\.)?mark\.(skip|xfail)\b(?!if)\s*(\(.*\))?\s*$"
+        r"|^\s*@unittest\.(skip\b(?!If|Unless)|expectedFailure)\b\s*(\(.*\))?\s*$"
+        r"|^\s*pytestmark\s*=.*\bpytest\.mark\.(skip|xfail)\b(?!if)"
     ),
     "js": re.compile(
-        rf"\b(it|test|describe|context|suite|specify)\.(skip|only)\s*\(\s*{_Q}"
-        rf"|^\s*(xit|xdescribe|xtest|xcontext|fit|fdescribe)\s*\(\s*{_Q}"
+        rf"^\s*(await\s+)?(it|test|describe|context|suite|specify)\.(skip|only)(\.each\b.*)?\s*\(\s*{_Q}"
+        rf"|^\s*(await\s+)?(xit|xdescribe|xtest|xcontext|fit|fdescribe)\s*\(\s*{_Q}"
     ),
     "rust": re.compile(r"^\s*#\[ignore\b"),
     "jvm": re.compile(r"^\s*@(Disabled|Ignore)\b"),
-    "csharp": re.compile(r"\[\s*(Ignore|Skip)\b|\b(Fact|Theory)\s*\(\s*Skip\s*="),
+    "csharp": re.compile(r"^\s*\[\s*(Ignore|Skip)\b|\b(Fact|Theory)\s*\(\s*Skip\s*="),
     "ruby": re.compile(r"^\s*(xit|xdescribe|xcontext)\b"),
 }
+# Files that test a test framework itself write skip markers inside strings on purpose
+# (pytester.makepyfile, ESLint's RuleTester): their markers are not skips of this project's tests.
+_FRAMEWORK_SELF_TEST = re.compile(r"\b(pytester|makepyfile|testdir|RuleTester)\b")
+_COMMENT_LINE = re.compile(r"^\s*(//|/\*|\*|#(?!\[))")  # Rust attributes start with "#["
 
 _TEST_CASE = {
     "python": re.compile(r"^\s*(async\s+)?def\s+test\w*\s*\("),
@@ -88,21 +97,31 @@ _ASSERT = re.compile(
     r"|\bAssert\.\w+\(|\$this->assert\w+\("
 )
 
-# Lines that make CI tolerate failing or missing tests, and test commands they must sit near.
-_WEAKENING = re.compile(
-    r"continue-on-error:\s*true|\|\|\s*(true|exit 0|:)\s*$|--passWithNoTests|--collect-only"
-    r"|--deselect\b|-k\s+['\"]?not\b|-m\s+['\"]?not\b|--ignore[= ]"
+# Ways to make CI tolerate failing or missing tests. They count only on the same logical
+# command as a test runner (the same line, or a line continued with a backslash), except
+# continue-on-error, which counts in the same workflow step as a test command.
+_SAME_COMMAND_WEAKENING = re.compile(
+    r"\|\|\s*(true|exit 0|:)\s*(#.*)?$|--passWithNoTests|--collect-only|--deselect\b"
+    r"|\s-k\s+['\"]?not\b|\s-m\s+['\"]?not\b|--ignore[= ]|-DskipTests\b|-Dmaven\.test\.skip=true"
+    r"|\s-x\s+test\b|\s--\s+--skip\b|\s-skip\s"
 )
+_CONTINUE_ON_ERROR = re.compile(r"^\s*continue-on-error:\s*(true|\$\{\{\s*true\s*\}\})\s*(#.*)?$")
+_STEP_START = re.compile(r"^\s*-\s")  # a new workflow step (or list item)
 _TEST_COMMAND = re.compile(
     r"\b(pytest|tox|nox|npm (run )?test|yarn test|pnpm (run )?test|jest|vitest|mocha|go test"
-    r"|cargo (test|nextest)|mvn (-\S+ )*(test|verify)|gradlew? (test|check)|rspec|phpunit"
-    r"|dotnet test|ctest|make (test|check))\b"
+    r"|cargo (test|nextest)|mvn\b.*\b(test|verify|install|package)|gradlew? .*\b(test|check|build)"
+    r"|rspec|phpunit|dotnet test|ctest|make (test|check))\b"
 )
-WEAKENING_WINDOW = 6  # lines between a weakening and a test command in the same hunk
+# Installing a test runner is not running it ("pip install pytest").
+_INSTALL = re.compile(
+    r"\b(pip3? install|uv (pip install|add|sync)|npm (i|install|ci)\b|yarn add|pnpm (add|install)"
+    r"|poetry (add|install)|apt(-get)? install|brew install|cargo install|go install)\b"
+)
+MAX_LINE = 2000  # longer lines (minified or generated) are not read
 
 # Files where a test command or a coverage gate can be configured.
 _COMMAND_FILES = re.compile(
-    r"(^|/)(\.github/workflows/[^/]+\.ya?ml|\.gitlab-ci\.yml|\.circleci/[^/]+|tox\.ini|noxfile\.py"
+    r"(^|/)(\.github/workflows/[^/]+\.ya?ml|\.github/actions/.+\.ya?ml|\.gitlab-ci\.yml|\.circleci/[^/]+|tox\.ini|noxfile\.py"
     r"|pytest\.ini|setup\.cfg|pyproject\.toml|package\.json|makefile|justfile|\.travis\.yml"
     r"|azure-pipelines[^/]*\.ya?ml|codecov\.ya?ml|\.codecov\.ya?ml|\.coveragerc"
     r"|jest\.config\.[cm]?[jt]s|vitest\.config\.[cm]?[jt]s|\.nycrc[^/]*)$",
@@ -173,6 +192,8 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     command_file = bool(_COMMAND_FILES.search(path))
     counts: dict[str, Any] = {"patch_available": True}
     markers: list[int] = []
+    # A file that tests a test framework writes skip markers inside strings on purpose.
+    count_skips = not _FRAMEWORK_SELF_TEST.search(patch)
 
     def bump(key: str, line_number: int | None = None) -> None:
         counts[key] = counts.get(key, 0) + 1
@@ -183,24 +204,29 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
         removed_gates: dict[str, tuple[float, bool]] = {}
         added_gates: dict[str, tuple[float, bool]] = {}
         edits_existing = any(sign == "-" for sign, _t, _n in hunk)
-        command_rows = [
-            index for index, (_s, text, _n) in enumerate(hunk) if _TEST_COMMAND.search(text)
-        ]
+        commands = _command_rows(hunk) if command_file else []
+        steps_with_tests = _steps_with_tests(hunk, commands) if command_file else {}
+        step = 0
         for index, (sign, text, new_line) in enumerate(hunk):
-            if sign == " ":
+            if command_file and _STEP_START.match(text):
+                step += 1
+            if sign == " " or len(text) > MAX_LINE:
                 continue
-            if test_file and language:
-                if language in _SKIP and _SKIP[language].search(text):
+            if test_file and language and not _COMMENT_LINE.match(text):
+                skip = count_skips and language in _SKIP and _SKIP[language].search(text)
+                if skip:
                     bump("test_skips_added" if sign == "+" else "test_skips_removed", new_line)
-                if language in _TEST_CASE and _TEST_CASE[language].search(text):
+                # A skipped declaration ("it.skip('x', …)") is still a test case.
+                if skip or (language in _TEST_CASE and _TEST_CASE[language].search(text)):
                     bump("test_cases_added" if sign == "+" else "test_cases_removed")
                 if _ASSERT.search(text):
                     bump("asserts_added" if sign == "+" else "asserts_removed")
             if sign == "+" and not test_file and language and _LINT_SUPPRESSION.search(text):
                 bump("lint_suppressions_added")
-            if command_file:
-                near = any(abs(row - index) <= WEAKENING_WINDOW for row in command_rows)
-                if sign == "+" and near and _WEAKENING.search(text):
+            if command_file and sign == "+":
+                same_command = commands[index] and _SAME_COMMAND_WEAKENING.search(text)
+                same_step = steps_with_tests.get(step) and _CONTINUE_ON_ERROR.search(text)
+                if same_command or same_step:
                     bump("test_cmd_weakened", new_line)
             if command_file or _CODECOV_FILES.search(path) or _JS_COVERAGE_FILES.search(path):
                 gate = _gate(path, text)
@@ -227,11 +253,38 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     return counts
 
 
+def _command_rows(hunk: list[tuple[str, str, int | None]]) -> list[bool]:
+    """Per row: is it (part of) a test command? A line continued with a backslash belongs to
+    the command it continues, so "pytest \\" then "  --deselect x" is one command."""
+    rows: list[bool] = []
+    continuing = False
+    for _sign, text, _line in hunk:
+        own = bool(_TEST_COMMAND.search(text)) and not _INSTALL.search(text)
+        rows.append(own or continuing)
+        continuing = (own or continuing) and text.rstrip().endswith("\\")
+    return rows
+
+
+def _steps_with_tests(
+    hunk: list[tuple[str, str, int | None]], commands: list[bool]
+) -> dict[int, bool]:
+    """Workflow step number -> whether that step (within the hunk) runs a test command."""
+    steps: dict[int, bool] = {}
+    step = 0
+    for (_sign, text, _line), is_command in zip(hunk, commands, strict=True):
+        if _STEP_START.match(text):
+            step += 1
+        steps[step] = steps.get(step, False) or is_command
+    return steps
+
+
 def _hunks(patch: str) -> list[list[tuple[str, str, int | None]]]:
     """Split a unified diff into hunks of (sign, text, new-file line number or None)."""
     hunks: list[list[tuple[str, str, int | None]]] = []
     new_line = 0
-    for raw in patch.splitlines():
+    # split("\n"), not splitlines(): a form feed or a Unicode line separator inside a line is
+    # content, and must not create a fabricated diff line.
+    for raw in (line.removesuffix("\r") for line in patch.split("\n")):
         header = _HUNK.match(raw)
         if header:
             hunks.append([])
