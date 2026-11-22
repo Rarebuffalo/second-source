@@ -121,14 +121,18 @@ every verdict from the saved claims and evidence with the current code, with no 
 
 - Claims are kept as extracted (the PR text is not stored); a change to extraction needs a new
   run.
-- Records made before the integrity guards have no diff counts. `bench facts` re-reads the file
-  list of those that have a VERIFIED claim a guard could withdraw (one request each, counts
-  only); without it, those claims show "not inspected", never "withdrawn".
-- Every check whose version is unchanged must reproduce its stored result; only new checks
-  (the integrity guards) and checks with a new version may decide differently. A claim that
-  fails this becomes unverifiable (`RESCORE_MISMATCH`), keeps both results for investigation,
-  and is counted in the summary. Claim times are rebuilt from the PR's open and merge times,
-  which is why the check is strict.
+- Diff counts (skips, test cases, coverage gates) are made once, from the patch, which is never
+  stored; each record carries a fingerprint of the code that made them. `bench facts` re-reads
+  the file list (counts only), the repository's current name and file count for every record
+  whose fingerprint differs. Without it, stale counts are dropped and claims show "not
+  inspected", never "withdrawn" or clean.
+- Records keep claim times, evidence versions and the evidence types fetched; for older records
+  these are rebuilt. So every required check whose version is unchanged must reproduce its
+  stored result and reason; only guards and checks with a new version may decide differently.
+  A claim that fails this becomes unverifiable (`RESCORE_MISMATCH`), keeps both results, and is
+  counted in the summary; a record that cannot be rebuilt gives `RESCORE_ERROR`. An evidence
+  type the original run never fetched is treated as unknown, not empty.
+- Re-score the original results only; a re-scored file is refused.
 
 ## 6. Statistics
 

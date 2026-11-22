@@ -203,11 +203,11 @@ def test_facts_then_rescore(fake_github, tmp_path):
     sample = write_one_pr_sample(tmp_path)
     results = tmp_path / "r.jsonl"
     bench(["run", str(sample), "-o", str(results)], github=fake_github(), token="t")
-    # Make it an old record: no diff counts, so it needs facts.
+    # Make it an old record: diff counts from other code, so it needs facts.
     record = json.loads(results.read_text())
     for item in record["evidence"]:
-        if item["type"] == "changed_file":
-            item["attributes"].pop("patch_available")
+        if item["type"] == "changed_files_summary":
+            item["attributes"]["facts_version"] = "old"
     results.write_text(json.dumps(record) + "\n")
 
     facts = tmp_path / "facts.jsonl"
@@ -227,3 +227,13 @@ def test_facts_then_rescore(fake_github, tmp_path):
     assert code == 0 and "1 with re-read diff counts, 0 still without" in out
     again = json.loads(rescored.read_text())
     assert again["rescored_from"]["tool_version"] == record["tool_version"]
+
+
+def test_rescore_refuses_a_rescored_file(fake_github, tmp_path):
+    sample = write_one_pr_sample(tmp_path)
+    results = tmp_path / "r.jsonl"
+    bench(["run", str(sample), "-o", str(results)], github=fake_github(), token="t")
+    once, twice = tmp_path / "once.jsonl", tmp_path / "twice.jsonl"
+    bench(["rescore", str(results), "-o", str(once)])
+    code, _out, err, _tokens = bench(["rescore", str(once), "-o", str(twice)])
+    assert code == 2 and "already re-scored" in err

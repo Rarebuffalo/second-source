@@ -25,7 +25,12 @@ import yaml
 from second_source.benchmark import golden, stats
 from second_source.benchmark.aidev import AidevClient, AidevError, repo_of
 from second_source.benchmark.aidev_local import ParquetAidev
-from second_source.benchmark.rescore import fetch_file_facts, needs_file_facts, rescore_all
+from second_source.benchmark.rescore import (
+    AlreadyRescored,
+    fetch_file_facts,
+    needs_file_facts,
+    rescore_all,
+)
 from second_source.benchmark.runner import read_results, run_benchmark
 from second_source.benchmark.sample import (
     DRAWS_PER_ROW,
@@ -35,6 +40,7 @@ from second_source.benchmark.sample import (
     write_sample,
 )
 from second_source.packs import coding
+from second_source.packs.coding import diff_facts
 from second_source.sources.github.auth import TokenResult
 from second_source.sources.github.client import (
     GitHubClient,
@@ -118,7 +124,7 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     run.add_argument("--no-cache", action="store_true", help="do not use the on-disk cache")
 
     facts = steps.add_parser(
-        "facts", help="re-read diff counts for results checked before the integrity guards"
+        "facts", help="re-read diff counts for results whose counts came from other code"
     )
     facts.add_argument("results", type=Path)
     facts.add_argument("-o", "--output", type=Path, required=True)
@@ -256,7 +262,12 @@ def _run(args: argparse.Namespace, context: BenchContext) -> int:
 
 def _facts(args: argparse.Namespace, context: BenchContext) -> int:
     """Resumable like ``run``: PRs already in the output are skipped; a rate limit stops it."""
-    done = _urls_in(args.output) if args.output.exists() else set()
+    # Facts made by other code are as stale as the snapshot's own; fetch those again.
+    done = {
+        r["url"]
+        for r in (_records(args.output) if args.output.exists() else [])
+        if r.get("facts_version") == diff_facts.FACTS_VERSION or "error" in r
+    }
     todo = [
         r["url"] for r in read_results(args.results) if needs_file_facts(r) and r["url"] not in done
     ]
@@ -294,17 +305,27 @@ def _facts(args: argparse.Namespace, context: BenchContext) -> int:
 def _rescore(args: argparse.Namespace, context: BenchContext) -> int:
     facts: dict[str, dict] = {}
     if args.facts:
-        facts = {r["url"]: r for r in _records(args.facts) if "error" not in r}
+        facts = {
+            r["url"]: r
+            for r in _records(args.facts)
+            if r.get("facts_version") == diff_facts.FACTS_VERSION
+        }
     records = read_results(args.results)
-    rescored, mismatches = rescore_all(records, facts, pack_version=coding.load().version)
+    try:
+        rescored, mismatches = rescore_all(records, facts, pack_version=coding.load().version)
+    except AlreadyRescored as error:
+        print(f"error: {error}; re-score the original results file", file=context.err)
+        return EXIT_ERROR
     with args.output.open("w", encoding="utf-8") as handle:
         for record in rescored:
             handle.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
     missing = sum(needs_file_facts(r) and r["url"] not in facts for r in records)
+    errors = sum("rescore_error" in r for r in rescored)
     print(
         f"re-scored {len(rescored)} results; {len(facts)} with re-read diff counts, "
         f"{missing} still without them (shown as not inspected); "
-        f"{mismatches} claim(s) could not be reproduced (now unverifiable, RESCORE_MISMATCH)",
+        f"{mismatches} claim(s) could not be reproduced (now unverifiable), "
+        f"{errors} record(s) could not be rebuilt (RESCORE_ERROR)",
         file=context.out,
     )
     return EXIT_OK
