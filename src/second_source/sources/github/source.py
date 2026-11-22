@@ -75,6 +75,15 @@ class LoadedPullRequest:
     def merged(self) -> bool:
         return bool(self.pull.get("merged_at"))
 
+    @property
+    def repo(self) -> str:
+        """The repository's current name. A renamed or transferred repository still answers at
+        its old URL, but the episode (mappers.episode_from_pull) uses the current name, so
+        evidence about it must too, or checks would not find their own repository's records."""
+        return ((self.pull.get("base") or {}).get("repo") or {}).get(
+            "full_name"
+        ) or self.ref.full_name
+
 
 @dataclass
 class EvidenceResult:
@@ -209,7 +218,7 @@ class GitHubSource:
 
     def _issue_states(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        own_repo = loaded.ref.full_name
+        own_repo = loaded.repo
         targets = {
             (claim.attributes.get("repo") or own_repo, int(claim.attributes["issue"]))
             for claim in claims

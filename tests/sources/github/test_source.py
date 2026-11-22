@@ -70,6 +70,26 @@ def test_inaccessible_issue_is_skipped_not_stale(fake_github):
     assert result.stale == set()
 
 
+def test_issues_of_a_renamed_repository_carry_its_current_name(fake_github):
+    # The URL still names the old repository (GitHub redirects), but the episode uses the
+    # current name, so the issue record must too or fixes_issue would not find it.
+    routes = fake_github().routes
+    pull = routes["/repos/Octo/App/pulls/7"]
+    base = {**pull["base"], "repo": {**pull["base"]["repo"], "full_name": "Octo/NewApp"}}
+    fake = fake_github(
+        {
+            "/repos/Octo/App/pulls/7": {**pull, "base": base},
+            "/repos/Octo/NewApp/issues/12": routes["/repos/Octo/App/issues/12"],
+            "/repos/Octo/NewApp/issues/12/events": [],
+        }
+    )
+    source = make_source(fake)
+    result = source.fetch_evidence(
+        source.load(REF), [claim("FIXES_ISSUE", issue=12, repo="")], {"issue_state"}
+    )
+    assert [r.attributes["repo"] for r in result.records] == ["octo/newapp"]
+
+
 def test_rate_limit_marks_this_and_all_later_types_stale(fake_github):
     limited = httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
     source = make_source(fake_github({"/repos/Octo/App/commits/c1/check-runs": limited}))
