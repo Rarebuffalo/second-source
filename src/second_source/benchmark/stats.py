@@ -244,8 +244,8 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         # More than one entry means the run mixes code versions (resumed after an upgrade);
         # re-score the stored evidence with one version before publishing.
         "code_versions": dict(sorted(versions.items())),
-        # Claims a re-score could not reproduce (benchmark/rescore.py); they keep their stored
-        # result, and a published summary must say how many there are.
+        # Claims a re-score could not reproduce (benchmark/rescore.py); they are counted as
+        # unverifiable, and a published summary must say how many there are.
         "rescore_mismatches": sum(
             "rescore_mismatch" in claim
             for record in records
@@ -299,7 +299,7 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
     if summary.get("rescore_mismatches"):
         lines += [
             f"> **Re-scored:** {summary['rescore_mismatches']} claim(s) could not be reproduced "
-            "from their saved evidence and keep the result of the original run.",
+            "from their saved evidence and are counted as unverifiable.",
             "",
         ]
     cells = summary.get("testreceipt_comparable") or {}

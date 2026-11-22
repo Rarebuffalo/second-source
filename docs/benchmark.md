@@ -124,10 +124,11 @@ every verdict from the saved claims and evidence with the current code, with no 
 - Records made before the integrity guards have no diff counts. `bench facts` re-reads the file
   list of those that have a VERIFIED claim a guard could withdraw (one request each, counts
   only); without it, those claims show "not inspected", never "withdrawn".
-- A re-score may only repeat the stored result or withdraw a VERIFIED through a guard. Any
-  other difference keeps the stored result, is marked `rescore_mismatch`, and is counted in
-  the summary. Claim times are rebuilt from the PR's open and merge times, which is why the
-  check is strict.
+- Every check whose version is unchanged must reproduce its stored result; only new checks
+  (the integrity guards) and checks with a new version may decide differently. A claim that
+  fails this becomes unverifiable (`RESCORE_MISMATCH`), keeps both results for investigation,
+  and is counted in the summary. Claim times are rebuilt from the PR's open and merge times,
+  which is why the check is strict.
 
 ## 6. Statistics
 

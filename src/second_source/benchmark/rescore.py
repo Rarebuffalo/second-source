@@ -13,9 +13,12 @@ What it can and cannot change:
   and ``rescore`` uses it; without it the guards report the files as not inspected.
 - **A disagreement is reported, never hidden.** Claim times are not in the snapshot (the claim's
   time is rebuilt from the PR's open or merge time), so a time-sensitive check could in
-  principle decide differently. Only two outcomes are accepted: the same result as before, or a
-  VERIFIED withdrawn by a guard. Anything else keeps the stored result and is marked
-  ``rescore_mismatch`` so it can be investigated; the summary must report their number.
+  principle decide differently. So every check whose version is unchanged must reproduce its
+  stored result; only new checks (the integrity guards) and checks with a new version (a
+  deliberate change of rules) may decide differently. Otherwise neither run can be trusted for
+  that claim: it becomes UNVERIFIABLE (reason ``RESCORE_MISMATCH``, never a verdict neither
+  run firmly supports), keeps both results (``stored_result``, ``rescore_mismatch``) for
+  investigation, and the summary reports how many there are.
 """
 
 from __future__ import annotations
@@ -28,7 +31,7 @@ from typing import Any
 
 from second_source import __version__
 from second_source.core.engine import Engine
-from second_source.core.model import Claim, Episode, Evidence, Result
+from second_source.core.model import Claim, Episode, Evidence, Result, Verdict
 from second_source.pipeline import default_engine
 from second_source.report.render import WORDS, _plain, withdrawn_reasons
 from second_source.sources.github import mappers
@@ -37,7 +40,8 @@ from second_source.sources.github.urls import parse_pull_request
 
 FILE_EVIDENCE = "changed_file"
 SUMMARY_EVIDENCE = "changed_files_summary"
-MAX_FILE_PAGES = 30  # the same 3,000-file cap as a normal check
+MAX_FILE_PAGES = 30
+RESCORE_MISMATCH = "RESCORE_MISMATCH"  # the same 3,000-file cap as a normal check
 
 
 def needs_file_facts(record: Mapping[str, Any], engine: Engine | None = None) -> bool:
@@ -104,13 +108,17 @@ def rescore(
     new_claims = []
     for item, verdict in zip(stored, verdicts, strict=True):
         withdrawn = withdrawn_reasons(verdict)
-        accepted = verdict.result.value == item["result"] or (
-            item["result"] == Result.VERIFIED.value
-            and verdict.result is Result.UNVERIFIABLE
-            and withdrawn
-        )
-        if not accepted:
-            new_claims.append({**item, "rescore_mismatch": verdict.result.value})
+        if not _reproduces_unchanged_checks(item, verdict):
+            new_claims.append(
+                {
+                    **item,
+                    "result": Result.UNVERIFIABLE.value,
+                    "reasons": [RESCORE_MISMATCH],
+                    "withdrawn": [],
+                    "stored_result": item["result"],
+                    "rescore_mismatch": verdict.result.value,
+                }
+            )
             continue
         new_claims.append(
             {
@@ -152,13 +160,22 @@ def rescore(
     }
 
 
+def _reproduces_unchanged_checks(item: Mapping[str, Any], verdict: Verdict) -> bool:
+    """True when every check run at the same version as before gives the same result."""
+    before = {(run["id"], run["version"]): run["result"] for run in item.get("checks", [])}
+    return all(
+        before.get((run.check_id, run.check_version), run.result.value) == run.result.value
+        for run in verdict.check_runs
+    )
+
+
 def rescore_all(
     records: Iterable[Mapping[str, Any]],
     facts_by_url: Mapping[str, Mapping[str, Any]],
     *,
     pack_version: str,
 ) -> tuple[list[dict[str, Any]], int]:
-    """Every record re-scored, and how many claims kept their stored result (mismatches)."""
+    """Every record re-scored, and how many claims could not be reproduced (mismatches)."""
     engine = default_engine()
     out = [
         rescore(r, file_facts=facts_by_url.get(r["url"]), engine=engine, pack_version=pack_version)

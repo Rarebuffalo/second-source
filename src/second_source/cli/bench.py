@@ -304,7 +304,7 @@ def _rescore(args: argparse.Namespace, context: BenchContext) -> int:
     print(
         f"re-scored {len(rescored)} results; {len(facts)} with re-read diff counts, "
         f"{missing} still without them (shown as not inspected); "
-        f"{mismatches} claim(s) kept their stored result (rescore_mismatch)",
+        f"{mismatches} claim(s) could not be reproduced (now unverifiable, RESCORE_MISMATCH)",
         file=context.out,
     )
     return EXIT_OK

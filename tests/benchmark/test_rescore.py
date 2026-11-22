@@ -41,6 +41,8 @@ def as_old_record(record):
     old.pop("tool_version")
     old.pop("pack_version")
     old["evidence"] = [e for e in old["evidence"] if e["type"] != "changed_files_summary"]
+    for item in old["report"]["claims"]:  # the guards did not exist yet
+        item["checks"] = [run for run in item["checks"] if run["role"] != "guard"]
     for item in old["evidence"]:
         if item["type"] == "changed_file":
             item["attributes"] = {
@@ -95,17 +97,18 @@ def test_re_read_diff_counts_let_the_guards_withdraw(fake_github, tmp_path):
     assert not any("rescore_mismatch" in c for c in again["report"]["claims"])
 
 
-def test_a_disagreement_keeps_the_stored_result_and_is_counted(fake_github, tmp_path):
+def test_a_disagreement_becomes_unverifiable_and_is_counted(fake_github, tmp_path):
     record = checked_record(fake_github(), tmp_path)
     assert claim(record, "TESTS_ADDED")["result"] == "VERIFIED"
-    # The test file is gone from the snapshot, so a re-score would decide differently; that is
-    # not a guard withdrawal, so the stored verdict stands and is flagged.
+    # The test file is gone from the snapshot, so an unchanged check decides differently:
+    # neither run can be trusted, so the claim is unverifiable and flagged.
     record["evidence"] = [
         e for e in record["evidence"] if e["attributes"].get("path") != "tests/test_parser.py"
     ]
     (again,), mismatches = rescore_all([record], {}, pack_version="x")
     added = claim(again, "TESTS_ADDED")
-    assert added["result"] == "VERIFIED" and added["rescore_mismatch"] != "VERIFIED"
+    assert (added["result"], added["reasons"]) == ("UNVERIFIABLE", ["RESCORE_MISMATCH"])
+    assert added["stored_result"] == "VERIFIED" and added["rescore_mismatch"] != "VERIFIED"
     assert mismatches >= 1
 
 
@@ -113,3 +116,15 @@ def test_error_records_pass_through(tmp_path):
     record = {"url": URL, "error": "not_found"}
     assert rescore(record, pack_version="x") == record
     assert not needs_file_facts(record)
+
+
+def test_a_check_with_a_new_version_may_decide_differently(fake_github, tmp_path):
+    record = checked_record(fake_github(), tmp_path)
+    added = claim(record, "TESTS_ADDED")
+    # Pretend the stored verdict came from an older version of the check that contradicted.
+    added["result"] = "CONTRADICTED"
+    for run in added["checks"]:
+        if run["id"] == "coding.tests_added":
+            run.update(version="0.9.0", result="CONTRADICTED")
+    again = claim(rescore(record, pack_version="x"), "TESTS_ADDED")
+    assert again["result"] == "VERIFIED" and "rescore_mismatch" not in again
