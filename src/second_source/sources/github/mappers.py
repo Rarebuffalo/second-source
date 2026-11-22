@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Any
 
 from second_source.core.model import Episode, Evidence
+from second_source.packs.coding import diff_facts
 from second_source.packs.coding.detection import PullRequestSignals
 from second_source.packs.coding.extract import TextSource
 
@@ -213,17 +214,33 @@ def status_evidence(status: Json, ref: str, observed_at: datetime) -> Evidence:
 
 
 def changed_file_evidence(file: Json, observed_at: datetime) -> Evidence:
-    """Paths and line counts only; the patch (code) is deliberately dropped."""
+    """Paths, line counts and integrity counts. The patch (code) is read once to count skipped
+    or removed tests and weakened test commands (packs/coding/diff_facts.py), then dropped."""
+    path = file["filename"]
+    status = file.get("status", "modified")
     return Evidence(
         record_type="changed_file",
-        external_ref=file["filename"],
+        external_ref=path,
         observed_at=observed_at,
         attributes={
-            "path": file["filename"],
-            "status": file.get("status", "modified"),
+            "path": path,
+            "status": status,
             "additions": int(file.get("additions", 0)),
             "deletions": int(file.get("deletions", 0)),
+            **diff_facts.facts(path, status, file.get("patch")),
         },
+    )
+
+
+def files_summary_evidence(
+    file_records: Sequence[Evidence], number: int, observed_at: datetime
+) -> Evidence:
+    """One record with the PR's integrity totals (CEL cannot sum per-file counts)."""
+    return Evidence(
+        record_type="changed_files_summary",
+        external_ref=str(number),
+        observed_at=observed_at,
+        attributes=diff_facts.summarize([dict(record.attributes) for record in file_records]),
     )
 
 

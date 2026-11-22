@@ -157,7 +157,7 @@ def test_changed_files_keep_counts_and_drop_patches():
         "status": "added",
         "additions": 20,
         "deletions": 0,
-        "patch": "+def test_x(): ...",
+        "patch": "@@ -0,0 +1,2 @@\n+def test_x():\n+    assert zebra_lookup() == []",
     }
     evidence = mappers.changed_file_evidence(file, NOW)
     assert evidence.attributes == {
@@ -165,7 +165,40 @@ def test_changed_files_keep_counts_and_drop_patches():
         "status": "added",
         "additions": 20,
         "deletions": 0,
+        "patch_available": True,
+        "test_cases_added": 1,
+        "asserts_added": 1,
+        "nonblank_added": 2,
     }
+    # Only counts are kept: no line of the code itself.
+    assert "zebra_lookup" not in repr(evidence.attributes)
+
+
+def test_a_pr_summary_adds_up_integrity_counts():
+    files = [
+        {
+            "filename": "tests/test_a.py",
+            "status": "modified",
+            "additions": 3,
+            "deletions": 0,
+            "patch": "@@ -1,1 +1,2 @@\n+@pytest.mark.skip\n def test_a():",
+        },
+        {
+            "filename": ".github/workflows/ci.yml",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 0,
+            "patch": "@@ -1,1 +1,2 @@\n - run: pytest\n+  continue-on-error: true",
+        },
+        {"filename": "src/a.py", "status": "modified", "additions": 5, "deletions": 1},
+    ]
+    records = [mappers.changed_file_evidence(f, NOW) for f in files]
+    summary = mappers.files_summary_evidence(records, 7, NOW)
+    assert summary.record_type == "changed_files_summary"
+    totals = summary.attributes
+    assert (totals["test_skips_net"], totals["test_cmd_weakened"], totals["code_net"]) == (1, 1, 4)
+    assert totals["ci_config_changed"] is True
+    assert totals["ci_config_files"] == [".github/workflows/ci.yml"]
 
 
 def test_issue_state_with_last_reopen_time():

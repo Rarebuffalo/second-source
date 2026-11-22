@@ -49,6 +49,7 @@ FETCH_ORDER = (
     "pr_state",
     "check_result",
     "changed_file",
+    "changed_files_summary",
     "issue_state",
     "revert",
     "deployment_status",
@@ -127,6 +128,7 @@ class GitHubSource:
             "pr_state": self._pr_state,
             "check_result": self._check_results,
             "changed_file": self._changed_files,
+            "changed_files_summary": self._files_summary,
             "issue_state": self._issue_states,
             "revert": self._reverts,
             "deployment_status": self._deployments,
@@ -183,6 +185,11 @@ class GitHubSource:
         files = self._pull_files(loaded)
         now = self._clock()
         return [mappers.changed_file_evidence(file, now) for file in files]
+
+    def _files_summary(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
+        """PR-level integrity totals, from the same (shared, cached) file list."""
+        files = self._changed_files(loaded, claims)
+        return [mappers.files_summary_evidence(files, loaded.ref.number, self._clock())]
 
     def _issue_states(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []

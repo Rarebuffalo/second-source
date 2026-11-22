@@ -126,6 +126,40 @@ def is_doc_path(path: str) -> bool:
     return bool(_DOC_PATH.search(path.lower()))
 
 
+# CI, test and lint configuration (integrity guards) -----------------------------------------
+# Files that decide how a PR's own checks run. A PR that changes them can change what "CI
+# passed" means, so the guards caution about it. pyproject.toml, package.json, setup.cfg and
+# Makefile are left out on purpose: almost every PR touches them for dependencies; their test
+# command and coverage edits are caught line by line in diff_facts instead.
+
+_CI_PATH = re.compile(
+    r"^\.github/workflows/[^/]+\.ya?ml$|^\.github/actions/|^\.gitlab-ci\.yml$|^\.circleci/"
+    r"|^azure-pipelines[^/]*\.ya?ml$|^\.travis\.yml$|^jenkinsfile$|^\.buildkite/"
+)
+_TEST_CONFIG_NAMES = re.compile(
+    r"^(pytest\.ini|tox\.ini|noxfile\.py|conftest\.py|\.coveragerc|\.?codecov\.ya?ml"
+    r"|jest\.config\.[\w.]+|vitest\.(config|workspace)\.[\w.]+|karma\.conf\.[\w.]+"
+    r"|playwright\.config\.[\w.]+|cypress\.config\.[\w.]+|\.mocharc[\w.]*"
+    r"|phpunit\.xml(\.dist)?|\.nycrc[\w.]*|nyc\.config\.[\w.]+)$"
+)
+_LINT_CONFIG_NAMES = re.compile(
+    r"^(\.eslintrc[\w.]*|eslint\.config\.[\w.]+|\.?ruff\.toml|\.flake8|\.golangci\.ya?ml"
+    r"|biome\.jsonc?|clippy\.toml|\.rubocop\.yml|\.pylintrc|\.prettierrc[\w.]*)$"
+)
+
+
+def is_ci_path(path: str) -> bool:
+    return bool(_CI_PATH.search(path.lower()))
+
+
+def is_test_config_path(path: str) -> bool:
+    return bool(_TEST_CONFIG_NAMES.match(path.lower().rsplit("/", 1)[-1]))
+
+
+def is_lint_config_path(path: str) -> bool:
+    return bool(_LINT_CONFIG_NAMES.match(path.lower().rsplit("/", 1)[-1]))
+
+
 # Matching a claim to CI jobs ------------------------------------------------------------------
 
 # Which job classifier verifies which claim type. One shared CI check uses this, so the

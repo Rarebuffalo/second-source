@@ -23,7 +23,12 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from second_source.packs.coding.functions import is_test_path
+from second_source.packs.coding.functions import (
+    is_ci_path,
+    is_lint_config_path,
+    is_test_config_path,
+    is_test_path,
+)
 
 MAX_MARKER_LINES = 5  # new-file line numbers kept for links into the diff
 
@@ -202,3 +207,66 @@ def _hunks(patch: str) -> list[list[tuple[str, str, int | None]]]:
             hunks[-1].append((" ", text, new_line))
             new_line += 1
     return hunks
+
+
+# ---- one PR-level summary -------------------------------------------------------------------
+# CEL has no sum(), so the guards read one record with the PR's totals instead of adding up
+# per-file counts in YAML.
+
+
+def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
+    """PR-level totals over per-file records (path, status, additions, deletions + facts)."""
+    total: dict[str, Any] = {
+        "files": len(files),
+        "test_skips_net": 0,
+        "test_cases_added": 0,
+        "test_cases_removed": 0,
+        "asserts_added": 0,
+        "test_cmd_weakened": 0,
+        "lint_suppressions_added": 0,
+        "removed_test_files": 0,
+        "test_source_changed": 0,  # test files in a known language with added lines
+        "code_net": 0,  # added minus deleted lines in non-test source files
+        "code_removed": False,  # a non-test source file was deleted
+        "coverage_gate_lowered": False,
+        "ci_config_changed": False,
+        "lint_config_changed": False,
+        "uninspected": 0,  # test, CI or test-config files GitHub sent no patch for
+    }
+    changed_ci: list[str] = []
+    for file in files:
+        path, status = file["path"], file.get("status", "modified")
+        test_file = is_test_path(path)
+        config = is_ci_path(path) or is_test_config_path(path)
+        if config:
+            total["ci_config_changed"] = True
+            changed_ci.append(path)
+        if is_lint_config_path(path):
+            total["lint_config_changed"] = True
+        if (test_file or config) and not file.get("patch_available", True):
+            total["uninspected"] += 1
+        if test_file:
+            if status == "removed":
+                total["removed_test_files"] += 1
+            elif language_of(path) and file.get("additions", 0) > 0:
+                total["test_source_changed"] += 1
+        elif language_of(path):
+            total["code_net"] += file.get("additions", 0) - file.get("deletions", 0)
+            if status == "removed":
+                total["code_removed"] = True
+        total["test_skips_net"] += file.get("test_skips_added", 0) - file.get(
+            "test_skips_removed", 0
+        )
+        for key in (
+            "test_cases_added",
+            "test_cases_removed",
+            "asserts_added",
+            "test_cmd_weakened",
+            "lint_suppressions_added",
+        ):
+            total[key] += file.get(key, 0)
+        if file.get("coverage_gate_lowered"):
+            total["coverage_gate_lowered"] = True
+    if changed_ci:
+        total["ci_config_files"] = sorted(changed_ci)[:5]
+    return total
