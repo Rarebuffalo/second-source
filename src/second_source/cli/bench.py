@@ -274,6 +274,7 @@ def _facts(args: argparse.Namespace, context: BenchContext) -> int:
     token = context.token_resolver(context.env)
     if token.token is None:
         print("note: no GitHub token, so only about 60 PRs per hour", file=context.err)
+    print(f"{len(todo)} PR(s) to re-read, {len(done)} already done", file=context.err)
     fetched = stopped = 0
     with (
         context.client_factory(token.token, not args.no_cache) as client,
@@ -293,6 +294,8 @@ def _facts(args: argparse.Namespace, context: BenchContext) -> int:
             handle.write(json.dumps(record, sort_keys=True) + "\n")
             handle.flush()
             fetched += 1
+            # Progress on every PR, like `run`: a silent run of thousands of requests looks hung.
+            print(f"ok     {fetched}/{len(todo)} {url}", file=context.err)
     left = len(todo) - fetched  # includes PRs that failed and will be retried
     print(
         f"fetched {fetched}, left {left}"
