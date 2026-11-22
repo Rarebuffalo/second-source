@@ -119,6 +119,19 @@ and the method: [tests/packs/coding/golden/real/](tests/packs/coding/golden/real
 Until every claim type meets the target, we treat a "contradicted" verdict as a strong signal
 that a person should confirm, not as proof.
 
+## What the benchmark found
+
+On 1,175 merged agent PRs from AIDev (run 2): of 385 PRs we could still check, 2 had a claim
+GitHub's record proves false. That is a floor, not a rate. The bigger finding: **the evidence
+expires.** Every "tests pass" claim we could verify was under a year old; for 42 of the 43
+older ones, GitHub had already deleted the CI runs. Claims need checking when the PR is made,
+which is what the [GitHub Action](#use-it-in-your-repository-github-action) does.
+
+Caveats matter here: 185 of the 385 PRs were checked only on claim types that never
+contradict, a blind audit judged more claims false than the rules count, and only merged PRs
+were sampled. Numbers, caveats and the comparison with related work:
+[docs/benchmark.md](docs/benchmark.md#11-run-2-findings).
+
 ## How it works
 
 ```text

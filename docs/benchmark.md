@@ -220,3 +220,62 @@ coverage, and stored evidence snapshots so verdicts stay auditable after GitHub 
 - The benchmark therefore counts only high-confidence claims in its rates (low-confidence
   claims are reported as a separate count), and every contradicted claim is still checked by a
   person before publication, because even trusted rules are below 0.95 for some types.
+
+## 11. Run 2 findings
+
+Run 2 checked 1,200 merged agent PRs from AIDev (200 per agent, at most 3 per repository);
+25 were no longer on GitHub, leaving 1,175. Every result below comes from one code version
+(re-scored offline from stored evidence, with zero replay mismatches), and the contradictions
+and a sample of verifications were audited blind.
+
+**Headline.** Of 385 merged agent PRs we could still check, 2 had a claim GitHub's record
+proves false. That is a floor, not a rate. The bigger finding: the evidence expires. Every
+"tests pass" claim we could verify was under a year old, and for older PRs GitHub had usually
+deleted the CI runs. Claims need checking when the PR is made.
+
+The numbers behind it (high-confidence written claims, counted per PR; MERGE_HOLDS excluded):
+
+| | PRs |
+|---|---:|
+| With at least one checkable written claim | 385 |
+| ... checked only on TESTS_ADDED / DOCS_UPDATED (these never contradict) | 185 |
+| ... with a checked claim that can be contradicted | 200 |
+| Contradicted (both: copilot "Fixes #N" with the issue still open after merge) | 2 |
+
+"Tests pass" claims (120 PRs):
+
+| Outcome | PRs | Opened before Dec 2025 |
+|---|---:|---:|
+| Verified by CI at the claim's commit | 41 | 0 |
+| No CI runs left on the commit (`NO_CI_RECORDS`) | 49 | 42 |
+| CI ran, but no job matched a test job (`NO_MATCHING_CI_JOBS`) | 25 | 1 |
+| CI failed after a "locally" / "some tests" claim (scoped, not counted as false) | 3 | 0 |
+| Other (stale source, no results yet) | 2 | 0 |
+
+Of the 43 "tests pass" PRs opened before December 2025, 42 had no check runs left. A spot
+check of several of those repositories found active workflows but zero check runs on the old
+PR commits: GitHub had expired them, not the repositories skipping CI.
+
+**Read the headline with these caveats:**
+
+- **2 is a floor.** Checks contradict only when GitHub's own behaviour makes the evidence
+  unambiguous; TESTS_ADDED and DOCS_UPDATED never contradict (see `docs/packs/coding.md`). A
+  blind audit of the same sample judged more written claims false than the rules count. Among
+  the 200 PRs whose checked claims can be contradicted, 2 is 1% (95% Wilson interval
+  roughly 0.3%–3.6%).
+- **"Verified" can be shallow.** A verified FIXES_ISSUE mostly means GitHub closed the issue
+  when the PR merged, not that the fix is right.
+- **Merged PRs only, correlated samples.** Unmerged PRs were not sampled, and PRs from one
+  repository (or one agent's typical repositories) are not independent; the intervals assume
+  they are.
+- **Compare with testreceipt, not against it.** testreceipt reports CI test failures on 8.7%
+  of 2025 AIDev PRs that claimed the tests pass (0.3% on 2026 PRs), measured while the CI
+  results still existed (figures quoted from their study). Our TESTS_PASS result is 0 of 41
+  verified PRs, all from December 2025 on; we cannot rule out their 2025 rate.
+- **Revert durability is a separate table.** 7 of 979 checkable merges were found reverted;
+  one (a dotnet/maui revert that was itself reverted) is now handled by `REVERT_UNDONE`, but
+  run 2's stored evidence predates that rule, so it is still counted.
+
+What this means for the product: an after-the-fact check loses most "tests pass" evidence
+within a year. The GitHub Action, which checks claims when the PR is made and keeps the
+evidence snapshot, is the way to keep claims checkable.
