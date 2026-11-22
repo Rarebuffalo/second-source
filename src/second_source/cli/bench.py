@@ -3,6 +3,8 @@
     second-source bench sample  --per-agent 200 --seed 1 --max-per-repo 3 -o s.jsonl
     second-source bench commits s.jsonl -o commits.jsonl [--per-pr 5]
     second-source bench run     s.jsonl -o results.jsonl [--limit 10] [--anonymous]
+    second-source bench facts   results.jsonl -o facts.jsonl   (diff counts for old records)
+    second-source bench rescore results.jsonl [--facts facts.jsonl] -o rescored.jsonl
     second-source bench summarize results.jsonl -o summary/
     second-source bench golden  cases.jsonl [--split dev|test|all]
 
@@ -23,6 +25,7 @@ import yaml
 from second_source.benchmark import golden, stats
 from second_source.benchmark.aidev import AidevClient, AidevError, repo_of
 from second_source.benchmark.aidev_local import ParquetAidev
+from second_source.benchmark.rescore import fetch_file_facts, needs_file_facts, rescore_all
 from second_source.benchmark.runner import read_results, run_benchmark
 from second_source.benchmark.sample import (
     DRAWS_PER_ROW,
@@ -31,8 +34,14 @@ from second_source.benchmark.sample import (
     read_sample,
     write_sample,
 )
+from second_source.packs import coding
 from second_source.sources.github.auth import TokenResult
-from second_source.sources.github.client import GitHubClient
+from second_source.sources.github.client import (
+    GitHubClient,
+    GitHubError,
+    NotFound,
+    RateLimited,
+)
 from second_source.sources.github.source import GitHubSource
 
 EXIT_OK = 0
@@ -108,6 +117,18 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
     run.add_argument("--anonymous", action="store_true", help="never use a GitHub token")
     run.add_argument("--no-cache", action="store_true", help="do not use the on-disk cache")
 
+    facts = steps.add_parser(
+        "facts", help="re-read diff counts for results checked before the integrity guards"
+    )
+    facts.add_argument("results", type=Path)
+    facts.add_argument("-o", "--output", type=Path, required=True)
+    facts.add_argument("--no-cache", action="store_true", help="do not use the on-disk cache")
+
+    rescore = steps.add_parser("rescore", help="recompute verdicts offline with the current code")
+    rescore.add_argument("results", type=Path)
+    rescore.add_argument("--facts", type=Path, help="diff counts from `bench facts`")
+    rescore.add_argument("-o", "--output", type=Path, required=True)
+
     summarize = steps.add_parser("summarize", help="write summary.json and summary.md")
     summarize.add_argument("results", type=Path)
     summarize.add_argument("-o", "--output", type=Path, required=True, help="output directory")
@@ -143,6 +164,8 @@ def run_command(args: argparse.Namespace, context: BenchContext) -> int:
         "sample": _sample,
         "commits": _commits,
         "run": _run,
+        "facts": _facts,
+        "rescore": _rescore,
         "summarize": _summarize,
         "golden": _golden,
         "merge-labels": _merge_labels,
@@ -226,6 +249,62 @@ def _run(args: argparse.Namespace, context: BenchContext) -> int:
         f"checked {summary.checked}, errors {summary.errors}, "
         f"already done {summary.skipped}"
         + (f"; stopped: {summary.stopped}" if summary.stopped else ""),
+        file=context.out,
+    )
+    return EXIT_OK
+
+
+def _facts(args: argparse.Namespace, context: BenchContext) -> int:
+    """Resumable like ``run``: PRs already in the output are skipped; a rate limit stops it."""
+    done = _urls_in(args.output) if args.output.exists() else set()
+    todo = [
+        r["url"] for r in read_results(args.results) if needs_file_facts(r) and r["url"] not in done
+    ]
+    token = context.token_resolver(context.env)
+    if token.token is None:
+        print("note: no GitHub token, so only about 60 PRs per hour", file=context.err)
+    fetched = stopped = 0
+    with (
+        context.client_factory(token.token, not args.no_cache) as client,
+        args.output.open("a", encoding="utf-8") as handle,
+    ):
+        for url in todo:
+            try:
+                record = fetch_file_facts(client, url)
+            except RateLimited:
+                stopped = 1
+                break
+            except NotFound:
+                record = {"url": url, "error": "not_found"}
+            except GitHubError as error:  # not recorded, so the next run retries it
+                print(f"error  {url}: {error}", file=context.err)
+                continue
+            handle.write(json.dumps(record, sort_keys=True) + "\n")
+            handle.flush()
+            fetched += 1
+    left = len(todo) - fetched  # includes PRs that failed and will be retried
+    print(
+        f"fetched {fetched}, left {left}"
+        + ("; stopped: GitHub rate limit reached, run again later" if stopped else ""),
+        file=context.out,
+    )
+    return EXIT_OK
+
+
+def _rescore(args: argparse.Namespace, context: BenchContext) -> int:
+    facts: dict[str, dict] = {}
+    if args.facts:
+        facts = {r["url"]: r for r in _records(args.facts) if "error" not in r}
+    records = read_results(args.results)
+    rescored, mismatches = rescore_all(records, facts, pack_version=coding.load().version)
+    with args.output.open("w", encoding="utf-8") as handle:
+        for record in rescored:
+            handle.write(json.dumps(record, sort_keys=True, ensure_ascii=False) + "\n")
+    missing = sum(needs_file_facts(r) and r["url"] not in facts for r in records)
+    print(
+        f"re-scored {len(rescored)} results; {len(facts)} with re-read diff counts, "
+        f"{missing} still without them (shown as not inspected); "
+        f"{mismatches} claim(s) kept their stored result (rescore_mismatch)",
         file=context.out,
     )
     return EXIT_OK

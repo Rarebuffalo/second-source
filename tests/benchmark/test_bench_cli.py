@@ -197,3 +197,33 @@ def test_commits_adds_commit_messages_for_labelling(viewer, tmp_path):
     assert code == 0 and f"{len(records)} PRs" in stdout and records
     assert all(len(record["commits"]) == 2 for record in records)
     assert records[0]["commits"][0]["message"].startswith("commit 0 of ")
+
+
+def test_facts_then_rescore(fake_github, tmp_path):
+    sample = write_one_pr_sample(tmp_path)
+    results = tmp_path / "r.jsonl"
+    bench(["run", str(sample), "-o", str(results)], github=fake_github(), token="t")
+    # Make it an old record: no diff counts, so it needs facts.
+    record = json.loads(results.read_text())
+    for item in record["evidence"]:
+        if item["type"] == "changed_file":
+            item["attributes"].pop("patch_available")
+    results.write_text(json.dumps(record) + "\n")
+
+    facts = tmp_path / "facts.jsonl"
+    code, out, _err, tokens = bench(
+        ["facts", str(results), "-o", str(facts)], github=fake_github(), token="t"
+    )
+    assert code == 0 and "fetched 1, left 0" in out and tokens == ["t"]
+    code, out, _err, _tokens = bench(
+        ["facts", str(results), "-o", str(facts)], github=fake_github(), token="t"
+    )
+    assert "fetched 0, left 0" in out  # resumable: already fetched
+
+    rescored = tmp_path / "rescored.jsonl"
+    code, out, _err, _tokens = bench(
+        ["rescore", str(results), "--facts", str(facts), "-o", str(rescored)]
+    )
+    assert code == 0 and "1 with re-read diff counts, 0 still without" in out
+    again = json.loads(rescored.read_text())
+    assert again["rescored_from"]["tool_version"] == record["tool_version"]

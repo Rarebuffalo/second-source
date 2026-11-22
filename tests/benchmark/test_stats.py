@@ -191,3 +191,15 @@ def test_withdrawn_verifications_are_counted_apart_from_the_false_rate():
     )
     assert len(summary["code_versions"]) == 2
     assert "Mixed code versions" in to_markdown(summary)
+
+
+def test_rescore_mismatches_are_counted_and_shown():
+    kept = {**claim("FIXES_ISSUE", "UNVERIFIABLE", "ISSUE_NOT_ACCESSIBLE"), "rescore_mismatch": "x"}
+    record = {
+        "url": "https://github.com/o/r/pull/1",
+        "dataset_agent": "codex",
+        "report": {"agent": None, "claims": [kept, claim("TESTS_PASS", "VERIFIED")]},
+    }
+    summary = summarize([record])
+    assert summary["rescore_mismatches"] == 1
+    assert "could not be reproduced" in to_markdown(summary)

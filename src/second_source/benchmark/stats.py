@@ -244,6 +244,14 @@ def summarize(records: Iterable[Mapping[str, Any]]) -> dict[str, Any]:
         # More than one entry means the run mixes code versions (resumed after an upgrade);
         # re-score the stored evidence with one version before publishing.
         "code_versions": dict(sorted(versions.items())),
+        # Claims a re-score could not reproduce (benchmark/rescore.py); they keep their stored
+        # result, and a published summary must say how many there are.
+        "rescore_mismatches": sum(
+            "rescore_mismatch" in claim
+            for record in records
+            if "report" in record
+            for claim in record["report"]["claims"]
+        ),
         "testreceipt_comparable": _testreceipt_cells(records),
         "agents": {
             agent: {
@@ -288,6 +296,12 @@ def to_markdown(summary: Mapping[str, Any], *, title: str = "Agent Claim Truth")
     if len(versions) > 1:
         mixed = ", ".join(f"{name} ({count} PRs)" for name, count in versions.items())
         lines += [f"> **Mixed code versions:** {mixed}. Re-score before publishing.", ""]
+    if summary.get("rescore_mismatches"):
+        lines += [
+            f"> **Re-scored:** {summary['rescore_mismatches']} claim(s) could not be reproduced "
+            "from their saved evidence and keep the result of the original run.",
+            "",
+        ]
     cells = summary.get("testreceipt_comparable") or {}
     if cells:
         lines += [
