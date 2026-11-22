@@ -1,5 +1,8 @@
 """Tests for verdict aggregation (core/aggregate.py)."""
 
+import itertools
+from dataclasses import replace
+
 import pytest
 
 from second_source.core.aggregate import NO_APPLICABLE_CHECKS, aggregate
@@ -70,3 +73,53 @@ def test_reasons_come_from_the_deciding_runs_in_stable_order():
         run("x.c", Result.VERIFIED, "C_OK"),
     ]
     assert aggregate("c1", runs).reasons == ("A_FAILED", "B_FAILED")
+
+
+# ---- guards ----------------------------------------------------------------------------------
+
+
+def guard(check_id, result, reason="G"):
+    return replace(run(check_id, result, reason), role="guard")
+
+
+def test_a_required_guard_withdraws_a_verification():
+    verdict = aggregate(
+        "c1",
+        [run("a.ci", Result.VERIFIED, "PASSED"), guard("a.guard", Result.UNVERIFIABLE, "SKIPS")],
+    )
+    assert (verdict.result, verdict.reasons) == (Result.UNVERIFIABLE, ("SKIPS",))
+
+
+def test_a_guard_that_found_nothing_adds_no_reason():
+    verdict = aggregate(
+        "c1", [run("a.ci", Result.VERIFIED, "PASSED"), guard("a.guard", Result.VERIFIED, "OK")]
+    )
+    assert (verdict.result, verdict.reasons) == (Result.VERIFIED, ("PASSED",))
+
+
+@pytest.mark.parametrize("deciding", [Result.CONTRADICTED, Result.PENDING])
+def test_a_guard_never_overrides_a_contradiction_or_pending(deciding):
+    verdict = aggregate("c1", [run("a.ci", deciding), guard("a.guard", Result.UNVERIFIABLE)])
+    assert verdict.result is deciding
+
+
+def test_optional_guards_become_caveats_without_changing_the_result():
+    runs = [
+        run("a.ci", Result.VERIFIED, "PASSED"),
+        guard("a.note", Result.UNVERIFIABLE, "CI_CHANGED"),
+        guard("a.quiet", Result.VERIFIED, "NOTHING"),
+    ]
+    verdict = aggregate("c1", runs, required=frozenset({"a.ci"}))
+    assert (verdict.result, verdict.caveats) == (Result.VERIFIED, ("CI_CHANGED",))
+
+
+def test_guards_can_only_move_verified_to_unverifiable():
+    # Property: for every combination of deciding results, adding a guard of any outcome moves
+    # the verdict nowhere except VERIFIED -> UNVERIFIABLE.
+    results = list(Result)
+    for combo in itertools.product(results, repeat=2):
+        base = [run(f"a.c{i}", result) for i, result in enumerate(combo)]
+        before = aggregate("c1", base).result
+        for guard_result in (Result.VERIFIED, Result.UNVERIFIABLE):
+            after = aggregate("c1", [*base, guard("a.guard", guard_result)]).result
+            assert after == before or (before, after) == (Result.VERIFIED, Result.UNVERIFIABLE)

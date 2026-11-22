@@ -245,3 +245,35 @@ def test_evidence_attributes_cannot_overwrite_standard_fields():
         attributes={"record_type": "fake", "amount": 500, "account": "acc-1", "status": "SUCCESS"},
     )
     assert run([sneaky]).result is Result.VERIFIED  # still selected as a real "payment"
+
+
+# ---- guards ----------------------------------------------------------------------------------
+
+GUARD_OUTCOMES = [
+    {"when": "paid > 0", "result": "UNVERIFIABLE", "reason": "LIMIT_CHANGED"},
+    {"otherwise": True, "result": "VERIFIED", "reason": "NOTHING_FOUND"},
+]
+
+
+def test_a_guard_may_only_withdraw_a_verification():
+    # The cardinal rule as a schema rule: a guard cannot accuse or keep a claim pending.
+    with pytest.raises(CheckDefinitionError, match="only be VERIFIED or UNVERIFIABLE"):
+        definition(role="guard")  # BASE has CONTRADICTED outcomes
+    guard = definition(id="demo.guard", role="guard", outcomes=GUARD_OUTCOMES)
+    assert guard.role == "guard"
+    with pytest.raises(CheckDefinitionError, match="role must be"):
+        definition(role="judge")
+
+
+def test_a_guard_cannot_be_the_only_check_for_a_claim_type():
+    guard = definition(id="demo.guard", role="guard", outcomes=GUARD_OUTCOMES)
+    with pytest.raises(CheckDefinitionError, match="only guards"):
+        CompiledChecks.build([guard], Evaluator())
+    assert CompiledChecks.build([definition(), guard], Evaluator())
+
+
+def test_guard_runs_carry_their_role():
+    guard = definition(id="demo.guard", role="guard", outcomes=GUARD_OUTCOMES)
+    payment = Evidence("payment", "p1", NOW, {"account": "acc-1", "status": "SUCCESS", "amount": 5})
+    run = evaluate_check(guard, claim(), EPISODE, [payment], now=NOW, evaluator=Evaluator())
+    assert (run.role, run.reason) == ("guard", "LIMIT_CHANGED")

@@ -38,6 +38,7 @@ from second_source.core.model import (
 
 # Names the engine itself provides to expressions; evidence sets and derived values may not
 # reuse them.
+ROLES = frozenset({"check", "guard"})
 RESERVED_NAMES = frozenset({"claim", "episode", "params", "now", "stale", "e"})
 
 # Kinds that can be expressed as YAML checks in v1. Judge checks (model-assessed) and human
@@ -129,6 +130,10 @@ class CheckDefinition:
     derive: tuple[tuple[str, str], ...] = ()  # ordered (name, expression) pairs
     explain: str | None = None
     required: bool = True
+    # "guard": a check on top of the deciding checks that can only withdraw a VERIFIED (its
+    # outcomes are limited to VERIFIED = "nothing found" and UNVERIFIABLE). It enforces the
+    # cardinal rule in the schema: a guard can never accuse. See docs/ARCHITECTURE.md.
+    role: str = "check"
 
     @classmethod
     def from_dict(cls, data: Mapping[str, Any]) -> CheckDefinition:
@@ -235,6 +240,14 @@ def _parse_definition(data: Mapping[str, Any]) -> CheckDefinition:
             raise fail(f"outcome {index}: reason must be UPPER_SNAKE_CASE")
         outcomes.append(Outcome(when, result, reason))
 
+    role = str(data.get("role", "check"))
+    if role not in ROLES:
+        raise fail(f"role must be one of {sorted(ROLES)}")
+    if role == "guard":
+        allowed = {Result.VERIFIED, Result.UNVERIFIABLE}
+        if any(outcome.result not in allowed for outcome in outcomes):
+            raise fail("a guard's outcomes may only be VERIFIED or UNVERIFIABLE")
+
     return CheckDefinition(
         id=check_id,
         version=version,
@@ -247,6 +260,7 @@ def _parse_definition(data: Mapping[str, Any]) -> CheckDefinition:
         derive=tuple(derive),
         explain=data.get("explain"),
         required=bool(data.get("required", True)),
+        role=role,
     )
 
 
@@ -380,6 +394,7 @@ def evaluate_check(
                     inputs_hash=inputs_hash,
                     derived=derived,
                     explanation=_render_explanation(definition.explain, derived, resolved_params),
+                    role=definition.role,
                 )
     except (ExpressionError, ValueError, TypeError) as error:
         return _error_run(definition, claim, str(error), inputs_hash)
@@ -402,6 +417,7 @@ def _error_run(
         reason=ENGINE_ERROR,
         inputs_hash=inputs_hash,
         explanation=message,
+        role=definition.role,
     )
 
 
@@ -444,6 +460,10 @@ class CompiledChecks:
                     raise CheckDefinitionError(f"check {definition.id}: {error}") from error
             for claim_type in definition.applies_to:
                 compiled.by_claim_type.setdefault(claim_type, []).append(definition)
+        for claim_type, checks in compiled.by_claim_type.items():
+            # A guard can withdraw a verification but never create one.
+            if all(check.role == "guard" for check in checks):
+                raise CheckDefinitionError(f"claim type {claim_type}: only guards apply to it")
         return compiled
 
     def for_claim_type(self, claim_type: str) -> list[CheckDefinition]:

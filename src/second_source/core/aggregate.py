@@ -31,6 +31,11 @@ def aggregate(
     Only *deciding* runs count: runs from deterministic kinds whose check is required.
     Judge (model) runs and optional checks are kept in the verdict for transparency but never
     change the result. ``required`` holds the ids of required checks; None means all of them.
+
+    Guards (role "guard") can only return VERIFIED or UNVERIFIABLE, so a required guard can turn
+    an all-VERIFIED claim into UNVERIFIABLE and nothing else (rules 1 and 2 still win). A guard
+    that found nothing adds no reason, so a clean claim keeps its deciding checks' reasons.
+    Optional guards that found something become ``caveats``: shown, never deciding.
     """
     deciding = [
         run
@@ -38,10 +43,25 @@ def aggregate(
         if run.kind in DETERMINISTIC_KINDS and (required is None or run.check_id in required)
     ]
 
+    caveats = tuple(
+        run.reason
+        for run in sorted(runs, key=lambda r: r.check_id)
+        if run.role == "guard"
+        and run.result is Result.UNVERIFIABLE
+        and required is not None
+        and run.check_id not in required
+    )
+
     def with_reasons(result: Result, chosen: Sequence[CheckRun]) -> Verdict:
         # Keep reasons in a stable order (by check id) so outputs are reproducible.
         reasons = tuple(run.reason for run in sorted(chosen, key=lambda r: r.check_id))
-        return Verdict(claim_id=claim_id, result=result, reasons=reasons, check_runs=tuple(runs))
+        return Verdict(
+            claim_id=claim_id,
+            result=result,
+            reasons=reasons,
+            check_runs=tuple(runs),
+            caveats=caveats,
+        )
 
     if not deciding:
         return Verdict(
@@ -56,5 +76,5 @@ def aggregate(
         if matching:
             return with_reasons(result, matching)
 
-    # Every deciding run is VERIFIED.
-    return with_reasons(Result.VERIFIED, deciding)
+    # Every deciding run is VERIFIED; guards that found nothing say nothing.
+    return with_reasons(Result.VERIFIED, [run for run in deciding if run.role != "guard"])

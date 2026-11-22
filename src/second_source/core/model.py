@@ -96,6 +96,7 @@ class CheckRun:
     inputs_hash: str
     derived: Mapping[str, Any] = field(default_factory=dict)
     explanation: str | None = None
+    role: str = "check"  # "check" decides a claim; "guard" may only withdraw a VERIFIED
 
 
 @dataclass(frozen=True)
@@ -106,3 +107,6 @@ class Verdict:
     result: Result
     reasons: tuple[str, ...]
     check_runs: tuple[CheckRun, ...]
+    # Reasons of optional guards that found something: shown next to the result as a caution,
+    # never changing it (for example "this PR changed CI configuration").
+    caveats: tuple[str, ...] = ()

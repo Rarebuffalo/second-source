@@ -175,6 +175,16 @@ The verdict for a claim is decided by the first rule that matches:
 
 Judge checks are recorded but never change the verdict in v1.
 
+**Guards** (`role: guard`) protect users from a false `VERIFIED` the way the rules above protect
+agents from a false accusation. A guard looks for signs that the evidence itself was shaped by
+the episode (for coding: the PR skipped tests or weakened its own CI) and may only return
+`VERIFIED` ("nothing found") or `UNVERIFIABLE`; the loader rejects any other outcome, and a
+claim type cannot have guards only. So a required guard can move a verdict from `VERIFIED` to
+`UNVERIFIABLE` and nowhere else (rules 1 and 2 still win). A guard that found nothing adds no
+reason. Optional guards that found something become the verdict's `caveats`: shown next to the
+result, never deciding it. The idea is domain-neutral: "the agent changed the thing that
+measures it" applies to a refund agent that edits a refund limit as much as to a PR.
+
 ### 5.5 Engine (`core/engine.py`)
 
 ```python
