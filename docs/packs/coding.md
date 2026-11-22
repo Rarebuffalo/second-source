@@ -162,10 +162,13 @@ produce CONTRADICTED.
 | `coding.tests_added_guard` | withdraws (required) | TESTS_ADDED | `ADDED_TESTS_ARE_SKIPPED` |
 | `coding.ci_config_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `PR_CHANGES_CI_CONFIG` (workflow or test config files) |
 | `coding.tests_removed_caution` | caution | TESTS_PASS | `PR_REMOVES_TESTS` (≥ 2 more test cases removed than added, code kept) |
-| `coding.tests_added_caution` | caution | TESTS_ADDED | `NO_TEST_CASE_ADDED` |
 | `coding.lint_caution` | caution | LINT_OK | `LINT_SUPPRESSIONS_ADDED`, `LINT_CONFIG_CHANGED` |
 | `coding.matching_jobs_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `MATCHING_JOB_SKIPPED` |
 | `coding.integrity_inspection` | caution | TESTS_PASS, TESTS_ADDED | `NOT_INSPECTED` (no file list, or no diff for a test or CI file) |
+
+A `NO_TEST_CASE_ADDED` caution (test files changed, no new test function) was retired after the
+run-2 audit found it right in 1 of 6 cases: table-driven rows, `rstest` `#[case]`s and
+fixture-driven cases add tests without a new test function.
 
 Withdrawing signals are deliberately narrow (declaration-level skips outside comments, weakening
 on the test command itself or its step, a weaker number for a real coverage key in its own

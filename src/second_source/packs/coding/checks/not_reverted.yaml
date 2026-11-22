@@ -4,8 +4,11 @@
 # Only merges into the default branch are watched. A PR merged into a feature or release branch
 # (often deleted later) has no meaningful branch to scan, so it is UNVERIFIABLE
 # (NOT_DEFAULT_BRANCH) instead of a scan error or a misleading "not reverted".
+#
+# A revert that was itself reverted ("Revert "Revert ..."") put the change back: whether the
+# change "held" is then ambiguous, so it is UNVERIFIABLE (REVERT_UNDONE), never CONTRADICTED.
 id: coding.not_reverted
-version: 1.1.0
+version: 2.0.0
 kind: temporal
 level: L5
 applies_to: [MERGE_HOLDS]
@@ -22,12 +25,14 @@ evidence:
 derive:
   other_branch: >-
     prs.exists(p, has(p.base_ref) && has(p.default_branch) && p.base_ref != p.default_branch)
+  standing: "reverts.filter(r, !(has(r.undone) && r.undone))"
   revert_count: "size(reverts)"
   window_end: "claim.made_at + duration(string(params.window_days * 24) + 'h')"
 outcomes:
   - {when: "other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
   - {when: "'revert' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
-  - {when: "revert_count > 0", result: CONTRADICTED, reason: REVERTED}
+  - {when: "size(standing) > 0", result: CONTRADICTED, reason: REVERTED}
+  - {when: "revert_count > 0", result: UNVERIFIABLE, reason: REVERT_UNDONE}
   - {when: "now < window_end", result: PENDING, reason: IN_WINDOW}
   - {otherwise: true, result: VERIFIED, reason: NOT_REVERTED}
 explain: "{revert_count} revert(s) found within {window_days} days"

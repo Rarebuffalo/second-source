@@ -319,24 +319,54 @@ def revert_evidence(
         else None
     )
     found = []
+    reverting: list[Json] = []
     for commit in commits:
         message = commit["commit"].get("message") or ""
         named = [sha for sha in _REVERTS_COMMIT.findall(message) if merge_sha.startswith(sha)]
         explicit = _REVERTS_COMMIT.search(message) or _ANY_PR_REVERT.search(message)
         by_title = not explicit and title_revert is not None and title_revert.match(message.strip())
         if named or pr_reference.search(message) or by_title:
-            found.append(
-                Evidence(
-                    record_type="revert",
-                    external_ref=commit["sha"],
-                    observed_at=observed_at,
-                    occurred_at=_commit_time(commit),
-                    attributes=_without_none(
-                        {"reverted_sha": merge_sha, "at": _commit_time(commit)}
-                    ),
-                )
+            reverting.append(commit)
+    for commit in reverting:
+        found.append(
+            Evidence(
+                record_type="revert",
+                external_ref=commit["sha"],
+                observed_at=observed_at,
+                occurred_at=_commit_time(commit),
+                attributes=_without_none(
+                    {
+                        "reverted_sha": merge_sha,
+                        "at": _commit_time(commit),
+                        # A later revert of this revert put the change back.
+                        "undone": _is_undone(commit, commits),
+                    }
+                ),
             )
+        )
     return found
+
+
+_SQUASH_SUFFIX = re.compile(r"(\s+\(#\d+\))+$")
+
+
+def _subject(message: str) -> str:
+    return _SQUASH_SUFFIX.sub("", (message.strip().splitlines() or [""])[0].strip()).lower()
+
+
+def _is_undone(revert: Json, commits: Sequence[Json]) -> bool:
+    """True when another scanned commit reverts this revert: it names the revert's sha, or its
+    subject is exactly ``Revert "<the revert's subject>"`` (the Revert button's wording)."""
+    sha = revert["sha"]
+    undo_subject = f'revert "{_subject(revert["commit"].get("message") or "")}"'
+    for commit in commits:
+        if commit["sha"] == sha:
+            continue
+        message = commit["commit"].get("message") or ""
+        names_it = any(sha.startswith(s) for s in _REVERTS_COMMIT.findall(message))
+        if names_it or _subject(message) == undo_subject:
+            return True
+    return False
 
 
 # Files that change in almost every PR. A revert scan filtered on one of them would list many

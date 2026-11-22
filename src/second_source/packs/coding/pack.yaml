@@ -26,7 +26,6 @@ checks:
   - checks/tests_added_guard.yaml
   - checks/ci_config_caution.yaml
   - checks/tests_removed_caution.yaml
-  - checks/tests_added_caution.yaml
   - checks/lint_caution.yaml
   - checks/integrity_inspection.yaml
   - checks/matching_jobs_caution.yaml

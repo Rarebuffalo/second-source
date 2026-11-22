@@ -44,13 +44,12 @@ GUARD_TEXT = {
     "ADDED_TESTS_ARE_SKIPPED": "the added tests are skipped",
     "PR_CHANGES_CI_CONFIG": "this PR changed CI or test configuration",
     "PR_REMOVES_TESTS": "this PR removes tests while the code stays",
-    "NO_TEST_CASE_ADDED": "test files changed, but no new test case found",
     "LINT_SUPPRESSIONS_ADDED": "this PR adds lint suppressions",
     "LINT_CONFIG_CHANGED": "this PR changed lint configuration",
     "MATCHING_JOB_SKIPPED": "some matching CI jobs were skipped",
     "CI_TOLERATES_TEST_FAILURES": "this PR lets CI continue when tests fail",
     "BUILD_SKIPS_TESTS": "this PR makes a build command skip tests",
-    "NOT_INSPECTED": "the diff could not be inspected for test changes",
+    "NOT_INSPECTED": "GitHub's API left out the diff of some files, so they were not inspected",
     "GUARD_ERROR": "an integrity guard could not be evaluated",
     # Absence that is not proof (never CONTRADICTED; see the check files for why).
     "NO_TEST_FILES_FOUND": "no test file found in the changed files (tests inside code files"
@@ -58,6 +57,7 @@ GUARD_TEXT = {
     "NO_DOC_FILES_FOUND": "no documentation file found in the changed files (docs inside code"
     " are not detected)",
     "REOPENED_THEN_CLOSED": "the issue was reopened after the merge, then closed again",
+    "REVERT_UNDONE": "the merge was reverted, then the revert was itself reverted",
 }
 WITHDRAWN_SYMBOL, WITHDRAWN_WORD = "⚠", "not verified"
 

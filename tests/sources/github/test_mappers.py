@@ -332,3 +332,27 @@ def test_revert_naming_the_repositorys_new_name_is_found():
         commits, "abc1234def56", "Octo/App", 7, NOW, other_names=("NewOwner/NewApp",)
     )
     assert [e.external_ref for e in found] == ["r1"]
+
+
+def test_a_revert_that_was_itself_reverted_is_marked_undone():
+    commits = [
+        commit("r1", "2026-11-21T10:00:00Z", 'Revert "Add assets" (#76)\n\nReverts Octo/App#7'),
+        commit(
+            "u1",
+            "2026-11-22T10:00:00Z",
+            'Revert "Revert "Add assets"" (#77)\n\nReverts Octo/App#76',
+        ),
+        commit("dead0002", "2026-11-23T10:00:00Z", "Undo it\n\nThis reverts commit abc1234."),
+        commit("u2", "2026-11-24T10:00:00Z", "Restore\n\nThis reverts commit dead0002."),
+    ]
+    found = {
+        e.external_ref: e.attributes["undone"]
+        for e in mappers.revert_evidence(commits, "abc1234def56", "Octo/App", 7, NOW)
+    }
+    assert found == {"r1": True, "dead0002": True}
+
+
+def test_a_standing_revert_is_not_undone():
+    commits = [commit("r1", "2026-11-21T10:00:00Z", 'Revert "Fix"\n\nThis reverts commit abc1234.')]
+    (found,) = mappers.revert_evidence(commits, "abc1234def56", "Octo/App", 7, NOW)
+    assert found.attributes["undone"] is False

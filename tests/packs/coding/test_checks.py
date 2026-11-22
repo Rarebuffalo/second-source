@@ -504,8 +504,9 @@ def test_deployed_aliases_apply_to_evidence_too(engine):
 # ---- merge holds (not reverted) --------------------------------------------------------------
 
 
-def revert(reverted_sha="m1", sha="r1"):
-    return Evidence("revert", sha, T0 + timedelta(days=2), {"reverted_sha": reverted_sha, "at": T0})
+def revert(reverted_sha="m1", sha="r1", undone=False):
+    attributes = {"reverted_sha": reverted_sha, "at": T0, "undone": undone}
+    return Evidence("revert", sha, T0 + timedelta(days=2), attributes)
 
 
 @pytest.mark.parametrize(
@@ -514,6 +515,9 @@ def revert(reverted_sha="m1", sha="r1"):
         ([], 3, Result.PENDING, "IN_WINDOW"),
         ([], 31, Result.VERIFIED, "NOT_REVERTED"),
         ([revert()], 3, Result.CONTRADICTED, "REVERTED"),
+        # The revert was itself reverted: the change is back, so "held" is ambiguous.
+        ([revert(undone=True)], 31, Result.UNVERIFIABLE, "REVERT_UNDONE"),
+        ([revert(undone=True), revert(sha="r2")], 31, Result.CONTRADICTED, "REVERTED"),
         ([revert(reverted_sha="other")], 31, Result.VERIFIED, "NOT_REVERTED"),
         # Merged into a feature branch: no branch to watch.
         ([pr_state(merged=True, base="feature/x")], 31, Result.UNVERIFIABLE, "NOT_DEFAULT_BRANCH"),
@@ -608,11 +612,11 @@ def test_added_tests_that_are_all_skipped_are_not_verified(engine):
     assert (result.result, result.reasons) == (Result.UNVERIFIABLE, ("ADDED_TESTS_ARE_SKIPPED",))
 
 
-def test_test_files_without_a_test_case_get_a_caution(engine):
+def test_test_files_without_a_counted_test_case_get_no_caution(engine):
+    # Retired after the run-2 audit (1 of 6 right): table rows, rstest cases and fixture-driven
+    # cases add tests without a new test function.
     result = verdict(engine, claim(TESTS_ADDED), added_tests_evidence(test_source_changed=1))
-    assert (result.result, result.caveats) == (Result.VERIFIED, ("NO_TEST_CASE_ADDED",))
-    real = added_tests_evidence(test_source_changed=1, test_cases_added=3, asserts_added=4)
-    assert verdict(engine, claim(TESTS_ADDED), real).caveats == ()
+    assert (result.result, result.caveats) == (Result.VERIFIED, ())
 
 
 def test_a_summary_missing_fields_withdraws_nothing(engine):
