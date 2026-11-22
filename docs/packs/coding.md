@@ -156,6 +156,12 @@ withdrawal only after audited precision of at least 0.90 on at least 30 flagged 
 skips (`pytest.skip(`, `t.Skip(`) are not counted: most are legitimate environment guards.
 If the file list cannot be read, nothing is withdrawn and `NOT_INSPECTED` is shown instead.
 
+**Known gaps** (not detected yet): a test job disabled with `if: false`, a deleted test step,
+`set +e` before tests, `testPathIgnorePatterns` / `collect_ignore`, TestNG `enabled = false`,
+RSpec `skip:` / `pending`, NUnit `[Explicit]`, Go runtime skips, and Rust `#[ignore]` on inline
+tests in source files. Precision of each withdrawing signal on real PRs is not yet published;
+it comes from the audited benchmark run 2.
+
 ## 5. Agent detection
 
 Detection runs as data-driven rules over author login, author type, head branch name, PR
