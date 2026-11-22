@@ -218,8 +218,27 @@ def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
             ".github/workflows/ci.yml",
             ["+      - run: pytest \\", "+          --deselect tests/test_db.py"],
         ),
-        (".github/workflows/ci.yml", ["+      - run: mvn -B verify -DskipTests"]),
-        (".github/workflows/ci.yml", ["+      - run: ./gradlew build -x test"]),
+        # The PR added the flag to a command that ran the tests before.
+        (
+            ".github/workflows/ci.yml",
+            ["-      - run: mvn -B verify", "+      - run: mvn -B verify -DskipTests"],
+        ),
+        (
+            ".github/workflows/ci.yml",
+            ["-      - run: ./gradlew build", "+      - run: ./gradlew build -x test"],
+        ),
+        # A whole test job made non-blocking (guard re-check R6).
+        (
+            ".github/workflows/ci.yml",
+            [
+                "   test:",
+                "     runs-on: ubuntu-latest",
+                "+    continue-on-error: true",
+                "     steps:",
+                "       - uses: actions/checkout@v4",
+                "       - run: pytest",
+            ],
+        ),
         (".github/actions/test/action.yml", ["+      run: pytest -k 'not slow'"]),
     ],
 )
@@ -288,3 +307,105 @@ def test_large_patches_stay_fast():
     hunk = [f"+      - run: pytest -k t{n}" if n % 2 else f"+      echo {n}" for n in range(20_000)]
     facts(".github/workflows/ci.yml", "modified", patch(*hunk))
     assert time.monotonic() - started < 3.0
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        # Guard re-check R2: build-only steps that skip tests by design.
+        (".github/workflows/release.yml", ["+      - run: mvn -B package -DskipTests"]),
+        ("Dockerfile.yml", ["+RUN ./gradlew bootJar -x test"]),
+        (
+            ".github/workflows/ci.yml",
+            ["+      - run: mvn -B install -DskipTests -pl core -am", "       - run: mvn test"],
+        ),
+        (".github/workflows/ci.yml", ["+      - run: pytest -x test/unit"]),  # pytest's -x
+        # R6: a list item inside a step's with: does not split the step.
+        (
+            ".github/workflows/ci.yml",
+            [
+                "       - name: Lint",
+                "         uses: some/linter@v1",
+                "         with:",
+                "           args:",
+                "             - --fix",
+                "+        continue-on-error: true",
+                "       - name: Test",
+                "         run: pytest",
+            ],
+        ),
+    ],
+)
+def test_build_only_and_unrelated_steps_do_not_weaken(path, lines):
+    assert "test_cmd_weakened" not in facts(path, "modified", patch(*lines))
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        # Guard re-check R1: one new skipped test, per language. Cases 1, skips 1.
+        ("tests/test_new.py", ["+@pytest.mark.skip(reason='wip')", "+def test_new():"]),
+        ("src/test/java/AppTest.java", ["+  @Disabled", "+  @Test", "+  void works() {}"]),
+        ("tests/lib.rs", ["+#[test]", "+#[ignore]", "+fn works() {}"]),
+        (
+            "Tests/AppTests.cs",
+            ["+    [Test]", '+    [Ignore("wip")]', "+    public void Works() {}"],
+        ),
+        ("web/a.test.ts", ["+  it.skip('new', () => {})"]),
+    ],
+)
+def test_one_new_skipped_test_counts_one_case_and_one_skip(path, lines):
+    result = facts(path, "added", patch(*lines))
+    assert (result["test_cases_added"], result["test_skips_added"]) == (1, 1)
+
+
+def test_a_testdir_variable_does_not_exempt_real_skips():
+    # Guard re-check R3.
+    lines = ["+testdir = Path(__file__).parent", "+@pytest.mark.skip", "+def test_x():"]
+    assert facts("tests/test_x.py", "modified", patch(*lines))["test_skips_added"] == 1
+
+
+def test_skips_inside_a_pytester_string_do_not_count_even_far_from_the_call():
+    lines = [
+        "+    pytester.makepyfile(",
+        '+        """',
+        "+        import pytest",
+        "+",
+        "+        def helper(): pass",
+        "+",
+        "+        @pytest.mark.skip(reason='x')",
+        "+        def test_a(): pass",
+        '+        """',
+        "+    )",
+    ]
+    assert "test_skips_added" not in facts("testing/test_skipping.py", "modified", patch(*lines))
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        # Guard re-check R4: decorators with comments or a multi-line argument list.
+        ("tests/test_x.py", ["+@pytest.mark.skip(reason='x')  # TODO"]),
+        ("tests/test_x.py", ["+@pytest.mark.skip(", "+    reason='needs the new parser',", "+)"]),
+        ("tests/test_x.py", ["+@unittest.skip(", "+    'later'", "+)"]),
+        # R5: Playwright.
+        ("e2e/a.spec.ts", ["+test.describe.skip('checkout', () => {"]),
+        ("e2e/a.spec.ts", ["+test.describe.only('checkout', () => {"]),
+        ("e2e/a.spec.ts", ["+test.fixme('pays', async () => {"]),
+    ],
+)
+def test_skip_forms_lost_in_the_first_fix_are_detected_again(path, lines):
+    assert facts(path, "modified", patch(*lines))["test_skips_added"] == 1
+
+
+@pytest.mark.parametrize(
+    ("path", "status", "lines"),
+    [
+        # Guard re-check N6.
+        ("codecov.yml", "modified", ["       default:", "+        informational: true"]),
+        ("pyproject.toml", "modified", ["-fail_under = 90", " show_missing = true"]),
+        ("codecov.yml", "modified", ["-        target: 80%", "+        target: auto"]),
+    ],
+)
+def test_more_ways_to_weaken_a_coverage_gate(path, status, lines):
+    assert facts(path, status, patch(*lines))["coverage_gate_lowered"] is True
