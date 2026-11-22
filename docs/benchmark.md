@@ -41,6 +41,12 @@ check time, exactly as for a single `second-source check`.
   per agent. Run 1 had no cap and one repository supplied 49 of 200 Codex PRs, so an agent's
   rate mostly described a few projects. `--exclude-repos-from` skips every repository of earlier
   files, so a new golden set or holdout shares no repository with what was tuned on.
+- **Local copy** (`--parquet FILE`, needs `uv sync --extra local`): the dataset viewer is a free
+  shared service and goes down for hours (HTTP 502/503), which kills an hour-long draw part way.
+  The viewer serves the rows of the dataset's Parquet conversion, so the same file downloaded
+  once (`pull_request/train/0000.parquet` under `refs/convert/parquet`, about 360 MB) gives the
+  same rows at the same offsets in seconds. Checked: identical agent blocks, and 300 of 300 run-1
+  rows identical field by field. The header then records the file's SHA-256 as the revision.
 - **Output:** one JSON line per PR (`samples/<name>.jsonl`), including the dataset revision,
   seed and cap in a header record.
 

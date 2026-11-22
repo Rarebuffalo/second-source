@@ -26,12 +26,22 @@ from collections import Counter
 from collections.abc import Callable, Iterable, Iterator
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from second_source import __version__
-from second_source.benchmark.aidev import CONFIG, DATASET, AidevClient, AidevError, AidevPullRequest
+from second_source.benchmark.aidev import CONFIG, DATASET, AidevError, AidevPullRequest, Page
 
 Filter = Callable[[AidevPullRequest], bool]
+
+
+class RowSource(Protocol):
+    """Where rows come from: the dataset viewer API (AidevClient) or a downloaded Parquet file
+    (aidev_local.ParquetAidev). Both serve the same rows at the same offsets."""
+
+    def page(self, offset: int, length: int = ...) -> Page: ...
+
+    def revision(self) -> str: ...
+
 
 # How many rows we may read per wanted row before giving up on an agent's quota.
 DRAWS_PER_ROW = 5
@@ -72,7 +82,7 @@ def merged_with_body(pull: AidevPullRequest) -> bool:
 FILTERS: dict[str, Filter] = {"has_body": has_body, "merged_with_body": merged_with_body}
 
 
-def locate_blocks(client: AidevClient) -> tuple[Block, ...]:
+def locate_blocks(client: RowSource) -> tuple[Block, ...]:
     """Find each agent's contiguous block of rows. Costs about 20 requests per agent."""
     total = client.page(0, 1).total
     cache: dict[int, str] = {}
@@ -106,7 +116,7 @@ def locate_blocks(client: AidevClient) -> tuple[Block, ...]:
 
 
 def sample_block(
-    client: AidevClient,
+    client: RowSource,
     block: Block,
     *,
     count: int,
@@ -140,7 +150,7 @@ def sample_block(
 
 
 def draw_sample(
-    client: AidevClient,
+    client: RowSource,
     *,
     per_agent: int,
     seed: int,

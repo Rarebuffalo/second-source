@@ -22,6 +22,7 @@ import yaml
 
 from second_source.benchmark import golden, stats
 from second_source.benchmark.aidev import AidevClient, AidevError, repo_of
+from second_source.benchmark.aidev_local import ParquetAidev
 from second_source.benchmark.runner import read_results, run_benchmark
 from second_source.benchmark.sample import FILTERS, draw_sample, read_sample, write_sample
 from second_source.sources.github.auth import TokenResult
@@ -71,6 +72,12 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
         "--max-per-repo",
         type=int,
         help="at most this many PRs per repository per agent (default: no cap)",
+    )
+    sample.add_argument(
+        "--parquet",
+        type=Path,
+        help="read AIDev from this downloaded pull_request Parquet file instead of the "
+        "dataset viewer API (same rows; needs `uv sync --extra local`)",
     )
     sample.add_argument("-o", "--output", type=Path, required=True)
 
@@ -136,7 +143,8 @@ def _sample(args: argparse.Namespace, context: BenchContext) -> int:
     exclude = {url for path in args.exclude_from for url in _urls_in(path)}
     exclude_repos = {repo_of(url) for path in args.exclude_repos_from for url in _urls_in(path)}
     try:
-        with context.aidev_factory() as client:
+        source = ParquetAidev(args.parquet) if args.parquet else context.aidev_factory()
+        with source as client:
             sample = draw_sample(
                 client,
                 per_agent=args.per_agent,
