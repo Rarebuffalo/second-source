@@ -1,7 +1,7 @@
 # Guard: are the "added tests" themselves switched off? (role: guard, required)
 # A PR that adds test files whose new tests are skipped has not added running tests.
 id: coding.tests_added_guard
-version: 1.1.0
+version: 1.2.0
 kind: state
 role: guard
 level: L4
@@ -15,7 +15,12 @@ derive:
   s: "known ? summary[0] : {}"
   skips: "has(s.test_skips_net) ? s.test_skips_net : 0"
   added: "has(s.test_cases_added) ? s.test_cases_added : 0"
+  # New cases in files where one marker skips a whole group (describe.skip, a skipped test
+  # class, a module-level pytestmark).
+  suite_skipped: "has(s.suite_skipped_cases) ? s.suite_skipped_cases : 0"
 outcomes:
-  - {when: "skips > 0 && added <= skips", result: UNVERIFIABLE, reason: ADDED_TESTS_ARE_SKIPPED}
+  - when: "added > 0 && ((skips > 0 && added <= skips) || suite_skipped >= added)"
+    result: UNVERIFIABLE
+    reason: ADDED_TESTS_ARE_SKIPPED
   - {otherwise: true, result: VERIFIED, reason: ADDED_TESTS_NOT_SKIPPED}
 explain: "{added} test case(s) added, {skips} newly skipped"

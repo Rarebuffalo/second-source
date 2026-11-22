@@ -521,3 +521,61 @@ def test_an_unrelated_removed_build_line_does_not_pair_with_a_new_skip_flag():
     # S3: removing "mvn -v" is not "the deploy ran with tests before".
     lines = ["-      - run: mvn -v", "+      - run: mvn -B deploy -DskipTests"]
     assert "build_tests_skipped" not in facts(".github/workflows/ci.yml", "modified", patch(*lines))
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        # Guard re-check 2, S4: one marker skips a whole group of new tests.
+        (
+            "web/parser.test.ts",
+            [
+                "+describe.skip('parser', () => {",
+                "+  it('a', () => {})",
+                "+  it('b', () => {})",
+                "+})",
+            ],
+        ),
+        (
+            "tests/test_x.py",
+            [
+                "+@pytest.mark.skip(reason='wip')",
+                "+class TestX:",
+                "+    def test_a(self):",
+                "+        assert 1",
+                "+    def test_b(self):",
+                "+        assert 1",
+            ],
+        ),
+        (
+            "tests/test_x.py",
+            [
+                "+pytestmark = pytest.mark.skip(reason='wip')",
+                "+def test_a():",
+                "+def test_b():",
+                "+def test_c():",
+            ],
+        ),
+    ],
+)
+def test_a_skip_over_a_group_marks_the_files_new_cases_as_skipped(path, lines):
+    result = facts(path, "added", patch(*lines))
+    assert result["suite_skips_added"] == 1
+    assert result["suite_skipped_cases"] == result["test_cases_added"] > 0
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        # S5: a docstring closing moved between old and new lines must not hide a real skip.
+        [
+            '     """Doc line one',
+            '-    """',
+            '+    line two"""',
+            "+@pytest.mark.skip",
+            "+def test_new():",
+        ],
+    ],
+)
+def test_old_and_new_lines_track_strings_separately(lines):
+    assert facts("tests/test_x.py", "modified", patch(*lines))["test_skips_added"] == 1

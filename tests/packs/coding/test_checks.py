@@ -588,3 +588,11 @@ def test_tolerated_ci_failures_and_build_skips_are_cautions(engine):
         engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), summary(**totals)]
     )
     assert (result.result, result.caveats) == (Result.VERIFIED, ("CI_TOLERATES_TEST_FAILURES",))
+
+
+def test_a_skipped_group_of_new_tests_is_not_verified(engine):
+    evidence = added_tests_evidence(
+        test_source_changed=1, test_cases_added=2, test_skips_net=1, suite_skipped_cases=2
+    )
+    result = verdict(engine, claim(TESTS_ADDED), evidence)
+    assert (result.result, result.reasons) == (Result.UNVERIFIABLE, ("ADDED_TESTS_ARE_SKIPPED",))

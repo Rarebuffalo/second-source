@@ -83,10 +83,20 @@ _SKIP = {
 # Skip markers that also declare the test on the same line ("it.skip('x', …)", "xit('x'",
 # "[Fact(Skip = …)]"). In Python, Java, Rust and C# attributes the marker is a separate line from
 # the declaration, so only these forms count as a test case themselves.
+_JS_SUITE_SKIP = re.compile(
+    r"^\s*(await\s+)?(test\.)?(describe|context|suite)\.skip\b|^\s*(await\s+)?(xdescribe|xcontext)\s*\("
+)
+_PYTESTMARK = re.compile(r"^\s*pytestmark\s*=")
+_PY_SELF_TEST = re.compile(r"\b(pytester|testdir)\.(makepyfile|makefile|inline_run|runpytest)\b")
 _DECLARING_SKIP = {
-    "js": _SKIP["js"],
+    # Suites (describe/context/suite) are not test cases.
+    "js": re.compile(
+        rf"^\s*(await\s+)?(test\.)?(it|test|specify)\.(skip|only|fixme)(\.each\b.*)?\s*\(\s*{_Q}"
+        rf"|^\s*(await\s+)?test\.fixme\s*\(\s*{_Q}"
+        rf"|^\s*(await\s+)?(xit|xtest|fit)\s*\(\s*{_Q}"
+    ),
     "csharp": re.compile(r"\b(Fact|Theory)\s*\(\s*Skip\s*="),
-    "ruby": re.compile(r"^\s*(xit|xdescribe|xcontext)\b"),
+    "ruby": re.compile(r"^\s*xit\b"),
 }
 # Tests of a test framework write skip markers inside strings on purpose. Python: markers inside
 # a triple-quoted string are ignored (tracked per hunk). JS: files using ESLint's RuleTester.
@@ -236,17 +246,34 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
         commands = _command_rows(hunk) if command_file else []
         step_of = _step_numbers(hunk) if command_file else []
         steps_with_tests = {step_of[i] for i, is_command in enumerate(commands) if is_command}
-        in_string = False  # inside a Python triple-quoted string (within this hunk)
+        # Inside a Python triple-quoted string? Tracked separately for the old file (context and
+        # removed lines) and the new file (context and added lines), so interleaved edits do not
+        # confuse the two. A hunk that starts inside a string is not detected (accepted risk);
+        # pytester-style hunks are recognised by their calls as a second signal.
+        old_in_string = new_in_string = False
+        framework_hunk = language == "python" and any(
+            _PY_SELF_TEST.search(text) for _s, text, _n in hunk
+        )
         for index, (sign, text, new_line) in enumerate(hunk):
-            starts_in_string = in_string
+            starts_in_string = old_in_string if sign == "-" else new_in_string
             if language == "python" and len(_TRIPLE_QUOTE.findall(text)) % 2:
-                in_string = not in_string
+                if sign != "+":
+                    old_in_string = not old_in_string
+                if sign != "-":
+                    new_in_string = not new_in_string
             if sign == " " or len(text) > MAX_LINE:
                 continue
             if test_file and language and not _COMMENT_LINE.match(text) and not starts_in_string:
-                skip = not js_self_test and language in _SKIP and bool(_SKIP[language].search(text))
+                skip = (
+                    not js_self_test
+                    and not framework_hunk
+                    and language in _SKIP
+                    and bool(_SKIP[language].search(text))
+                )
                 if skip:
                     bump("test_skips_added" if sign == "+" else "test_skips_removed", new_line)
+                    if sign == "+" and _is_suite_skip(language, text, hunk, index):
+                        bump("suite_skips_added")
                 # A test case is a declaration; a skip marker counts as one only when it declares
                 # the test on the same line ("it.skip('x', …)"), not as a separate decorator.
                 declares_skip = (
@@ -290,6 +317,10 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 before = removed_gates[key][0]
                 if (number < before) if stricter else (number > before):
                     counts["coverage_gate_lowered"] = True
+    if counts.get("suite_skips_added"):
+        # One marker that skips a group (a describe, a test class, a whole module): the new test
+        # cases of this file are all skipped with it.
+        counts["suite_skipped_cases"] = counts.get("test_cases_added", 0)
     if file_removed_gates:
         counts["gates_removed"] = sorted(file_removed_gates)  # fixed family names, not code
     if file_added_gates:
@@ -297,6 +328,25 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     if markers:
         counts["marker_lines"] = markers
     return counts
+
+
+def _is_suite_skip(
+    language: str, text: str, hunk: list[tuple[str, str, int | None]], index: int
+) -> bool:
+    """A skip marker that covers a group of tests rather than one test."""
+    if language == "js":
+        return bool(_JS_SUITE_SKIP.search(text))
+    if language == "ruby":
+        return bool(re.match(r"^\s*(xdescribe|xcontext)\b", text))
+    if language == "python" and _PYTESTMARK.search(text):
+        return True
+    if language in ("python", "jvm"):
+        # The next added, non-blank, non-decorator line declares a class.
+        for sign, following, _n in hunk[index + 1 :]:
+            if sign == "-" or not following.strip() or following.lstrip().startswith("@"):
+                continue
+            return bool(re.match(r"^\s*(public\s+|final\s+|abstract\s+)*class\s", following))
+    return False
 
 
 def _tolerates_failures(
@@ -436,6 +486,7 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
         "test_cmd_weakened": 0,
         "ci_failures_tolerated": 0,  # continue-on-error on a test step or test job
         "build_tests_skipped": 0,  # -DskipTests / -x test added to an existing command
+        "suite_skipped_cases": 0,  # new test cases in files that skip a whole group
         "lint_suppressions_added": 0,
         "removed_test_files": 0,
         "test_source_changed": 0,  # test files in a known language with added lines
@@ -482,6 +533,7 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
             "test_cmd_weakened",
             "ci_failures_tolerated",
             "build_tests_skipped",
+            "suite_skipped_cases",
             "lint_suppressions_added",
         ):
             total[key] += file.get(key, 0)
