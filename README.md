@@ -85,8 +85,8 @@ and never checks out the PR's code. Design: [docs/action.md](docs/action.md).
 | Tests pass | "All tests pass", "✅ `pytest`" | CI test jobs on the commit the claim refers to |
 | Build succeeds | "Build succeeds", "`cargo build` ✅" | CI build jobs on that commit |
 | Lint passes | "Lint passes", "no ESLint warnings" | CI lint, format and type-check jobs |
-| Tests added | "Added unit tests for the parser" | Test files changed in the PR |
-| Docs updated | "Updated the README" | Documentation files changed in the PR |
+| Tests added | "Added unit tests for the parser" | Test files changed in the PR (never contradicted: tests can live in code files) |
+| Docs updated | "Updated the README" | Documentation files changed in the PR (never contradicted: docs can live in code) |
 | Fixes an issue | "Fixes #123", "Closes owner/repo#45" | Issue closed by the merge, and still closed later |
 | Deployed | "Deployed to staging" | GitHub deployment records |
 | Merge holds (implicit) | every merged agent PR | No revert of the merge within 30 days |

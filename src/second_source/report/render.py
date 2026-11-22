@@ -35,7 +35,8 @@ _ANSI = {
 }
 _RESET = "\033[0m"
 
-# What the integrity guards found, in words (docs/packs/coding.md, "Integrity guards").
+# Reasons shown in words: what the integrity guards found (docs/packs/coding.md, "Integrity
+# guards"), and absences that are not proof.
 GUARD_TEXT = {
     "PR_SKIPS_TESTS": "this PR skips tests",
     "PR_WEAKENS_TEST_COMMAND": "this PR weakens how CI runs tests",
@@ -51,6 +52,12 @@ GUARD_TEXT = {
     "BUILD_SKIPS_TESTS": "this PR makes a build command skip tests",
     "NOT_INSPECTED": "the diff could not be inspected for test changes",
     "GUARD_ERROR": "an integrity guard could not be evaluated",
+    # Absence that is not proof (never CONTRADICTED; see the check files for why).
+    "NO_TEST_FILES_FOUND": "no test file found in the changed files (tests inside code files"
+    " are not detected)",
+    "NO_DOC_FILES_FOUND": "no documentation file found in the changed files (docs inside code"
+    " are not detected)",
+    "REOPENED_THEN_CLOSED": "the issue was reopened after the merge, then closed again",
 }
 WITHDRAWN_SYMBOL, WITHDRAWN_WORD = "⚠", "not verified"
 

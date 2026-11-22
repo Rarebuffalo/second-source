@@ -1,7 +1,13 @@
 # L4: "Added tests" — does the PR actually add or change test files?
 # A test file counts if it was added or modified with at least one added line.
+#
+# Never CONTRADICTED. Finding no test file is not proof: tests can live inside source files
+# (Rust #[cfg(test)], in-source vitest, Racket module+ test), and a sentence that only looks
+# like a claim ("creates test directories") rarely comes with test files either. The run-2
+# audit found 8 of 36 "no test file" contradictions were really false claims, so absence is
+# reported as UNVERIFIABLE with its reason in words.
 id: coding.tests_added
-version: 1.0.0
+version: 2.0.0
 kind: state
 level: L4
 applies_to: [TESTS_ADDED]
@@ -15,5 +21,5 @@ outcomes:
   - {when: "'changed_file' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(files) == 0", result: UNVERIFIABLE, reason: NO_FILE_LIST}
   - {when: "test_file_count > 0", result: VERIFIED, reason: TEST_FILES_CHANGED}
-  - {otherwise: true, result: CONTRADICTED, reason: NO_TEST_FILES_CHANGED}
+  - {otherwise: true, result: UNVERIFIABLE, reason: NO_TEST_FILES_FOUND}
 explain: "{test_file_count} test file(s) added or changed"

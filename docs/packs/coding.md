@@ -45,6 +45,18 @@ instead of `CONTRADICTED`: local and CI environments differ, so it is a signal, 
 claim never covered. Claims that do neither are read as claims about the change itself, and
 failing CI contradicts them. (See docs/benchmark.md, section 4.)
 
+**Absence is not proof.** `TESTS_ADDED` and `DOCS_UPDATED` are never `CONTRADICTED`. When the
+PR changes no test (or documentation) file, the result is `UNVERIFIABLE` with reason
+`NO_TEST_FILES_FOUND` (`NO_DOC_FILES_FOUND`), shown in words. Tests often live inside source
+files (Rust `#[cfg(test)]`, in-source vitest, Racket `module+ test`) and documentation in code
+(docstrings, XML doc comments, roxygen), and a sentence that only looks like a claim ("creates
+test directories", "doc cache") rarely comes with matching files. In the run-2 audit only 8 of
+36 such contradictions were really false claims. Likewise, an issue reopened after the merge
+contradicts `FIXES_ISSUE` only while it is still open; reopened and closed again is
+`UNVERIFIABLE` (`REOPENED_THEN_CLOSED`): maintainers reopen to verify or to wait for a release,
+and a later PR may have fixed it. `CONTRADICTED` now comes only from hard state: a failing CI
+job, or an issue still open after the merge.
+
 `MERGE_HOLDS` is an implicit claim: merging a PR asserts that the change is good. Making it
 a claim lets the L5 "stayed true" checks use the same engine as everything else.
 
@@ -192,7 +204,7 @@ Helper functions that checks can call:
 | `is_build_check(name)` | Matches build, compile and bundle jobs |
 | `is_lint_check(name)` | Matches lint, eslint, ruff, flake8, pylint, clippy, golangci, prettier, format and typecheck jobs |
 | `is_test_path(path)` | Matches test files by common conventions across languages |
-| `is_doc_path(path)` | Matches documentation files (`docs/`, README, CHANGELOG, `.md`, `.rst`, `.mdx`) |
+| `is_doc_path(path)` | Matches documentation files (`docs/`, README, CHANGELOG, `.md`, `.rst`, `.mdx`, `man/*.Rd`) |
 
 A name that cannot be classified does not count. If no test check can be identified, the
 claim is `UNVERIFIABLE` rather than guessed.

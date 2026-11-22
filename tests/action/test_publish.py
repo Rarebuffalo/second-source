@@ -45,8 +45,8 @@ def test_verified_and_watched_claims_succeed(fake_github):
 
 
 def test_contradicted_claims_are_neutral_unless_the_repo_opts_in(fake_github):
-    no_tests = {f"{PR}/files": [{"filename": "src/parser.py", "status": "modified"}]}
-    report = report_for(fake_github(no_tests))  # "Added unit tests" but no test file changed
+    still_open = {"/repos/Octo/App/issues/12": {"number": 12, "state": "open"}}
+    report = report_for(fake_github(still_open))  # "Fixes #12" but the issue is still open
     advice = outcome_for(report, fail_on_contradiction=False)
     gate = outcome_for(report, fail_on_contradiction=True)
     assert (advice.conclusion, advice.title) == ("neutral", "1 claim contradicted")

@@ -1,6 +1,10 @@
 # L4: "Updated the docs/README" — does the PR actually change documentation files?
+#
+# Never CONTRADICTED. Documentation can live in code (docstrings, XML doc comments, roxygen,
+# Doxygen), and "documentation" in a sentence often means exactly that; finding no doc file is
+# not proof (see tests_added.yaml for the audit behind this).
 id: coding.docs_updated
-version: 1.0.0
+version: 2.0.0
 kind: state
 level: L4
 applies_to: [DOCS_UPDATED]
@@ -14,5 +18,5 @@ outcomes:
   - {when: "'changed_file' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(files) == 0", result: UNVERIFIABLE, reason: NO_FILE_LIST}
   - {when: "doc_file_count > 0", result: VERIFIED, reason: DOC_FILES_CHANGED}
-  - {otherwise: true, result: CONTRADICTED, reason: NO_DOC_FILES_CHANGED}
+  - {otherwise: true, result: UNVERIFIABLE, reason: NO_DOC_FILES_FOUND}
 explain: "{doc_file_count} documentation file(s) changed"

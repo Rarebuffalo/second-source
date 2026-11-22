@@ -1,7 +1,7 @@
 # Coding pack: verifies what coding agents claim in pull requests.
 # Design and evidence contract: docs/packs/coding.md
 id: coding
-version: 0.4.0
+version: 0.5.0
 kind: agent_type
 description: Claims made by coding agents in pull requests, checked against CI and Git evidence.
 claim_types:

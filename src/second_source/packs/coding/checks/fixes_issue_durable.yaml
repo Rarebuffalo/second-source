@@ -2,8 +2,12 @@
 # Repository names are compared case-insensitively (same_repo).
 # An issue that is open (never closed) after a merge into a non-default branch is expected:
 # GitHub only auto-closes issues for default-branch merges (see fixes_issue.yaml).
+# A reopen contradicts the fix only while the issue stays open. Maintainers also reopen an
+# issue to verify a fix or to wait for a release, then close it again crediting the same PR;
+# a reopened-then-closed issue may also have been fixed by a later PR. Either way the evidence
+# is ambiguous, so it is UNVERIFIABLE (run-2 audit: 2 of 5 reopen contradictions were wrong).
 id: coding.fixes_issue_durable
-version: 1.2.0
+version: 2.0.0
 kind: temporal
 level: L5
 applies_to: [FIXES_ISSUE]
@@ -26,9 +30,12 @@ outcomes:
   - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NOT_MERGED}
   - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
-  - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0])"
+  - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0] && i.state == 'open')"
     result: CONTRADICTED
     reason: ISSUE_REOPENED
+  - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0])"
+    result: UNVERIFIABLE
+    reason: REOPENED_THEN_CLOSED
   - {when: "issues.exists(i, i.state == 'open') && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
   - {when: "issues.exists(i, i.state == 'open')", result: CONTRADICTED, reason: ISSUE_OPEN}
   - {when: "now < merge_times[0] + window", result: PENDING, reason: IN_WINDOW}

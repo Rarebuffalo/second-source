@@ -280,17 +280,20 @@ def test_build_and_lint(engine, claim_type, job, ok_reason, fail_reason):
             Result.VERIFIED,
             "TEST_FILES_CHANGED",
         ),
-        ([changed_file("src/a.py")], Result.CONTRADICTED, "NO_TEST_FILES_CHANGED"),
+        # Never contradicted: tests can live inside source files (src/a.rs #[cfg(test)]).
+        ([changed_file("src/a.py")], Result.UNVERIFIABLE, "NO_TEST_FILES_FOUND"),
+        ([changed_file("docs/a.md")], Result.UNVERIFIABLE, "NO_TEST_FILES_FOUND"),
         (
             [changed_file("tests/test_a.py", "removed")],
-            Result.CONTRADICTED,
-            "NO_TEST_FILES_CHANGED",
+            Result.UNVERIFIABLE,
+            "NO_TEST_FILES_FOUND",
         ),  # deleting tests is not adding them
         (
             [changed_file("tests/test_a.py", additions=0)],
-            Result.CONTRADICTED,
-            "NO_TEST_FILES_CHANGED",
+            Result.UNVERIFIABLE,
+            "NO_TEST_FILES_FOUND",
         ),
+        ([changed_file("src/tests.rs", "added")], Result.VERIFIED, "TEST_FILES_CHANGED"),
         ([], Result.UNVERIFIABLE, "NO_FILE_LIST"),
     ],
 )
@@ -304,9 +307,12 @@ def test_docs_updated(engine):
         verdict(engine, claim(DOCS_UPDATED), [changed_file("README.md")]).result is Result.VERIFIED
     )
     assert (
-        verdict(engine, claim(DOCS_UPDATED), [changed_file("src/a.py")]).result
-        is Result.CONTRADICTED
+        verdict(engine, claim(DOCS_UPDATED), [changed_file("man/add_edges.Rd")]).result
+        is Result.VERIFIED
     )
+    # Never contradicted: docs can live in code (docstrings, XML doc comments).
+    missing = verdict(engine, claim(DOCS_UPDATED), [changed_file("src/a.py")])
+    assert (missing.result, missing.reasons) == (Result.UNVERIFIABLE, ("NO_DOC_FILES_FOUND",))
 
 
 # ---- fixes issue (L4 now, L5 over time) ------------------------------------------------------
@@ -353,10 +359,22 @@ def test_fixes_issue_open_after_merge_into_another_branch_is_unverifiable(engine
     assert result.result is not Result.CONTRADICTED
 
 
-def test_fixes_issue_reopened_after_merge(engine):
+def test_fixes_issue_reopened_after_merge_and_still_open(engine):
+    reopened = issue_state(state="open", reopened_at=T0 + timedelta(days=3))
+    result = verdict(engine, fixes_claim(), [pr_state(merged=True), reopened], hours=24 * 5)
+    assert result.result is Result.CONTRADICTED
+    assert "ISSUE_REOPENED" in result.reasons
+
+
+def test_fixes_issue_reopened_then_closed_again_is_unverifiable(engine):
+    # Reopened to verify the fix (or fixed by a later PR), then closed: ambiguous, not false.
     reopened = issue_state(state="closed", reopened_at=T0 + timedelta(days=3))
     result = verdict(engine, fixes_claim(), [pr_state(merged=True), reopened], hours=24 * 5)
-    assert "ISSUE_REOPENED" in result.reasons
+    assert runs_by_check(result)["coding.fixes_issue_durable"] == (
+        Result.UNVERIFIABLE,
+        "REOPENED_THEN_CLOSED",
+    )
+    assert result.result is not Result.CONTRADICTED
 
 
 def test_fixes_issue_not_merged_yet_is_pending(engine):

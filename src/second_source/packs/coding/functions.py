@@ -101,11 +101,13 @@ _TEST_PATH = re.compile(
     r"[cm]?[jt]sx?)$"
     r"|\.cy\.[cm]?[jt]sx?$"  # Cypress: x.cy.ts
     r"|\.slt$"  # sqllogictest files
+    r"|(^|/)tests?\.rs$"  # Rust test modules: src/tests.rs, src/parser/test.rs
 )
 _DOC_PATH = re.compile(
     r"(^|/)(docs?|documentation)/"  # documentation directories
     r"|(^|/)(readme|changelog|contributing)(\.[a-z]+)?$"  # top-level project docs
     r"|\.(md|mdx|rst|adoc)$"  # documentation formats
+    r"|(^|/)man/[^/]+\.(rd|[1-9])$"  # R roxygen output (man/*.Rd) and man pages
     # Changelog fragments (towncrier, changesets, per-PR entry files) are changelog entries,
     # which count as documentation (golden-set guide, rule 12).
     # At the repository root only: "src/changes/diff.ts" is code.
