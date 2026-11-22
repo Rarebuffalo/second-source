@@ -41,6 +41,9 @@ class PullRequestReport:
     head_sha: str = ""  # the PR's head commit, where the GitHub Action attaches its check run
     labels: tuple[str, ...] = ()  # PR labels (the Action records disputes as a label)
     evidence: tuple[Evidence, ...] = ()  # the records the verdicts were computed from
+    # Evidence types requested from the source: a type absent here was never fetched, which a
+    # later re-score must not read as "fetched and empty".
+    fetched: frozenset[str] = frozenset()
 
     def verdict_for(self, claim: Claim) -> Verdict:
         return next(v for v in self.verdicts if v.claim_id == claim.id)
@@ -102,4 +105,5 @@ def check_pull_request(
         head_sha=(loaded.pull.get("head") or {}).get("sha", ""),
         labels=tuple(label["name"] for label in loaded.pull.get("labels", [])),
         evidence=tuple(evidence.records),
+        fetched=frozenset(needed),
     )

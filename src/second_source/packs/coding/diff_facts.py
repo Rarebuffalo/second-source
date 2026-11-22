@@ -21,7 +21,9 @@ Lines are matched on ``+`` / ``-`` lines inside hunks.
 
 from __future__ import annotations
 
+import hashlib
 import re
+from pathlib import Path
 from typing import Any
 
 from second_source.packs.coding.functions import (
@@ -30,6 +32,15 @@ from second_source.packs.coding.functions import (
     is_test_config_path,
     is_test_path,
 )
+
+# Which code produced a record's diff counts: a fingerprint of this module and the path rules
+# it uses. Counts are made once, when the patch is read, and the patch is never stored, so a
+# re-score can trust stored counts only when the fingerprint matches (benchmark/rescore.py).
+FACTS_VERSION = hashlib.sha256(
+    b"".join(
+        (Path(__file__).parent / name).read_bytes() for name in ("diff_facts.py", "functions.py")
+    )
+).hexdigest()[:12]
 
 MAX_MARKER_LINES = 5  # new-file line numbers kept for links into the diff
 

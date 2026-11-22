@@ -246,6 +246,7 @@ def files_summary_evidence(
     totals = diff_facts.summarize([dict(record.attributes) for record in file_records])
     if expected_files is not None and expected_files > len(file_records):
         totals["uninspected"] += expected_files - len(file_records)
+    totals["facts_version"] = diff_facts.FACTS_VERSION
     return Evidence(
         record_type="changed_files_summary",
         external_ref=str(number),

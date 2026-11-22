@@ -273,6 +273,7 @@ def to_json(report: PullRequestReport) -> dict[str, Any]:
                 "type": claim.type,
                 "label": describe_claim(claim),
                 "origin": claim.origin,
+                "made_at": claim.made_at.isoformat(),
                 "span": claim.span,
                 "attributes": {k: _plain(v) for k, v in claim.attributes.items()},
                 "result": verdict.result.value,
@@ -300,6 +301,8 @@ def to_json(report: PullRequestReport) -> dict[str, Any]:
             "ref": str(report.ref),
             "url": report.ref.url,
             "opened_at": report.episode.opened_at.isoformat(),
+            # The repository's current name (a renamed one still answers at its old URL).
+            "repo": report.episode.attributes.get("repo"),
         },
         "agent": (
             None
@@ -312,6 +315,7 @@ def to_json(report: PullRequestReport) -> dict[str, Any]:
         "stale": sorted(report.stale),
         "errors": list(report.errors),
         "api_requests": report.api_requests,
+        "fetched": sorted(report.fetched),
     }
 
 
@@ -327,6 +331,9 @@ def evidence_snapshot(report: PullRequestReport) -> list[dict[str, Any]]:
             "type": record.record_type,
             "ref": record.external_ref,
             "attributes": {key: _plain(value) for key, value in record.attributes.items()},
+            # Kept so a re-score de-duplicates as the original run did (newest version wins).
+            "observed_at": record.observed_at.isoformat(),
+            "version": record.version,
         }
         if record.occurred_at is not None:
             item["occurred_at"] = record.occurred_at.isoformat()
