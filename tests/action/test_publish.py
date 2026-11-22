@@ -158,3 +158,43 @@ def test_job_summary_is_appended(fake_github, tmp_path):
     write_job_summary(path, report, Outcome("completed", "success", "1 verified"))
     assert path.read_text().count("## Octo/App#7: 1 verified") == 2
     write_job_summary(None, report, Outcome("completed", "success", "x"))  # outside Actions
+
+
+def test_a_withdrawn_claim_is_neutral_never_failure(fake_github):
+    skipped = [
+        {
+            "filename": "tests/test_parser.py",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 0,
+            "patch": "@@ -1,1 +1,2 @@\n+@pytest.mark.skip\n def test_empty():",
+        },
+    ]
+    fake = with_body(fake_github, "All tests pass.", **{f"{PR}/files": skipped})
+    report = report_for(fake)
+    for opted_in in (False, True):
+        outcome = outcome_for(report, fail_on_contradiction=opted_in)
+        assert outcome == Outcome(
+            "completed", "neutral", "1 claim not verified: this PR skips tests"
+        )
+
+
+def test_cautions_never_change_the_conclusion(fake_github):
+    workflow = [
+        {
+            "filename": ".github/workflows/ci.yml",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 0,
+            "patch": "@@ -1,1 +1,2 @@\n name: ci\n+on: [push]",
+        },
+        {
+            "filename": "tests/test_parser.py",
+            "status": "added",
+            "additions": 9,
+            "deletions": 0,
+            "patch": "@@ -0,0 +1,2 @@\n+def test_empty():\n+    assert parse('') == []",
+        },
+    ]
+    report = report_for(with_body(fake_github, "All tests pass.", **{f"{PR}/files": workflow}))
+    assert outcome_for(report, fail_on_contradiction=False).conclusion == "success"

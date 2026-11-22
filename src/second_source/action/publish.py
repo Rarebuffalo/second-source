@@ -8,7 +8,10 @@ Conclusion rules (docs/action.md, section 4):
 - CI still running for a claim -> the check stays ``in_progress``, so people see it is not done.
 - a high-confidence claim is contradicted -> ``neutral`` by default (advice, never blocks a
   merge) or ``failure`` when the repository opts in with ``fail-on-contradiction``.
-- otherwise -> ``success``, or ``neutral`` when there was nothing to check.
+- a high-confidence claim withdrawn by an integrity guard (CI passed, but the PR skipped tests
+  or weakened its CI) -> ``neutral``, never ``failure``: a guard is not proof of a false claim.
+- otherwise -> ``success``, or ``neutral`` when there was nothing to check. Cautions never
+  change the conclusion.
 
 Low-confidence claims are shown in the table but never change the conclusion.
 """
@@ -22,7 +25,7 @@ from pathlib import Path
 from second_source.action.commands import DISPUTED_LABEL
 from second_source.core.model import Claim, Result
 from second_source.pipeline import PullRequestReport
-from second_source.report.render import WORDS, to_markdown
+from second_source.report.render import WORDS, guard_text, to_markdown, withdrawn_reasons
 from second_source.sources.github.client import GitHubClient
 
 CHECK_NAME = "Second Source"
@@ -59,6 +62,17 @@ def outcome_for(report: PullRequestReport, *, fail_on_contradiction: bool) -> Ou
         return Outcome("completed", conclusion, f"{n} claim{'s' if n > 1 else ''} contradicted")
     if awaiting_ci(report):
         return Outcome("in_progress", None, "Waiting for CI")
+    withdrawn = [
+        reasons
+        for c in report.claims
+        if _counts(c) and (reasons := withdrawn_reasons(report.verdict_for(c)))
+    ]
+    if withdrawn:
+        # CI passed but the PR changed what passing means: grey, never red. A guard is not proof
+        # that the claim is false, so this ignores fail-on-contradiction.
+        n = len(withdrawn)
+        title = f"{n} claim{'s' if n > 1 else ''} not verified: {guard_text(withdrawn[0][0])}"
+        return Outcome("completed", "neutral", title)
     if not report.claims:
         return Outcome("completed", "neutral", "No claims found")
 

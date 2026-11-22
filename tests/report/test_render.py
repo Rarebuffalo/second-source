@@ -63,7 +63,7 @@ def test_markdown_escapes_pipes():
 def test_json_is_serialisable_and_versioned(report):
     data = to_json(report)
     json.dumps(data)  # must not raise
-    assert data["schema_version"] == "1"
+    assert data["schema_version"] == "2"
     assert data["agent"] == {"name": "codex", "signal": "branch_prefix"}
     assert data["summary"]["verified"] >= 3
     tests_pass = next(c for c in data["claims"] if c["type"] == "TESTS_PASS")
@@ -78,3 +78,31 @@ def test_stale_data_is_called_out(fake_github):
     report = check_pull_request(PullRequestRef("Octo", "App", 7), GitHubSource(client), now=NOW)
     assert "Not fully checked" in to_text(report)
     assert "Not fully checked" in to_markdown(report)
+
+
+def test_a_withdrawn_verification_says_why_in_words(fake_github):
+    # The PR skips a test in the same change that claims "tests pass".
+    files = [
+        {
+            "filename": "src/parser.py",
+            "status": "modified",
+            "additions": 4,
+            "deletions": 1,
+            "patch": "@@ -1,1 +1,2 @@\n x = 1\n+y = 2",
+        },
+        {
+            "filename": "tests/test_parser.py",
+            "status": "modified",
+            "additions": 1,
+            "deletions": 0,
+            "patch": "@@ -1,1 +1,2 @@\n+@pytest.mark.skip\n def test_empty():",
+        },
+    ]
+    pull = dict(fake_github.BASE_ROUTES["/repos/Octo/App/pulls/7"], body="All tests pass.")
+    fake = fake_github({"/repos/Octo/App/pulls/7": pull, "/repos/Octo/App/pulls/7/files": files})
+    client = GitHubClient(transport=httpx.MockTransport(fake), sleep=lambda _s: None)
+    report = check_pull_request(PullRequestRef("Octo", "App", 7), GitHubSource(client), now=NOW)
+    markdown = to_markdown(report)
+    assert "| ⚠ | Tests pass | not verified | this PR skips tests |" in markdown
+    claim = next(c for c in to_json(report)["claims"] if c["type"] == "TESTS_PASS")
+    assert (claim["result"], claim["withdrawn"]) == ("UNVERIFIABLE", ["PR_SKIPS_TESTS"])

@@ -57,7 +57,12 @@ see progress instead of nothing.
 |---|---|---|
 | any high-confidence `CONTRADICTED` | `neutral` (default) or `failure` (with `fail-on-contradiction: true`) | "1 claim contradicted" |
 | any `PENDING` | stays `in_progress` | "Waiting for CI" / "Watching for 30 days" |
+| a high-confidence claim withdrawn by an integrity guard (CI passed, but the PR skipped tests, weakened its test command or lowered the coverage gate) | `neutral`, **never** `failure`, whatever `fail-on-contradiction` says | "1 claim not verified: this PR skips tests" |
 | otherwise | `success` | "4 claims verified, 1 unverifiable" |
+
+Integrity cautions (CI config changed, tests removed, lint suppressions…) appear in the table
+next to the result and never change the conclusion. See docs/packs/coding.md, "Integrity
+guards".
 
 The default never blocks a merge: Second Source starts as advice, not a gate, until a team
 chooses otherwise. Low-confidence contradictions are shown but never change the conclusion.

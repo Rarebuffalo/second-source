@@ -13,7 +13,7 @@ from typing import Any
 from second_source.core.model import Claim, Result, Verdict
 from second_source.pipeline import PullRequestReport
 
-JSON_SCHEMA_VERSION = "1"
+JSON_SCHEMA_VERSION = "2"  # 2: caveats, withdrawn, check roles, opened_at
 
 SYMBOLS = {
     Result.VERIFIED: "✔",
@@ -35,6 +35,41 @@ _ANSI = {
 }
 _RESET = "\033[0m"
 
+# What the integrity guards found, in words (docs/packs/coding.md, "Integrity guards").
+GUARD_TEXT = {
+    "PR_SKIPS_TESTS": "this PR skips tests",
+    "PR_WEAKENS_TEST_COMMAND": "this PR weakens how CI runs tests",
+    "PR_LOWERS_COVERAGE_GATE": "this PR lowers the coverage gate",
+    "ADDED_TESTS_ARE_SKIPPED": "the added tests are skipped",
+    "PR_CHANGES_CI_CONFIG": "this PR changed CI or test configuration",
+    "PR_REMOVES_TESTS": "this PR removes tests while the code stays",
+    "NO_TEST_CASE_ADDED": "test files changed, but no new test case found",
+    "LINT_SUPPRESSIONS_ADDED": "this PR adds lint suppressions",
+    "LINT_CONFIG_CHANGED": "this PR changed lint configuration",
+    "MATCHING_JOB_SKIPPED": "some matching CI jobs were skipped",
+    "NOT_INSPECTED": "the diff could not be inspected for test changes",
+}
+WITHDRAWN_SYMBOL, WITHDRAWN_WORD = "⚠", "not verified"
+
+
+def guard_text(reason: str) -> str:
+    return GUARD_TEXT.get(reason, reason)
+
+
+def withdrawn_reasons(verdict: Verdict) -> tuple[str, ...]:
+    """Reasons of required guards that withdrew a verification (the claim's evidence was
+    shaped by the same PR). Empty for every other verdict."""
+    if verdict.result is not Result.UNVERIFIABLE:
+        return ()
+    return tuple(
+        run.reason
+        for run in verdict.check_runs
+        if run.role == "guard"
+        and run.result is Result.UNVERIFIABLE
+        and run.reason in verdict.reasons
+    )
+
+
 # Display order: problems first.
 _ORDER = [Result.CONTRADICTED, Result.UNVERIFIABLE, Result.PENDING, Result.VERIFIED]
 
@@ -50,6 +85,23 @@ class Row:
     origin: str
     span: str | None
     ref: str | None
+    withdrawn: tuple[str, ...] = ()  # guard reasons that withdrew a verification
+    cautions: tuple[str, ...] = ()  # optional guard reasons shown next to the result
+
+    @property
+    def symbol(self) -> str:
+        return WITHDRAWN_SYMBOL if self.withdrawn else SYMBOLS[self.result]
+
+    @property
+    def word(self) -> str:
+        return WITHDRAWN_WORD if self.withdrawn else WORDS[self.result]
+
+    @property
+    def why(self) -> str:
+        """Reasons, with guard findings in words and cautions after them."""
+        parts = [guard_text(r) if r in GUARD_TEXT else r for r in self.reasons]
+        parts += [f"caution: {guard_text(c)}" for c in self.cautions]
+        return ", ".join(parts)
 
 
 def describe_claim(claim: Claim) -> str:
@@ -92,11 +144,16 @@ def rows(report: PullRequestReport) -> list[Row]:
                 result=verdict.result,
                 reasons=verdict.reasons,
                 details=tuple(
-                    f"{run.check_id}: {run.explanation or run.reason}" for run in verdict.check_runs
+                    f"{run.check_id}: {run.explanation or run.reason}"
+                    for run in verdict.check_runs
+                    # A guard that found nothing is noise in the details.
+                    if not (run.role == "guard" and run.result is Result.VERIFIED)
                 ),
                 origin=claim.origin,
                 span=claim.span,
                 ref=claim.attributes.get("ref"),
+                withdrawn=withdrawn_reasons(verdict),
+                cautions=verdict.caveats,
             )
         )
     return sorted(prepared, key=lambda row: _ORDER.index(row.result))
@@ -133,12 +190,10 @@ def to_text(report: PullRequestReport, *, color: bool = False) -> str:
         "",
     ]
     for row in rows(report):
-        lines.append(
-            paint(row.result, f"{SYMBOLS[row.result]} {WORDS[row.result]:<12} {row.label}")
-        )
+        lines.append(paint(row.result, f"{row.symbol} {row.word:<12} {row.label}"))
         if row.span:
             lines.append(f'    said in {row.origin}: "{row.span}"')
-        lines.append(f"    why: {', '.join(row.reasons)}")
+        lines.append(f"    why: {row.why}")
         lines.extend(f"    - {detail}" for detail in row.details)
     if report.stale:
         lines += ["", f"Not fully checked (data unavailable): {', '.join(sorted(report.stale))}"]
@@ -169,10 +224,9 @@ def to_markdown(report: PullRequestReport) -> str:
         for row in table:
             said = f'{row.origin}: "{row.span}"' if row.span else row.origin
             label = escape_markdown_cell(row.label)
-            why = escape_markdown_cell(", ".join(row.reasons))
+            why = escape_markdown_cell(row.why)
             lines.append(
-                f"| {SYMBOLS[row.result]} | {label} | {WORDS[row.result]} | {why} | "
-                f"{escape_markdown_cell(said)} |"
+                f"| {row.symbol} | {label} | {row.word} | {why} | {escape_markdown_cell(said)} |"
             )
     if report.stale:
         lines += ["", f"_Not fully checked (data unavailable): {', '.join(sorted(report.stale))}_"]
@@ -180,6 +234,8 @@ def to_markdown(report: PullRequestReport) -> str:
         "",
         "Missing or unavailable evidence is reported as *unverifiable*, never as contradicted.",
         "*Low confidence* marks claims found by text patterns whose accuracy is not yet proven.",
+        "*Not verified* (⚠) means CI passed but the same PR changed what passing means (skipped",
+        "tests, a weakened test command); a *caution* is shown without changing the result.",
     ]
     return "\n".join(lines)
 
@@ -202,11 +258,14 @@ def to_json(report: PullRequestReport) -> dict[str, Any]:
                 "attributes": {k: _plain(v) for k, v in claim.attributes.items()},
                 "result": verdict.result.value,
                 "reasons": list(verdict.reasons),
+                "withdrawn": list(withdrawn_reasons(verdict)),
+                "caveats": list(verdict.caveats),
                 "checks": [
                     {
                         "id": run.check_id,
                         "version": run.check_version,
                         "level": run.level.value,
+                        "role": run.role,
                         "result": run.result.value,
                         "reason": run.reason,
                         "explanation": run.explanation,
