@@ -44,7 +44,7 @@ class RowSource(Protocol):
 
 
 # How many rows we may read per wanted row before giving up on an agent's quota.
-DRAWS_PER_ROW = 5
+DRAWS_PER_ROW = 5  # default; raise it for a local Parquet source, where reads are free
 
 
 @dataclass(frozen=True)
@@ -125,6 +125,7 @@ def sample_block(
     exclude: frozenset[str] = frozenset(),
     exclude_repos: frozenset[str] = frozenset(),
     max_per_repo: int | None = None,
+    draws_per_row: int = DRAWS_PER_ROW,
 ) -> list[AidevPullRequest]:
     """Up to ``count`` random rows from one block that pass ``accept``.
 
@@ -133,7 +134,7 @@ def sample_block(
     can grow without duplicates. ``max_per_repo`` caps PRs per repository.
     """
     rng = random.Random(f"{seed}:{block.agent}")
-    budget = min(block.size, count * DRAWS_PER_ROW)
+    budget = min(block.size, count * draws_per_row)
     chosen: list[AidevPullRequest] = []
     per_repo: Counter[str] = Counter()
     for offset in rng.sample(range(block.start, block.end), budget):
@@ -159,6 +160,7 @@ def draw_sample(
     exclude: Iterable[str] = (),
     exclude_repos: Iterable[str] = (),
     max_per_repo: int | None = None,
+    draws_per_row: int = DRAWS_PER_ROW,
 ) -> Sample:
     """Draw ``per_agent`` PRs for each agent (all agents in the table unless given), skipping
     any PR whose URL is in ``exclude`` or whose repository is in ``exclude_repos``, with at most
@@ -186,6 +188,7 @@ def draw_sample(
             exclude=excluded,
             exclude_repos=excluded_repos,
             max_per_repo=max_per_repo,
+            draws_per_row=draws_per_row,
         )
         rows.extend(chosen)
         if len(chosen) < per_agent:
@@ -203,6 +206,7 @@ def draw_sample(
         "excluded": len(excluded),
         "excluded_repos": len(excluded_repos),
         "max_per_repo": max_per_repo,
+        "draws_per_row": draws_per_row,
         "tool_version": __version__,
     }
     return Sample(header=header, rows=tuple(rows), shortfall=shortfall)

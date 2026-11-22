@@ -73,3 +73,10 @@ def test_invalid_pages_and_files_are_errors(table, tmp_path):
     broken.write_text("not parquet")
     with pytest.raises(AidevError):
         ParquetAidev(broken)
+
+
+def test_a_larger_draw_budget_fills_quotas_under_a_tight_repo_cap(table):
+    source = ParquetAidev(table)
+    # 7 repositories, at most 1 PR each: 5 draws per wanted row can run dry before 7 are found.
+    full = draw_sample(source, per_agent=7, seed=3, max_per_repo=1, draws_per_row=30)
+    assert full.shortfall == {} and full.header["draws_per_row"] == 30

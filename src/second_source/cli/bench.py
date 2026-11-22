@@ -24,7 +24,13 @@ from second_source.benchmark import golden, stats
 from second_source.benchmark.aidev import AidevClient, AidevError, repo_of
 from second_source.benchmark.aidev_local import ParquetAidev
 from second_source.benchmark.runner import read_results, run_benchmark
-from second_source.benchmark.sample import FILTERS, draw_sample, read_sample, write_sample
+from second_source.benchmark.sample import (
+    DRAWS_PER_ROW,
+    FILTERS,
+    draw_sample,
+    read_sample,
+    write_sample,
+)
 from second_source.sources.github.auth import TokenResult
 from second_source.sources.github.client import GitHubClient
 from second_source.sources.github.source import GitHubSource
@@ -72,6 +78,13 @@ def add_parser(commands: argparse._SubParsersAction) -> None:
         "--max-per-repo",
         type=int,
         help="at most this many PRs per repository per agent (default: no cap)",
+    )
+    sample.add_argument(
+        "--draws-per-row",
+        type=int,
+        default=DRAWS_PER_ROW,
+        help="rows read per wanted row before an agent's quota gives up (default "
+        f"{DRAWS_PER_ROW}; raise it with --parquet, where reads are free)",
     )
     sample.add_argument(
         "--parquet",
@@ -154,6 +167,7 @@ def _sample(args: argparse.Namespace, context: BenchContext) -> int:
                 exclude=exclude,
                 exclude_repos=exclude_repos,
                 max_per_repo=args.max_per_repo,
+                draws_per_row=args.draws_per_row,
             )
     except (AidevError, ValueError) as error:
         print(f"error: {error}", file=context.err)
