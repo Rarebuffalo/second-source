@@ -1,7 +1,7 @@
 # Coding pack: verifies what coding agents claim in pull requests.
 # Design and evidence contract: docs/packs/coding.md
 id: coding
-version: 0.3.0
+version: 0.4.0
 kind: agent_type
 description: Claims made by coding agents in pull requests, checked against CI and Git evidence.
 claim_types:
@@ -21,4 +21,13 @@ checks:
   - checks/fixes_issue_durable.yaml
   - checks/deployed.yaml
   - checks/not_reverted.yaml
+  # Integrity guards: withdraw or caution a VERIFIED, never accuse (docs/packs/coding.md)
+  - checks/integrity_guard.yaml
+  - checks/tests_added_guard.yaml
+  - checks/ci_config_caution.yaml
+  - checks/tests_removed_caution.yaml
+  - checks/tests_added_caution.yaml
+  - checks/lint_caution.yaml
+  - checks/integrity_inspection.yaml
+  - checks/matching_jobs_caution.yaml
 functions: second_source.packs.coding.functions:register

@@ -1,0 +1,21 @@
+# Optional guards: integrity cautions shown next to a result, never changing it.
+#
+# These signals are real but too common or not yet measured to withdraw a verification
+# (CI or test configuration changes in about 6-17% of agent PRs). Each is its own optional
+# guard so a claim can carry several cautions. A signal moves to a required guard only after
+# audited precision of at least 0.90 on at least 30 flagged PRs (docs/packs/coding.md).
+id: coding.ci_config_caution
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  changed: "size(summary) > 0 && summary[0].ci_config_changed"
+outcomes:
+  - {when: "changed", result: UNVERIFIABLE, reason: PR_CHANGES_CI_CONFIG}
+  - {otherwise: true, result: VERIFIED, reason: CI_CONFIG_UNCHANGED}

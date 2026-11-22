@@ -1,0 +1,32 @@
+# Guard: did this PR weaken the evidence behind "tests pass"? (role: guard, required)
+#
+# CI passing proves little if the same PR skipped the failing tests, made CI ignore test
+# failures, or lowered the coverage gate: on pull_request events GitHub runs the PR's own copy
+# of the workflow. These three signals are precise by construction (unconditional skip
+# markers, weakening lines next to a test command, a lower number for the same coverage key),
+# so they withdraw the verification: VERIFIED becomes UNVERIFIABLE with the reason. A guard can
+# never accuse (the loader allows only VERIFIED and UNVERIFIABLE outcomes).
+#
+# If the file list could not be read, the guard does not withdraw anything; the optional
+# integrity_inspection guard shows "not inspected" instead (a rate limit must not silently erase
+# verifications). Facts come from packs/coding/diff_facts.py.
+id: coding.integrity_guard
+version: 1.0.0
+kind: state
+role: guard
+level: L4
+applies_to: [TESTS_PASS]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  known: "size(summary) > 0 && !('changed_files_summary' in stale)"
+  skips: "known ? summary[0].test_skips_net : 0"
+  weakened: "known ? summary[0].test_cmd_weakened : 0"
+  gate_lowered: "known && summary[0].coverage_gate_lowered"
+outcomes:
+  - {when: "skips > 0", result: UNVERIFIABLE, reason: PR_SKIPS_TESTS}
+  - {when: "weakened > 0", result: UNVERIFIABLE, reason: PR_WEAKENS_TEST_COMMAND}
+  - {when: "gate_lowered", result: UNVERIFIABLE, reason: PR_LOWERS_COVERAGE_GATE}
+  - {otherwise: true, result: VERIFIED, reason: NO_TEST_TAMPERING_FOUND}
+explain: "{skips} test(s) newly skipped, {weakened} weakened test command(s)"

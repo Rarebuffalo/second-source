@@ -1,0 +1,19 @@
+# Guard: are the "added tests" themselves switched off? (role: guard, required)
+# A PR that adds test files whose new tests are skipped has not added running tests.
+id: coding.tests_added_guard
+version: 1.0.0
+kind: state
+role: guard
+level: L4
+applies_to: [TESTS_ADDED]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  known: "size(summary) > 0 && !('changed_files_summary' in stale)"
+  skips: "known ? summary[0].test_skips_net : 0"
+  added: "known ? summary[0].test_cases_added : 0"
+outcomes:
+  - {when: "skips > 0 && added <= skips", result: UNVERIFIABLE, reason: ADDED_TESTS_ARE_SKIPPED}
+  - {otherwise: true, result: VERIFIED, reason: ADDED_TESTS_NOT_SKIPPED}
+explain: "{added} test case(s) added, {skips} newly skipped"

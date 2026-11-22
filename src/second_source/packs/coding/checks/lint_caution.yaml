@@ -1,0 +1,20 @@
+# Optional guard for "lint passes": suppressions added in source, or lint configuration changed.
+id: coding.lint_caution
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [LINT_OK]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  known: "size(summary) > 0"
+  suppressions: "known ? summary[0].lint_suppressions_added : 0"
+  config: "known && summary[0].lint_config_changed"
+outcomes:
+  - {when: "suppressions > 0", result: UNVERIFIABLE, reason: LINT_SUPPRESSIONS_ADDED}
+  - {when: "config", result: UNVERIFIABLE, reason: LINT_CONFIG_CHANGED}
+  - {otherwise: true, result: VERIFIED, reason: NO_LINT_CHANGES}
+explain: "{suppressions} lint suppression(s) added"

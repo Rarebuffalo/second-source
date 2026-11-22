@@ -479,3 +479,92 @@ def test_not_reverted(engine, evidence, days, expected, reason):
     the_claim = merge_claim(EPISODE.id, T0, "m1")
     result = verdict(engine, the_claim, evidence, hours=24 * days)
     assert (result.result, result.reasons) == (expected, (reason,))
+
+
+# ---- integrity guards (false VERIFIED) -------------------------------------------------------
+
+
+def summary(**totals):
+    base = {
+        "files": 3, "test_skips_net": 0, "test_cases_added": 0, "test_cases_removed": 0,
+        "asserts_added": 0, "test_cmd_weakened": 0, "lint_suppressions_added": 0,
+        "removed_test_files": 0, "test_source_changed": 0, "code_net": 0, "code_removed": False,
+        "coverage_gate_lowered": False, "ci_config_changed": False, "lint_config_changed": False,
+        "uninspected": 0,
+    }  # fmt: skip
+    return Evidence("changed_files_summary", "7", T0 + timedelta(minutes=5), {**base, **totals})
+
+
+@pytest.mark.parametrize(
+    ("totals", "reason"),
+    [
+        ({"test_skips_net": 2}, "PR_SKIPS_TESTS"),
+        ({"test_cmd_weakened": 1}, "PR_WEAKENS_TEST_COMMAND"),
+        ({"coverage_gate_lowered": True}, "PR_LOWERS_COVERAGE_GATE"),
+    ],
+)
+def test_tampering_withdraws_a_passing_ci_verification(engine, totals, reason):
+    result = verdict(
+        engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), summary(**totals)]
+    )
+    assert (result.result, result.reasons) == (Result.UNVERIFIABLE, (reason,))
+
+
+def test_tampering_never_turns_into_an_accusation(engine):
+    # A failing job still contradicts; a guard can only withdraw, so it cannot add or remove that.
+    failing = [check_result("pytest", "failure"), summary(test_skips_net=3)]
+    assert verdict(engine, claim(TESTS_PASS, ref=SHA), failing).result is Result.CONTRADICTED
+
+
+def test_a_clean_pr_keeps_its_verification_and_reasons(engine):
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), summary()])
+    assert (result.result, result.reasons) == (Result.VERIFIED, ("ALL_MATCHING_CI_JOBS_PASSED",))
+    assert result.caveats == ()
+
+
+def test_cautions_are_shown_but_never_change_the_result(engine):
+    totals = {"ci_config_changed": True, "test_cases_removed": 3, "lint_suppressions_added": 1}
+    tests = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), summary(**totals)])
+    assert tests.result is Result.VERIFIED
+    assert set(tests.caveats) == {"PR_CHANGES_CI_CONFIG", "PR_REMOVES_TESTS"}
+    lint = verdict(engine, claim(LINT_OK, ref=SHA), [check_result("ruff"), summary(**totals)])
+    assert lint.result is Result.VERIFIED
+    assert set(lint.caveats) == {"PR_CHANGES_CI_CONFIG", "LINT_SUPPRESSIONS_ADDED"}
+
+
+def test_removed_tests_are_fine_when_the_code_went_too(engine):
+    totals = {"test_cases_removed": 5, "code_removed": True, "code_net": -200}
+    result = verdict(
+        engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), summary(**totals)]
+    )
+    assert "PR_REMOVES_TESTS" not in result.caveats
+
+
+def test_an_unreadable_file_list_withdraws_nothing_but_says_so(engine):
+    stale = frozenset({"changed_files_summary"})
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest")], stale=stale)
+    assert result.result is Result.VERIFIED
+    assert result.caveats == ("NOT_INSPECTED",)
+
+
+def test_skipped_matching_jobs_are_a_caution(engine):
+    evidence = [check_result("pytest"), check_result("e2e tests", "skipped"), summary()]
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), evidence)
+    assert (result.result, result.caveats) == (Result.VERIFIED, ("MATCHING_JOB_SKIPPED",))
+
+
+def added_tests_evidence(**totals):
+    return [changed_file("tests/test_parser.py", "added", 30), summary(**totals)]
+
+
+def test_added_tests_that_are_all_skipped_are_not_verified(engine):
+    evidence = added_tests_evidence(test_source_changed=1, test_cases_added=2, test_skips_net=2)
+    result = verdict(engine, claim(TESTS_ADDED), evidence)
+    assert (result.result, result.reasons) == (Result.UNVERIFIABLE, ("ADDED_TESTS_ARE_SKIPPED",))
+
+
+def test_test_files_without_a_test_case_get_a_caution(engine):
+    result = verdict(engine, claim(TESTS_ADDED), added_tests_evidence(test_source_changed=1))
+    assert (result.result, result.caveats) == (Result.VERIFIED, ("NO_TEST_CASE_ADDED",))
+    real = added_tests_evidence(test_source_changed=1, test_cases_added=3, asserts_added=4)
+    assert verdict(engine, claim(TESTS_ADDED), real).caveats == ()

@@ -1,0 +1,21 @@
+# Optional guard: test cases removed while the code they test stays.
+# Most deleted tests go with deleted code, so this fires only when at least two more test cases
+# were removed than added, no source file was deleted and the source did not shrink.
+id: coding.tests_removed_caution
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [TESTS_PASS]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  known: "size(summary) > 0"
+  net_removed: "known ? summary[0].test_cases_removed - summary[0].test_cases_added : 0"
+  code_kept: "known && !summary[0].code_removed && summary[0].code_net >= 0"
+outcomes:
+  - {when: "net_removed >= 2 && code_kept", result: UNVERIFIABLE, reason: PR_REMOVES_TESTS}
+  - {otherwise: true, result: VERIFIED, reason: NO_TESTS_REMOVED}
+explain: "{net_removed} more test case(s) removed than added"

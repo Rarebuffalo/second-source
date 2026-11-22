@@ -1,0 +1,18 @@
+# Optional guard: test files changed, but no new test case or assertion found in them.
+# A caution, not a withdrawal, until measured: fixture trees under tests/ can look like tests.
+id: coding.tests_added_caution
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [TESTS_ADDED]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  known: "size(summary) > 0 && summary[0].uninspected == 0"
+  empty: "known && summary[0].test_source_changed > 0 && summary[0].test_cases_added == 0 && summary[0].asserts_added == 0"
+outcomes:
+  - {when: "empty", result: UNVERIFIABLE, reason: NO_TEST_CASE_ADDED}
+  - {otherwise: true, result: VERIFIED, reason: TEST_CASES_FOUND}

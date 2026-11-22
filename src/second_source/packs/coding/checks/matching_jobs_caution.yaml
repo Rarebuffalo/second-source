@@ -1,0 +1,22 @@
+# Optional guard: some CI jobs matching the claim were skipped on the judged commit.
+# One passing job plus several skipped ones still verifies "tests pass"; say so. (Skipped means
+# conclusion skipped or neutral; a job skipped by an `if:` reports success to branch protection.)
+id: coding.matching_jobs_caution
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
+evidence:
+  checks:
+    record_type: check_result
+derive:
+  start: "has(claim.attributes.ref) ? claim.attributes.ref : ''"
+  final: "has(claim.attributes.final_ref) ? claim.attributes.final_ref : start"
+  skipped: "checks.filter(c, c.ref == final && job_matches(claim.type, c.name) && c.status == 'completed' && has(c.conclusion) && c.conclusion in ['skipped', 'neutral'])"
+  skipped_count: "size(skipped)"
+outcomes:
+  - {when: "skipped_count > 0", result: UNVERIFIABLE, reason: MATCHING_JOB_SKIPPED}
+  - {otherwise: true, result: VERIFIED, reason: NO_MATCHING_JOB_SKIPPED}
+explain: "{skipped_count} matching CI job(s) skipped"

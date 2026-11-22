@@ -6,9 +6,12 @@ from second_source.core.expr import Evaluator, FunctionRegistry
 from second_source.packs.coding.functions import (
     env_matches,
     is_build_check,
+    is_ci_path,
     is_doc_path,
     is_lint_check,
+    is_lint_config_path,
     is_test_check,
+    is_test_config_path,
     is_test_path,
     job_matches,
     normalise_environment,
@@ -181,3 +184,27 @@ def test_functions_are_callable_from_expressions():
     evaluator = Evaluator(registry)
     assert evaluator.evaluate_bool("is_test_check('pytest')", {})
     assert not evaluator.evaluate_bool("is_doc_path('src/main.py')", {})
+
+
+@pytest.mark.parametrize(
+    ("path", "ci", "test_config", "lint_config"),
+    [
+        (".github/workflows/ci.yml", True, False, False),
+        (".github/actions/setup/action.yml", True, False, False),
+        (".gitlab-ci.yml", True, False, False),
+        ("tox.ini", False, True, False),
+        ("packages/web/jest.config.ts", False, True, False),
+        ("conftest.py", False, True, False),
+        (".eslintrc.json", False, False, True),
+        ("ruff.toml", False, False, True),
+        ("pyproject.toml", False, False, False),  # mostly dependencies: judged line by line
+        ("package.json", False, False, False),
+        ("docs/workflows/ci.yml", False, False, False),
+    ],
+)
+def test_ci_test_and_lint_config_paths(path, ci, test_config, lint_config):
+    assert (is_ci_path(path), is_test_config_path(path), is_lint_config_path(path)) == (
+        ci,
+        test_config,
+        lint_config,
+    )

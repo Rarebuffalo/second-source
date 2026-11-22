@@ -1,0 +1,18 @@
+# Optional guard: the integrity guards could not look (file list unreadable, or GitHub sent no
+# diff for a test, CI or test-config file). Shown so a clean result is not over-trusted.
+id: coding.integrity_inspection
+version: 1.0.0
+kind: state
+role: guard
+required: false
+level: L4
+applies_to: [TESTS_PASS, TESTS_ADDED]
+evidence:
+  summary:
+    record_type: changed_files_summary
+derive:
+  missing: "'changed_files_summary' in stale || size(summary) == 0"
+  partial: "!missing && summary[0].uninspected > 0"
+outcomes:
+  - {when: "missing || partial", result: UNVERIFIABLE, reason: NOT_INSPECTED}
+  - {otherwise: true, result: VERIFIED, reason: INSPECTED}

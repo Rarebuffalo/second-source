@@ -113,7 +113,8 @@ Timestamps are timezone-aware UTC.
 | record_type | external_ref | Attributes | Notes |
 |---|---|---|---|
 | `check_result` | `<ref>/<job name>` (one key per job per commit) | `ref`, `name`, `status` (`queued` / `in_progress` / `completed`), `conclusion` (`success` / `failure` / `neutral` / `cancelled` / `timed_out` / `action_required` / `skipped` / `stale`; omitted while running), `source` (`check_run` / `status`) | `version` = the run's numeric id (or a timestamp for statuses). A GitHub re-run gets a new, larger id, so de-duplication keeps only the newest run of each job |
-| `changed_file` | path | `path`, `status` (`added` / `modified` / `removed` / `renamed`), `additions`, `deletions` | No patches or code are ever stored |
+| `changed_file` | path | `path`, `status` (`added` / `modified` / `removed` / `renamed`), `additions`, `deletions`, plus integrity counts from the diff: `patch_available`, `test_skips_added`/`_removed`, `test_cases_added`/`_removed`, `asserts_added`/`_removed`, `test_cmd_weakened`, `coverage_gate_lowered`, `lint_suppressions_added`, `nonblank_added`, `marker_lines` | The patch is read once to count (`packs/coding/diff_facts.py`), then dropped: no patches or code are ever stored |
+| `changed_files_summary` | PR number | the PR's totals of the counts above, plus `removed_test_files`, `test_source_changed`, `code_net`, `code_removed`, `ci_config_changed`, `ci_config_files`, `lint_config_changed`, `uninspected` | One per PR, because CEL cannot sum. Same file list, no extra request |
 | `issue_state` | `repo#number` | `repo`, `number`, `state` (`open` / `closed`), `closed_at` (required when closed), `last_reopened_at` | `closed_at` lets checks reject issues that were closed before the PR merged |
 | `pr_state` | PR number | `state` (`open` / `closed`), `merged`, `merged_at`, `merge_sha` | One record per episode |
 | `revert` | reverting commit sha | `reverted_sha`, `at` | Found among default-branch commits that touch one of the PR's files in the 30 days after merge: "This reverts commit <sha>", "Reverts owner/repo#N", or `Revert "<PR title>"` |
@@ -125,6 +126,31 @@ Sources report record types they could not refresh in `stale`. Checks then retur
 **Command status lines.** A line such as `- ✅ pytest -q` counts as a claim only if the inline
 code starts with a known test, build or lint runner (pytest, npm, cargo, ruff, ...). File
 paths and identifiers in inline code never produce claims.
+
+### Integrity guards (protecting users from a false VERIFIED)
+
+The cardinal rule protects agents from false accusations. Guards protect reviewers from a
+false green tick: CI passing proves little if the same PR shaped its own evidence (on
+`pull_request` events GitHub runs the PR's own copy of the workflow). Guards (`role: guard`,
+see docs/ARCHITECTURE.md §5.4) can only withdraw a VERIFIED or add a caution; they can never
+produce CONTRADICTED.
+
+| Guard | Kind | Claims | Reason when it fires |
+|---|---|---|---|
+| `coding.integrity_guard` | withdraws (required) | TESTS_PASS | `PR_SKIPS_TESTS` (an unconditional skip or `.only` added in a test file), `PR_WEAKENS_TEST_COMMAND` (`continue-on-error`, `\|\| true`, `--deselect`, `-k not` … within 6 lines of a test command), `PR_LOWERS_COVERAGE_GATE` |
+| `coding.tests_added_guard` | withdraws (required) | TESTS_ADDED | `ADDED_TESTS_ARE_SKIPPED` |
+| `coding.ci_config_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `PR_CHANGES_CI_CONFIG` (workflow or test config files) |
+| `coding.tests_removed_caution` | caution | TESTS_PASS | `PR_REMOVES_TESTS` (≥ 2 more test cases removed than added, code kept) |
+| `coding.tests_added_caution` | caution | TESTS_ADDED | `NO_TEST_CASE_ADDED` |
+| `coding.lint_caution` | caution | LINT_OK | `LINT_SUPPRESSIONS_ADDED`, `LINT_CONFIG_CHANGED` |
+| `coding.matching_jobs_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `MATCHING_JOB_SKIPPED` |
+| `coding.integrity_inspection` | caution | TESTS_PASS, TESTS_ADDED | `NOT_INSPECTED` (no file list, or no diff for a test or CI file) |
+
+Withdrawing signals are precise by construction. Cautions are real but too common (CI config
+changes in about 6–17% of agent PRs) or not yet measured. A caution is promoted to a
+withdrawal only after audited precision of at least 0.90 on at least 30 flagged PRs. Runtime
+skips (`pytest.skip(`, `t.Skip(`) are not counted: most are legitimate environment guards.
+If the file list cannot be read, nothing is withdrawn and `NOT_INSPECTED` is shown instead.
 
 ## 5. Agent detection
 
