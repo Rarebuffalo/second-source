@@ -184,7 +184,7 @@ def _gate(path: str, text: str) -> tuple[str, float, bool] | None:
     """(key, number, higher-is-stricter) if the line sets a coverage gate in this file."""
     flag = _FAIL_UNDER_FLAG.search(text)
     if flag:
-        return "flag_fail_under", float(flag.group(1)), True
+        return "fail_under", float(flag.group(1)), True  # same gate as fail_under in config
     for name, pattern, files, stricter in _GATES:
         if files.search(path):
             found = pattern.search(text)
@@ -216,7 +216,9 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     counts: dict[str, Any] = {"patch_available": True}
     markers: list[int] = []
     js_self_test = language == "js" and bool(_JS_SELF_TEST.search(patch))
-    # Coverage gates removed and added anywhere in the file (a gate deleted outright counts).
+    # Gate families removed and added in this file. Whether a gate was deleted outright is
+    # decided per PR in summarize(): moving fail_under from setup.cfg to pyproject.toml, or from
+    # a --cov-fail-under flag into config, is not a deletion.
     file_removed_gates: set[str] = set()
     file_added_gates: set[str] = set()
 
@@ -283,8 +285,10 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 before = removed_gates[key][0]
                 if (number < before) if stricter else (number > before):
                     counts["coverage_gate_lowered"] = True
-    if file_removed_gates - file_added_gates and status != "removed":
-        counts["coverage_gate_lowered"] = True  # a gate was deleted, not replaced
+    if file_removed_gates:
+        counts["gates_removed"] = sorted(file_removed_gates)  # fixed family names, not code
+    if file_added_gates:
+        counts["gates_added"] = sorted(file_added_gates)
     if markers:
         counts["marker_lines"] = markers
     return counts
@@ -404,7 +408,11 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
         "uninspected": 0,  # test, CI or test-config files GitHub sent no patch for
     }
     changed_ci: list[str] = []
+    gates_removed: set[str] = set()
+    gates_added: set[str] = set()
     for file in files:
+        gates_removed.update(file.get("gates_removed", ()))
+        gates_added.update(file.get("gates_added", ()))
         path, status = file["path"], file.get("status", "modified")
         test_file = is_test_path(path)
         config = is_ci_path(path) or is_test_config_path(path)
@@ -438,6 +446,8 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
             total[key] += file.get(key, 0)
         if file.get("coverage_gate_lowered"):
             total["coverage_gate_lowered"] = True
+    if gates_removed - gates_added:
+        total["coverage_gate_lowered"] = True  # a gate deleted in the PR and added nowhere
     if changed_ci:
         total["ci_config_files"] = sorted(changed_ci)[:5]
     return total

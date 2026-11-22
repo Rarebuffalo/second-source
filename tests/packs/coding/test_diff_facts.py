@@ -4,7 +4,7 @@ import time
 
 import pytest
 
-from second_source.packs.coding.diff_facts import facts
+from second_source.packs.coding.diff_facts import facts, summarize
 
 
 def patch(*lines, start=10):
@@ -403,9 +403,52 @@ def test_skip_forms_lost_in_the_first_fix_are_detected_again(path, lines):
     [
         # Guard re-check N6.
         ("codecov.yml", "modified", ["       default:", "+        informational: true"]),
-        ("pyproject.toml", "modified", ["-fail_under = 90", " show_missing = true"]),
         ("codecov.yml", "modified", ["-        target: 80%", "+        target: auto"]),
     ],
 )
 def test_more_ways_to_weaken_a_coverage_gate(path, status, lines):
     assert facts(path, status, patch(*lines))["coverage_gate_lowered"] is True
+
+
+def pr_summary(*files):
+    """summarize() over (path, status, lines) triples, as the GitHub mapper would build it."""
+    records = [
+        {
+            "path": path,
+            "status": status,
+            "additions": 1,
+            "deletions": 1,
+            **facts(path, status, patch(*lines)),
+        }
+        for path, status, lines in files
+    ]
+    return summarize(records)
+
+
+def test_a_gate_deleted_from_the_pr_is_a_lowered_gate():
+    deleted = pr_summary(
+        ("pyproject.toml", "modified", ["-fail_under = 90", " show_missing = true"])
+    )
+    assert deleted["coverage_gate_lowered"] is True
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        # Guard re-check 2, S1: moving a gate is not deleting it.
+        [
+            ("setup.cfg", "modified", ["-fail_under = 90"]),
+            ("pyproject.toml", "modified", ["+fail_under = 90"]),
+        ],
+        [
+            (
+                ".github/workflows/ci.yml",
+                "modified",
+                ["-      - run: pytest --cov-fail-under=90", "+      - run: pytest"],
+            ),
+            ("pyproject.toml", "modified", ["+fail_under = 90"]),
+        ],
+    ],
+)
+def test_a_gate_moved_between_files_is_not_lowered(files):
+    assert pr_summary(*files)["coverage_gate_lowered"] is False
