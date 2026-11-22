@@ -146,7 +146,10 @@ produce CONTRADICTED.
 | `coding.matching_jobs_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `MATCHING_JOB_SKIPPED` |
 | `coding.integrity_inspection` | caution | TESTS_PASS, TESTS_ADDED | `NOT_INSPECTED` (no file list, or no diff for a test or CI file) |
 
-Withdrawing signals are precise by construction. Cautions are real but too common (CI config
+Withdrawing signals are deliberately narrow (declaration-level skips outside comments, weakening
+on the test command itself or its step, a weaker number for a real coverage key in its own
+file); their precision on real PRs is being measured on benchmark run 2 and will be reported
+here. Cautions are real but too common (CI config
 changes in about 6–17% of agent PRs) or not yet measured. A caution is promoted to a
 withdrawal only after audited precision of at least 0.90 on at least 30 flagged PRs. Runtime
 skips (`pytest.skip(`, `t.Skip(`) are not counted: most are legitimate environment guards.

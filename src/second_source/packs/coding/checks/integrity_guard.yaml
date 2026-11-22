@@ -2,7 +2,7 @@
 #
 # CI passing proves little if the same PR skipped the failing tests, made CI ignore test
 # failures, or lowered the coverage gate: on pull_request events GitHub runs the PR's own copy
-# of the workflow. These three signals are precise by construction (unconditional skip
+# of the workflow. These three signals are deliberately narrow (unconditional skip
 # markers, weakening lines next to a test command, a lower number for the same coverage key),
 # so they withdraw the verification: VERIFIED becomes UNVERIFIABLE with the reason. A guard can
 # never accuse (the loader allows only VERIFIED and UNVERIFIABLE outcomes).
