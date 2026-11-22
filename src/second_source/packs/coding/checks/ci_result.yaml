@@ -7,7 +7,8 @@
 # Re-runs: the source keys each result by commit and job name and uses the run id as the
 # version, so de-duplication keeps only the newest run of every job. A flaky job that failed
 # and then passed on re-run counts as passed.
-# Cancelled, skipped and neutral results are neither passes nor failures.
+# Cancelled, timed-out, skipped and neutral results are neither passes nor failures (a timeout
+# is usually the runner, not the code).
 #
 # Local claims ("tests pass locally", scope=local): passing CI corroborates them, but failing
 # CI does not prove them false, because local and CI environments differ. They get the
@@ -35,7 +36,7 @@
 # Claims with a single commit (commit messages, comments, PRs without later commits) behave as
 # before: `final_ref` is absent and both views are the same commit.
 id: coding.ci_result
-version: 1.5.0
+version: 1.6.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -54,8 +55,8 @@ derive:
   relevant: "checks.filter(c, job_matches(claim.type, c.name))"
   at_ref: "relevant.filter(c, c.ref == start)"
   at_final: "relevant.filter(c, c.ref == final)"
-  failed_ref: "at_ref.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion in ['failure', 'timed_out'])"
-  failed_final: "at_final.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion in ['failure', 'timed_out'])"
+  failed_ref: "at_ref.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion == 'failure')"
+  failed_final: "at_final.filter(c, c.status == 'completed' && has(c.conclusion) && c.conclusion == 'failure')"
   failed_somewhere: "size(failed_ref) > 0 || size(failed_final) > 0"
   failed_everywhere: "size(failed_ref) > 0 && size(failed_final) > 0"
   running: "at_final.filter(c, c.status != 'completed')"

@@ -54,8 +54,16 @@ test directories", "doc cache") rarely comes with matching files. In the run-2 a
 36 such contradictions were really false claims. Likewise, an issue reopened after the merge
 contradicts `FIXES_ISSUE` only while it is still open; reopened and closed again is
 `UNVERIFIABLE` (`REOPENED_THEN_CLOSED`): maintainers reopen to verify or to wait for a release,
-and a later PR may have fixed it. `CONTRADICTED` now comes only from hard state: a failing CI
-job, or an issue still open after the merge.
+and a later PR may have fixed it.
+
+`CONTRADICTED` comes only from these, each with its exceptions:
+
+| Claim | Contradicted when | Not when (UNVERIFIABLE or PENDING instead) |
+|---|---|---|
+| Tests pass, build, lint | a matching CI job failed on the claim's commit (and on the final head, if the PR gained commits) | local or subset claims; timed-out or cancelled jobs; failure on only one of two commits |
+| Fixes an issue | the issue is still open after a merge into the default branch, for a closing keyword in the body or a commit message, same repository | moments after the merge (`CLOSE_PENDING`); title, comment or cross-repository references (`NOT_AUTO_CLOSED`); merges into another branch; reopened then closed again |
+| Deployed | a deployment of the commit to that environment failed, nothing is still deploying, and the source saw every deployment of the commit | a retry in progress; more deployments than the source lists |
+| Merge holds | a revert of the merge commit on the base branch | merges into another branch |
 
 `MERGE_HOLDS` is an implicit claim: merging a PR asserts that the change is good. Making it
 a claim lets the L5 "stayed true" checks use the same engine as everything else.

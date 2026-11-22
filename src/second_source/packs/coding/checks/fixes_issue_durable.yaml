@@ -7,7 +7,7 @@
 # a reopened-then-closed issue may also have been fixed by a later PR. Either way the evidence
 # is ambiguous, so it is UNVERIFIABLE (run-2 audit: 2 of 5 reopen contradictions were wrong).
 id: coding.fixes_issue_durable
-version: 2.0.0
+version: 2.1.0
 kind: temporal
 level: L5
 applies_to: [FIXES_ISSUE]
@@ -26,17 +26,24 @@ derive:
   window: "duration(string(params.window_days * 24) + 'h')"
   other_branch: >-
     prs.exists(p, has(p.base_ref) && has(p.default_branch) && p.base_ref != p.default_branch)
+  # GitHub closes the issue itself only for a closing keyword in the PR body or a commit
+  # message, for an issue of the same repository. Anywhere else (a title, a comment, another
+  # repository) an open issue may simply never have been linked: not proof.
+  auto_close: "claim.origin in ['body', 'commit'] && claim.attributes.repo == ''"
 outcomes:
   - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NOT_MERGED}
   - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
+  # Merges into another branch first: GitHub never closed the issue for them, so an open issue
+  # says nothing about the fix, reopened or not.
+  - {when: "issues.exists(i, i.state == 'open') && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
   - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0] && i.state == 'open')"
     result: CONTRADICTED
     reason: ISSUE_REOPENED
   - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0])"
     result: UNVERIFIABLE
     reason: REOPENED_THEN_CLOSED
-  - {when: "issues.exists(i, i.state == 'open') && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
+  - {when: "issues.exists(i, i.state == 'open') && !auto_close", result: UNVERIFIABLE, reason: NOT_AUTO_CLOSED}
   - {when: "issues.exists(i, i.state == 'open')", result: CONTRADICTED, reason: ISSUE_OPEN}
   - {when: "now < merge_times[0] + window", result: PENDING, reason: IN_WINDOW}
   - {otherwise: true, result: VERIFIED, reason: ISSUE_STAYED_CLOSED}

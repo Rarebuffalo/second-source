@@ -3,8 +3,10 @@
 #
 # Repositories that do not use GitHub deployments give UNVERIFIABLE, never CONTRADICTED.
 # Environment names are normalised on both sides (env_matches), so "prod" meets "production".
+# A failure contradicts only when nothing is still deploying and the source saw every deployment
+# of the commit (`complete`): a success may hide among deployments the source did not list.
 id: coding.deployed
-version: 1.1.0
+version: 2.0.0
 kind: state
 level: L4
 applies_to: [DEPLOYED]
@@ -20,13 +22,15 @@ derive:
   succeeded: "deployments.exists(d, d.state == 'success')"
   failed: "deployments.exists(d, d.state in ['failure', 'error'])"
   active: "deployments.exists(d, d.state in ['in_progress', 'queued', 'pending'])"
+  complete: "deployments.all(d, has(d.complete) && d.complete)"
   deadline: "claim.made_at + duration(string(params.timeout_hours) + 'h')"
 outcomes:
   - {when: "'deployment_status' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
   - {when: "succeeded", result: VERIFIED, reason: DEPLOYMENT_SUCCEEDED}
-  - {when: "failed", result: CONTRADICTED, reason: DEPLOYMENT_FAILED}
   - {when: "active && now < deadline", result: PENDING, reason: DEPLOYING}
+  - {when: "failed && !active && complete", result: CONTRADICTED, reason: DEPLOYMENT_FAILED}
+  - {when: "failed", result: UNVERIFIABLE, reason: DEPLOYMENT_FAILED_UNCLEAR}
   - {when: "size(deployments) == 0", result: UNVERIFIABLE, reason: NO_DEPLOYMENT_RECORDS}
   - {otherwise: true, result: UNVERIFIABLE, reason: DEPLOYMENT_UNCLEAR}
 explain: "Deployment succeeded: {succeeded}"

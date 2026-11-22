@@ -264,6 +264,7 @@ class GitHubSource:
             loaded.ref.number,
             self._clock(),
             title=pull.get("title") or "",
+            other_names=(loaded.repo,),
         )
 
     def _deployments(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
@@ -271,12 +272,16 @@ class GitHubSource:
         refs = {claim.attributes.get("ref") for claim in claims if claim.type == DEPLOYED}
         for ref in sorted(r for r in refs if r):
             deployments = self.client.get(f"{self._base(loaded)}/deployments", {"sha": ref})
+            # GitHub lists deployments newest first; past the cap, a success may be unseen.
+            complete = len(deployments) <= MAX_DEPLOYMENTS_PER_REF
             for deployment in deployments[:MAX_DEPLOYMENTS_PER_REF]:
                 statuses = self.client.get(
                     f"{self._base(loaded)}/deployments/{deployment['id']}/statuses",
                     {"per_page": 5},
                 )
-                evidence = mappers.deployment_evidence(deployment, statuses, self._clock())
+                evidence = mappers.deployment_evidence(
+                    deployment, statuses, self._clock(), complete=complete
+                )
                 if evidence is not None:
                     records.append(evidence)
         return records

@@ -316,3 +316,19 @@ def test_a_snapshot_without_facts_is_not_read_as_clean():
         {"path": "tests/test_a.py", "status": "modified", "additions": 3, "deletions": 0}
     ]
     assert diff_facts.summarize(old_snapshot)["uninspected"] == 1
+
+
+def test_revert_naming_the_repositorys_new_name_is_found():
+    commits = [
+        {
+            "sha": "r1",
+            "commit": {
+                "message": "Reverts NewOwner/NewApp#7",
+                "committer": {"date": "2026-11-21T00:00:00Z"},
+            },
+        }
+    ]
+    found = mappers.revert_evidence(
+        commits, "abc1234def56", "Octo/App", 7, NOW, other_names=("NewOwner/NewApp",)
+    )
+    assert [e.external_ref for e in found] == ["r1"]

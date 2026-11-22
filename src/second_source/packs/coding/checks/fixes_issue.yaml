@@ -8,7 +8,7 @@
 # issue still open after a merge into another branch (a feature or release branch) is expected,
 # so it is UNVERIFIABLE (NOT_DEFAULT_BRANCH), not CONTRADICTED.
 id: coding.fixes_issue
-version: 1.2.0
+version: 2.0.0
 kind: state
 level: L4
 applies_to: [FIXES_ISSUE]
@@ -32,6 +32,10 @@ derive:
   other_branch: >-
     prs.exists(p, has(p.base_ref) && has(p.default_branch) && p.base_ref != p.default_branch)
   tolerance: "duration(string(params.tolerance_minutes) + 'm')"
+  # GitHub closes the issue itself only for a closing keyword in the PR body or a commit
+  # message, for an issue of the same repository. Anywhere else (a title, a comment, another
+  # repository) an open issue may simply never have been linked: not proof.
+  auto_close: "claim.origin in ['body', 'commit'] && claim.attributes.repo == ''"
 outcomes:
   - {when: "'issue_state' in stale || 'pr_state' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "size(prs) == 0", result: UNVERIFIABLE, reason: NO_PR_STATE}
@@ -41,6 +45,10 @@ outcomes:
   - {when: "size(merge_times) == 0", result: UNVERIFIABLE, reason: NO_MERGE_TIME}
   - {when: "size(issues) == 0", result: UNVERIFIABLE, reason: ISSUE_NOT_ACCESSIBLE}
   - {when: "issue_open && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
+  # GitHub closes linked issues moments after the merge; a check that runs on the merge event
+  # can see the issue still open.
+  - {when: "issue_open && now < merge_times[0] + tolerance", result: PENDING, reason: CLOSE_PENDING}
+  - {when: "issue_open && !auto_close", result: UNVERIFIABLE, reason: NOT_AUTO_CLOSED}
   - {when: "issue_open", result: CONTRADICTED, reason: ISSUE_STILL_OPEN}
   - when: "issues.exists(i, has(i.closed_at) && i.closed_at >= merge_times[0] - tolerance)"
     result: VERIFIED

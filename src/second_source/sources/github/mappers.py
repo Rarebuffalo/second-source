@@ -292,8 +292,12 @@ def revert_evidence(
     number: int,
     observed_at: datetime,
     title: str = "",
+    other_names: Sequence[str] = (),
 ) -> list[Evidence]:
     """Commits on the base branch that revert the merged PR.
+
+    ``other_names`` are other names of the repository (its current name after a rename or
+    transfer): the Revert button writes whichever name the repository had at the time.
 
     Three forms are recognised:
     - ``git revert``: "This reverts commit <sha>" naming the merge commit;
@@ -306,7 +310,8 @@ def revert_evidence(
       "Reverts o/r#150" or "This reverts commit <sha>" says what was reverted, and two PRs
       may share a generic title ("Update README.md").
     """
-    pr_reference = re.compile(rf"\breverts\s+{re.escape(repo)}#{number}\b", re.IGNORECASE)
+    names = "|".join(re.escape(name) for name in (repo, *other_names))
+    pr_reference = re.compile(rf"\breverts\s+(?:{names})#{number}\b", re.IGNORECASE)
     title_revert = (
         re.compile(rf'^revert:?\s+"{re.escape(title.strip())}(\s+\(#{number}\))?"', re.IGNORECASE)
         if title.strip()
@@ -354,9 +359,12 @@ def revert_probe_path(files: Iterable[Json]) -> str | None:
 
 
 def deployment_evidence(
-    deployment: Json, statuses: Sequence[Json], observed_at: datetime
+    deployment: Json, statuses: Sequence[Json], observed_at: datetime, *, complete: bool = False
 ) -> Evidence | None:
-    """A deployment and its latest status (GitHub lists statuses newest first)."""
+    """A deployment and its latest status (GitHub lists statuses newest first).
+
+    ``complete`` says the source saw every deployment of the commit; only then can a failure
+    contradict a "deployed" claim (a success may hide among unlisted deployments)."""
     if not statuses:
         return None
     latest = statuses[0]
@@ -371,6 +379,7 @@ def deployment_evidence(
                 "environment": (deployment.get("environment") or "").lower(),
                 "state": latest.get("state"),
                 "at": parse_time(latest.get("created_at")),
+                "complete": complete,
             }
         ),
     )

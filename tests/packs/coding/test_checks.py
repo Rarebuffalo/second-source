@@ -41,13 +41,14 @@ def engine():
 # ---- builders following the evidence contract -----------------------------------------------
 
 
-def claim(claim_type, **attributes):
+def claim(claim_type, origin="body", **attributes):
     return Claim(
         id=f"c-{claim_type}",
         episode_id=EPISODE.id,
         type=claim_type,
         made_at=T0,
         attributes=attributes,
+        origin=origin,
     )
 
 
@@ -115,7 +116,8 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
             "ALL_MATCHING_CI_JOBS_PASSED",
         ),  # a failing non-test check does not matter here
         ([check_result("pytest", "failure")], 1, Result.CONTRADICTED, "CI_JOB_FAILED"),
-        ([check_result("pytest", "timed_out")], 1, Result.CONTRADICTED, "CI_JOB_FAILED"),
+        # A timeout is usually the runner, not the code: neither a pass nor a failure.
+        ([check_result("pytest", "timed_out")], 1, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
         ([check_result("pytest", None, status="in_progress")], 1, Result.PENDING, "AWAITING_CI"),
         (
             [check_result("pytest", None, status="in_progress")],
@@ -318,8 +320,8 @@ def test_docs_updated(engine):
 # ---- fixes issue (L4 now, L5 over time) ------------------------------------------------------
 
 
-def fixes_claim(issue=12, repo=""):
-    return claim(FIXES_ISSUE, issue=issue, repo=repo)
+def fixes_claim(issue=12, repo="", origin="body"):
+    return claim(FIXES_ISSUE, origin=origin, issue=issue, repo=repo)
 
 
 def runs_by_check(result):
@@ -343,9 +345,29 @@ def test_fixes_issue_in_window_is_pending(engine):
 
 
 def test_fixes_issue_still_open_after_merge(engine):
-    result = verdict(engine, fixes_claim(), [pr_state(merged=True), issue_state(state="open")])
+    evidence = [pr_state(merged=True), issue_state(state="open")]
+    result = verdict(engine, fixes_claim(), evidence, hours=2)
     assert result.result is Result.CONTRADICTED
     assert "ISSUE_STILL_OPEN" in result.reasons
+
+
+def test_fixes_issue_open_moments_after_the_merge_is_pending(engine):
+    # GitHub closes linked issues just after the merge; a check on the merge event can be early.
+    evidence = [pr_state(merged=True), issue_state(state="open")]
+    result = verdict(engine, fixes_claim(), evidence, hours=1)
+    assert runs_by_check(result)["coding.fixes_issue"] == (Result.PENDING, "CLOSE_PENDING")
+
+
+@pytest.mark.parametrize(
+    ("origin", "repo"), [("title", ""), ("comment", ""), ("body", "other/repo")]
+)
+def test_fixes_issue_open_where_github_never_auto_closes_is_unverifiable(engine, origin, repo):
+    issue = issue_state(state="open", repo=repo or "octo/app")
+    result = verdict(
+        engine, fixes_claim(origin=origin, repo=repo), [pr_state(merged=True), issue], hours=2
+    )
+    assert runs_by_check(result)["coding.fixes_issue"] == (Result.UNVERIFIABLE, "NOT_AUTO_CLOSED")
+    assert result.result is not Result.CONTRADICTED
 
 
 def test_fixes_issue_open_after_merge_into_another_branch_is_unverifiable(engine):
@@ -441,12 +463,12 @@ def test_inaccessible_issue_is_unverifiable(engine):
 # ---- deployed --------------------------------------------------------------------------------
 
 
-def deployment(state, environment="staging", ref=SHA, dep_id="d1"):
+def deployment(state, environment="staging", ref=SHA, dep_id="d1", complete=True):
     return Evidence(
         "deployment_status",
         dep_id,
         T0 + timedelta(minutes=30),
-        {"ref": ref, "environment": environment, "state": state, "at": T0},
+        {"ref": ref, "environment": environment, "state": state, "at": T0, "complete": complete},
     )
 
 
@@ -456,6 +478,11 @@ def deployment(state, environment="staging", ref=SHA, dep_id="d1"):
         ([deployment("success")], 1, Result.VERIFIED),
         ([deployment("success", environment="staging-eu")], 1, Result.VERIFIED),
         ([deployment("failure")], 1, Result.CONTRADICTED),
+        # More deployments than the source lists: a success may be among the unseen ones.
+        ([deployment("failure", complete=False)], 1, Result.UNVERIFIABLE),
+        # A retry is still deploying: wait.
+        ([deployment("failure"), deployment("in_progress", dep_id="d2")], 1, Result.PENDING),
+        ([deployment("failure"), deployment("in_progress", dep_id="d2")], 5, Result.UNVERIFIABLE),
         ([deployment("in_progress")], 1, Result.PENDING),
         ([deployment("success", environment="production")], 1, Result.UNVERIFIABLE),
         ([deployment("success", environment="Staging-EU")], 1, Result.VERIFIED),
