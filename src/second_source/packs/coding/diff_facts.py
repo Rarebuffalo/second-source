@@ -239,8 +239,8 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     # Gate families removed and added in this file. Whether a gate was deleted outright is
     # decided per PR in summarize(): moving fail_under from setup.cfg to pyproject.toml, or from
     # a --cov-fail-under flag into config, is not a deletion.
-    file_removed_gates: set[str] = set()
-    file_added_gates: set[str] = set()
+    file_removed_gates: dict[str, float] = {}  # family -> strictest number removed
+    file_added_gates: dict[str, float] = {}  # family -> weakest number added
 
     def bump(key: str, line_number: int | None = None) -> None:
         counts[key] = counts.get(key, 0) + 1
@@ -324,7 +324,13 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 if gate:
                     key, number, stricter = gate
                     (removed_gates if sign == "-" else added_gates)[key] = (number, stricter)
-                    (file_removed_gates if sign == "-" else file_added_gates).add(key)
+                    _keep(
+                        file_removed_gates if sign == "-" else file_added_gates,
+                        key,
+                        number,
+                        strictest=sign == "-",
+                        stricter=stricter,
+                    )
                 off = sign == "+" and _CODECOV_FILES.search(path) and _COVERAGE_OFF.search(text)
                 # A first Codecov config lowers nothing; switching a status off in an existing
                 # one does, as does replacing a target number with "auto".
@@ -343,13 +349,41 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
     if file_wide_suite_skip:
         # A module-level pytestmark skip covers every new case of the file.
         counts["suite_skipped_cases"] = counts.get("test_cases_added", 0)
-    if file_removed_gates:
-        counts["gates_removed"] = sorted(file_removed_gates)  # fixed family names, not code
+    # Gate families and their numbers (configuration values, not code). A deleted file's gates
+    # are left out: removing a whole package or config file is not lowering a gate elsewhere.
+    if file_removed_gates and status != "removed":
+        counts["gates_removed"] = dict(sorted(file_removed_gates.items()))
     if file_added_gates:
-        counts["gates_added"] = sorted(file_added_gates)
+        counts["gates_added"] = dict(sorted(file_added_gates.items()))
     if markers:
         counts["marker_lines"] = markers
     return counts
+
+
+# Codecov's threshold is the allowed drop: a higher number is a weaker gate.
+_HIGHER_IS_WEAKER = frozenset({"codecov_threshold"})
+
+
+def _keep(
+    gates: dict[str, float], key: str, number: float, *, strictest: bool, stricter: bool
+) -> None:
+    """Keep, per family, the strictest removed number or the weakest added number."""
+    if key not in gates:
+        gates[key] = number
+        return
+    higher_is_stricter = stricter
+    pick_higher = higher_is_stricter if strictest else not higher_is_stricter
+    gates[key] = max(gates[key], number) if pick_higher else min(gates[key], number)
+
+
+def _gate_weakened(family: str, removed: float | None, added: float | None) -> bool:
+    """Across the whole PR: did this gate family get weaker?"""
+    if removed is None:
+        return False
+    if added is None:
+        # Deleted and added nowhere. Removing Codecov's allowed drop makes the gate stricter.
+        return family not in _HIGHER_IS_WEAKER
+    return added > removed if family in _HIGHER_IS_WEAKER else added < removed
 
 
 def _indent(text: str) -> int:
@@ -524,11 +558,25 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
         "uninspected": 0,  # test, CI or test-config files GitHub sent no patch for
     }
     changed_ci: list[str] = []
-    gates_removed: set[str] = set()
-    gates_added: set[str] = set()
+    gates_removed: dict[str, float] = {}
+    gates_added: dict[str, float] = {}
     for file in files:
-        gates_removed.update(file.get("gates_removed", ()))
-        gates_added.update(file.get("gates_added", ()))
+        for family, number in dict(file.get("gates_removed") or {}).items():
+            _keep(
+                gates_removed,
+                family,
+                number,
+                strictest=True,
+                stricter=family not in _HIGHER_IS_WEAKER,
+            )
+        for family, number in dict(file.get("gates_added") or {}).items():
+            _keep(
+                gates_added,
+                family,
+                number,
+                strictest=False,
+                stricter=family not in _HIGHER_IS_WEAKER,
+            )
         path, status = file["path"], file.get("status", "modified")
         test_file = is_test_path(path)
         config = is_ci_path(path) or is_test_config_path(path)
@@ -565,8 +613,13 @@ def summarize(files: list[dict[str, Any]]) -> dict[str, Any]:
             total[key] += file.get(key, 0)
         if file.get("coverage_gate_lowered"):
             total["coverage_gate_lowered"] = True
-    if gates_removed - gates_added:
-        total["coverage_gate_lowered"] = True  # a gate deleted in the PR and added nowhere
+    # A gate moved between files keeps its family; it is weakened only if it was deleted
+    # outright or re-added with a weaker number (setup.cfg 90 -> pyproject.toml 50).
+    if any(
+        _gate_weakened(family, number, gates_added.get(family))
+        for family, number in gates_removed.items()
+    ):
+        total["coverage_gate_lowered"] = True
     if changed_ci:
         total["ci_config_files"] = sorted(changed_ci)[:5]
     return total

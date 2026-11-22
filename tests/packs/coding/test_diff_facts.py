@@ -633,3 +633,25 @@ def test_a_job_header_with_a_comment_still_ends_the_job():
     assert "ci_failures_tolerated" not in facts(
         ".github/workflows/ci.yml", "modified", patch(*lines)
     )
+
+
+@pytest.mark.parametrize(
+    "files",
+    [
+        # Guard re-check 3, T3: removing Codecov's allowed drop is stricter, not lower.
+        [("codecov.yml", "modified", ["-        threshold: 2%", " target: 80%"])],
+        # Deleting a whole package's config is not lowering a gate elsewhere.
+        [("packages/old/pyproject.toml", "removed", ["-fail_under = 90"])],
+    ],
+)
+def test_removals_that_do_not_weaken_a_gate(files):
+    assert pr_summary(*files)["coverage_gate_lowered"] is False
+
+
+def test_a_gate_moved_and_lowered_is_caught():
+    # T4: setup.cfg 90 deleted, pyproject.toml 50 added.
+    moved = pr_summary(
+        ("setup.cfg", "modified", ["-fail_under = 90"]),
+        ("pyproject.toml", "modified", ["+fail_under = 50"]),
+    )
+    assert moved["coverage_gate_lowered"] is True
