@@ -13,7 +13,8 @@ Every pattern is deliberately narrow (design: private/research/integrity-design-
   guards ("no GPU"). ``.only`` / ``fit`` count, because they silently skip every other test.
 - **Weakened test commands** (``continue-on-error: true``, ``|| true``, ``--deselect``,
   ``-k "not …"``) count only within a few lines of a test command in the same hunk.
-- **Coverage gates** count only when one hunk removes and adds the same key with a lower number.
+- **Coverage gates** count only when one hunk removes and adds the same key, in the config file
+  that owns it, with a weaker number (lower, or higher for Codecov's allowed drop).
 
 Lines are matched on ``+`` / ``-`` lines inside hunks.
 """
@@ -108,12 +109,51 @@ _COMMAND_FILES = re.compile(
     re.IGNORECASE,
 )
 
-_COVERAGE_KEY = re.compile(
-    r"(fail_under|fail-under|cov-fail-under|coverageThreshold|check-coverage"
-    r"|\b(?:branches|lines|functions|statements)\b\s*[:=]|\btarget\s*:|\bthreshold\s*:)"
-    r"\D*?(\d+(?:\.\d+)?)"
+# Coverage gates. A key counts only in the config files that own it, with the number right
+# after it ("fail_under = 90", '"lines": 80', "target: 85%"), so unrelated keys such as a build
+# matrix "target: x86_64-…" never match. Codecov's "threshold" is the allowed *drop*, so for it a
+# higher number is a weaker gate.
+_NUMBER = r"""\s*["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)%?["']?\s*(?:,|#|$)"""
+_COVERAGE_PY_FILES = re.compile(r"(^|/)(pyproject\.toml|setup\.cfg|\.coveragerc|tox\.ini)$", re.I)
+_JS_COVERAGE_FILES = re.compile(
+    r"(^|/)(jest\.config\.[\w.]+|vitest\.config\.[\w.]+|\.nycrc[\w.]*|nyc\.config\.[\w.]+"
+    r"|package\.json)$",
+    re.I,
 )
+_CODECOV_FILES = re.compile(r"(^|/)\.?codecov\.ya?ml$", re.I)
+# (key name, pattern with the number as group 1, files it applies to, higher number = stricter)
+_GATES = (
+    ("fail_under", re.compile(r"^\s*fail[_-]under" + _NUMBER), _COVERAGE_PY_FILES, True),
+    (
+        "js_threshold",
+        re.compile(r"""^\s*["']?(?:branches|lines|functions|statements)["']?""" + _NUMBER),
+        _JS_COVERAGE_FILES,
+        True,
+    ),
+    ("codecov_target", re.compile(r"^\s*target" + _NUMBER), _CODECOV_FILES, True),
+    ("codecov_threshold", re.compile(r"^\s*threshold" + _NUMBER), _CODECOV_FILES, False),
+)
+# A fail-under flag on a test command, in any file that runs tests.
+_FAIL_UNDER_FLAG = re.compile(r"--(?:cov-)?fail-under[= ](\d+(?:\.\d+)?)")
+# Switching a Codecov status check off (only counts when an existing config is edited).
 _COVERAGE_OFF = re.compile(r"^\s*(informational:\s*true|(project|patch):\s*off)\b")
+
+
+def _gate(path: str, text: str) -> tuple[str, float, bool] | None:
+    """(key, number, higher-is-stricter) if the line sets a coverage gate in this file."""
+    flag = _FAIL_UNDER_FLAG.search(text)
+    if flag:
+        return "flag_fail_under", float(flag.group(1)), True
+    for name, pattern, files, stricter in _GATES:
+        if files.search(path):
+            found = pattern.search(text)
+            if found:
+                key = name
+                if name == "js_threshold":  # one gate per metric
+                    key += ":" + re.search(r"branches|lines|functions|statements", text).group(0)
+                return key, float(found.group(1)), stricter
+    return None
+
 
 # Lint suppressions added in non-test code (a caution for "lint passes").
 _LINT_SUPPRESSION = re.compile(
@@ -140,8 +180,9 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
             markers.append(line_number)
 
     for hunk in _hunks(patch):
-        removed_gates: dict[str, float] = {}
-        added_gates: dict[str, float] = {}
+        removed_gates: dict[str, tuple[float, bool]] = {}
+        added_gates: dict[str, tuple[float, bool]] = {}
+        edits_existing = any(sign == "-" for sign, _t, _n in hunk)
         command_rows = [
             index for index, (_s, text, _n) in enumerate(hunk) if _TEST_COMMAND.search(text)
         ]
@@ -161,26 +202,29 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 near = any(abs(row - index) <= WEAKENING_WINDOW for row in command_rows)
                 if sign == "+" and near and _WEAKENING.search(text):
                     bump("test_cmd_weakened", new_line)
-                gate = _COVERAGE_KEY.search(text)
+            if command_file or _CODECOV_FILES.search(path) or _JS_COVERAGE_FILES.search(path):
+                gate = _gate(path, text)
                 if gate:
-                    target = removed_gates if sign == "-" else added_gates
-                    target[_gate_key(gate.group(1))] = float(gate.group(2))
-                if sign == "+" and _COVERAGE_OFF.search(text):
+                    key, number, stricter = gate
+                    (removed_gates if sign == "-" else added_gates)[key] = (number, stricter)
+                if (
+                    sign == "+"
+                    and status != "added"  # a first Codecov config lowers nothing
+                    and edits_existing
+                    and _CODECOV_FILES.search(path)
+                    and _COVERAGE_OFF.search(text)
+                ):
                     counts["coverage_gate_lowered"] = True
             if sign == "+" and text.strip():
                 counts["nonblank_added"] = counts.get("nonblank_added", 0) + 1
-        if any(
-            key in removed_gates and added_gates[key] < removed_gates[key] for key in added_gates
-        ):
-            counts["coverage_gate_lowered"] = True
+        for key, (number, stricter) in added_gates.items():
+            if key in removed_gates:
+                before = removed_gates[key][0]
+                if (number < before) if stricter else (number > before):
+                    counts["coverage_gate_lowered"] = True
     if markers:
         counts["marker_lines"] = markers
     return counts
-
-
-def _gate_key(raw: str) -> str:
-    """Normalise a coverage key so "fail_under" and "fail-under" compare equal."""
-    return re.sub(r"[\s:=_-]", "", raw).lower()
 
 
 def _hunks(patch: str) -> list[list[tuple[str, str, int | None]]]:

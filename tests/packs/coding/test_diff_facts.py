@@ -79,8 +79,66 @@ def test_a_lowered_coverage_gate_is_detected_but_a_raised_one_is_not():
     assert facts("pyproject.toml", "modified", lowered)["coverage_gate_lowered"] is True
     raised = patch("-fail_under = 80", "+fail_under = 90")
     assert "coverage_gate_lowered" not in facts("pyproject.toml", "modified", raised)
-    switched_off = patch("+      informational: true")
+    switched_off = patch("-      target: 80%", "+      informational: true")
     assert facts("codecov.yml", "modified", switched_off)["coverage_gate_lowered"] is True
+
+
+@pytest.mark.parametrize(
+    ("path", "status", "lines"),
+    [
+        # Guard code review H1: a build matrix target is not a coverage gate.
+        (
+            ".github/workflows/release.yml",
+            "modified",
+            [
+                "-          target: x86_64-unknown-linux-gnu",
+                "+          target: aarch64-unknown-linux-gnu",
+            ],
+        ),
+        (
+            ".github/workflows/ci.yml",
+            "modified",
+            ["-          target: stage2", "+          target: stage1"],
+        ),
+        ("Makefile", "modified", ["-\tstatements: 10", "+\tstatements: 5"]),
+        # H2: Codecov's threshold is the allowed drop; a lower one is stricter.
+        ("codecov.yml", "modified", ["-        threshold: 5%", "+        threshold: 1%"]),
+        # H3: a first Codecov config lowers nothing.
+        (
+            "codecov.yml",
+            "added",
+            [
+                "+coverage:",
+                "+  status:",
+                "+    patch:",
+                "+      default:",
+                "+        informational: true",
+            ],
+        ),
+    ],
+)
+def test_coverage_changes_that_do_not_weaken_a_gate(path, status, lines):
+    assert "coverage_gate_lowered" not in facts(path, status, patch(*lines))
+
+
+@pytest.mark.parametrize(
+    ("path", "lines"),
+    [
+        ("codecov.yml", ["-        threshold: 1%", "+        threshold: 5%"]),  # looser
+        ("codecov.yml", ["-        target: 90%", "+        target: 80%"]),
+        ("package.json", ['-        "lines": 90,', '+        "lines": 70,']),  # Jest, quoted key
+        (
+            ".github/workflows/ci.yml",
+            [
+                "-      - run: pytest --cov-fail-under=90",
+                "+      - run: pytest --cov-fail-under=60",
+            ],
+        ),
+        ("setup.cfg", ["-fail_under = 85", "+fail_under = 50"]),
+    ],
+)
+def test_weakened_coverage_gates_are_detected(path, lines):
+    assert facts(path, "modified", patch(*lines))["coverage_gate_lowered"] is True
 
 
 def test_lint_suppressions_count_in_source_not_tests():
