@@ -107,7 +107,8 @@ def test_many_claims_on_one_pr_count_once():
 def test_markdown_lists_every_agent_and_type():
     text = to_markdown(summarize(RECORDS))
     assert "## codex" in text and "## devin" in text
-    assert "| TESTS_PASS | 2 | 2 | 1 | 1 | 0 | 100% | 50% (" in text
+    assert "| TESTS_PASS | 2 | 2 | 1 | 1 | 0 | 0 | 100% | 50% (" in text
+    assert "Without guards" in text
     assert "never counted as false" in text
 
 
