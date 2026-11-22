@@ -1,11 +1,13 @@
 # Optional guard: CI made to tolerate test failures, or a build command made to skip tests.
 #
-# continue-on-error on a test step or job, and -DskipTests / -x test added to an existing
-# command, can make "tests pass" mean less. Both depend on reading workflow structure from a diff
-# and have legitimate uses (a non-blocking experimental job, a build step that tests elsewhere),
-# so they are cautions until benchmark run 2 measures their precision (docs/packs/coding.md).
+# continue-on-error at job level on a job that runs tests, and -DskipTests / -x test added to an
+# existing build, package or deploy command, can make "tests pass" mean less. Both depend on
+# reading workflow structure from a diff and have legitimate uses (a non-blocking experimental
+# job, a build step that tests elsewhere), so they are cautions until benchmark run 2 measures
+# their precision. The narrow forms (on the test step or a test/verify/check command itself)
+# withdraw through coding.integrity_guard (docs/packs/coding.md).
 id: coding.ci_weakening_caution
-version: 1.0.0
+version: 1.1.0
 kind: state
 role: guard
 required: false

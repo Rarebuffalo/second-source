@@ -140,6 +140,7 @@ _SAME_COMMAND_WEAKENING = re.compile(
 # (a removed line in the same hunk with the same tool and without the flag).
 _BUILD_SKIP_FLAG = re.compile(r"\s-DskipTests\b|\s-Dmaven\.test\.skip=true|(?<=\S)\s+-x\s+test\b")
 _BUILD_TOOL = re.compile(r"\b(mvnw?|gradlew?)\b")
+_TEST_GOAL = re.compile(r"\b(test|verify|check)\b")
 _CONTINUE_ON_ERROR = re.compile(r"^(\s*)continue-on-error:\s*(true|\$\{\{\s*true\s*\}\})\s*(#.*)?$")
 _YAML_KEY = re.compile(r"^[\w.-]+:\s*(#.*)?$")  # a mapping key on its own line (job header)
 _JOB_KEY = re.compile(
@@ -314,10 +315,21 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                 # The test command itself weakened: withdraws "tests pass".
                 if commands[index] and _SAME_COMMAND_WEAKENING.search(text):
                     bump("test_cmd_weakened", new_line)
-                # Tolerated failures and build-flag test skips: cautions until measured.
-                if _tolerates_failures(text, index, hunk, commands, step_of, steps_with_tests):
+                # continue-on-error on the test step itself, and a test-skipping flag added to a
+                # test/verify/check command, are as narrow as the line-level signals: they
+                # withdraw. Job-level tolerance and flags on build/package/deploy commands are
+                # cautions until benchmark run 2 measures them.
+                tolerated = _tolerates_failures(
+                    text, index, hunk, commands, step_of, steps_with_tests
+                )
+                if tolerated == "step":
+                    bump("test_cmd_weakened", new_line)
+                elif tolerated == "job":
                     bump("ci_failures_tolerated", new_line)
-                if _skips_tests_in_build(text, removed_lines):
+                build_skip = _skips_tests_in_build(text, removed_lines)
+                if build_skip == "test_goal":
+                    bump("test_cmd_weakened", new_line)
+                elif build_skip == "other_goal":
                     bump("build_tests_skipped", new_line)
             if gate_file:
                 gate = _gate(path, text)
@@ -416,16 +428,16 @@ def _tolerates_failures(
     commands: list[bool],
     step_of: list[int],
     steps_with_tests: set[int],
-) -> bool:
-    """An added continue-on-error in the same workflow step as a test command, or at job level
-    in a job (within the hunk) that runs tests."""
+) -> str | None:
+    """ "step" for an added continue-on-error in the same workflow step as a test command,
+    "job" for one at job level in a job (within the hunk) that runs tests, else None."""
     flag = _CONTINUE_ON_ERROR.match(text)
     if not flag:
-        return False
+        return None
     indent = len(flag.group(1))
     job_level = any(len(m.group(1)) == indent for _s, t, _n in hunk if (m := _JOB_KEY.match(t)))
     if not job_level:
-        return step_of[index] in steps_with_tests
+        return "step" if step_of[index] in steps_with_tests else None
 
     # Job level: look for a test command in the same job only, scanning both ways until a key at
     # a shallower indentation than the job's own keys (the job header, or the next job).
@@ -440,16 +452,19 @@ def _tolerates_failures(
         return found
 
     same_job = job_rows(range(index + 1, len(hunk))) + job_rows(range(index - 1, -1, -1))
-    return any(commands[row] for row in same_job)
+    return "job" if any(commands[row] for row in same_job) else None
 
 
-def _skips_tests_in_build(text: str, removed_lines: list[str]) -> bool:
-    """-DskipTests / -x test added to a command that ran before without it: the same command,
-    with the flag removed, appears on a removed line of the hunk."""
+def _skips_tests_in_build(text: str, removed_lines: list[str]) -> str | None:
+    """-DskipTests / -x test added to a command that ran before without it (the same command,
+    flag removed, on a removed line of the hunk): "test_goal" when that command tests
+    (test/verify/check), "other_goal" for build/package/deploy commands, else None."""
     if not (_BUILD_TOOL.search(text) and _BUILD_SKIP_FLAG.search(text)):
-        return False
+        return None
     stripped = _normalise(_BUILD_SKIP_FLAG.sub(" ", text))
-    return any(_normalise(removed) == stripped for removed in removed_lines)
+    if not any(_normalise(removed) == stripped for removed in removed_lines):
+        return None
+    return "test_goal" if _TEST_GOAL.search(stripped) else "other_goal"
 
 
 def _normalise(command: str) -> str:

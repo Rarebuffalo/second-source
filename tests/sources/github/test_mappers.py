@@ -197,7 +197,8 @@ def test_a_pr_summary_adds_up_integrity_counts():
     summary = mappers.files_summary_evidence(records, 7, NOW)
     assert summary.record_type == "changed_files_summary"
     totals = summary.attributes
-    assert (totals["test_skips_net"], totals["ci_failures_tolerated"], totals["code_net"]) == (
+    # continue-on-error on the test step itself weakens the test command (withdraws).
+    assert (totals["test_skips_net"], totals["test_cmd_weakened"], totals["code_net"]) == (
         1,
         1,
         4,

@@ -65,15 +65,15 @@ def test_test_cases_and_assertions_are_counted_both_ways():
 
 def test_weakening_counts_only_near_a_test_command():
     near = patch("   - run: pytest -q", "+    continue-on-error: true")
-    assert facts(".github/workflows/ci.yml", "modified", near)["ci_failures_tolerated"] == 1
+    assert facts(".github/workflows/ci.yml", "modified", near)["test_cmd_weakened"] == 1
     far = patch(
         "+    continue-on-error: true", *[f" line {n}" for n in range(10)], " - run: pytest"
     )
-    assert "ci_failures_tolerated" not in facts(".github/workflows/ci.yml", "modified", far)
+    assert "test_cmd_weakened" not in facts(".github/workflows/ci.yml", "modified", far)
     shell = patch("+\tgo test ./... || true")
     assert facts("Makefile", "modified", shell)["test_cmd_weakened"] == 1
     # The same text in an ordinary source file is not a CI change.
-    assert "ci_failures_tolerated" not in facts("src/run.py", "modified", near)
+    assert "test_cmd_weakened" not in facts("src/run.py", "modified", near)
 
 
 def test_a_lowered_coverage_gate_is_detected_but_a_raised_one_is_not():
@@ -233,7 +233,7 @@ def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
                 "         run: pytest",
                 "+        continue-on-error: ${{ true }}",
             ],
-            "ci_failures_tolerated",
+            "test_cmd_weakened",
         ),
         (
             ".github/workflows/ci.yml",
@@ -250,7 +250,7 @@ def test_ci_changes_that_do_not_weaken_a_test_run(path, lines):
         (
             ".github/workflows/ci.yml",
             ["-      - run: mvn -B verify", "+      - run: mvn -B verify -DskipTests"],
-            "build_tests_skipped",
+            "test_cmd_weakened",
         ),
         (
             ".github/workflows/ci.yml",
@@ -655,3 +655,9 @@ def test_a_gate_moved_and_lowered_is_caught():
         ("pyproject.toml", "modified", ["+fail_under = 50"]),
     )
     assert moved["coverage_gate_lowered"] is True
+
+
+def test_a_skip_flag_on_a_deploy_command_is_only_a_caution():
+    lines = ["-      - run: mvn -B deploy", "+      - run: mvn -B deploy -DskipTests"]
+    result = facts(".github/workflows/release.yml", "modified", patch(*lines))
+    assert result["build_tests_skipped"] == 1 and "test_cmd_weakened" not in result

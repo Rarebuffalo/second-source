@@ -137,8 +137,8 @@ produce CONTRADICTED.
 
 | Guard | Kind | Claims | Reason when it fires |
 |---|---|---|---|
-| `coding.integrity_guard` | withdraws (required) | TESTS_PASS | `PR_SKIPS_TESTS` (an unconditional skip or `.only` added in a test file), `PR_WEAKENS_TEST_COMMAND` (`\|\| true`, `--deselect`, `-k not`, `--ignore` … on the test command itself), `PR_LOWERS_COVERAGE_GATE` (a weaker number for a real coverage key, or a gate deleted in the PR and added nowhere) |
-| `coding.ci_weakening_caution` | caution | TESTS_PASS | `CI_TOLERATES_TEST_FAILURES` (`continue-on-error` on a test step or test job), `BUILD_SKIPS_TESTS` (`-DskipTests` / `-x test` added to an existing command) |
+| `coding.integrity_guard` | withdraws (required) | TESTS_PASS | `PR_SKIPS_TESTS` (an unconditional skip or `.only` added in a test file), `PR_WEAKENS_TEST_COMMAND` (`\|\| true`, `--deselect`, `-k not`, `--ignore` … on the test command itself; `continue-on-error` on the test step itself; `-DskipTests` / `-x test` added to an existing test, verify or check command), `PR_LOWERS_COVERAGE_GATE` (a weaker number for a real coverage key, or a gate deleted in the PR and added nowhere) |
+| `coding.ci_weakening_caution` | caution | TESTS_PASS | `CI_TOLERATES_TEST_FAILURES` (`continue-on-error` at job level on a job that runs tests), `BUILD_SKIPS_TESTS` (`-DskipTests` / `-x test` added to an existing build, package or deploy command) |
 | `coding.tests_added_guard` | withdraws (required) | TESTS_ADDED | `ADDED_TESTS_ARE_SKIPPED` |
 | `coding.ci_config_caution` | caution | TESTS_PASS, BUILD_OK, LINT_OK | `PR_CHANGES_CI_CONFIG` (workflow or test config files) |
 | `coding.tests_removed_caution` | caution | TESTS_PASS | `PR_REMOVES_TESTS` (≥ 2 more test cases removed than added, code kept) |
