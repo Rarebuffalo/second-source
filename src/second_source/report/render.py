@@ -48,6 +48,7 @@ GUARD_TEXT = {
     "LINT_CONFIG_CHANGED": "this PR changed lint configuration",
     "MATCHING_JOB_SKIPPED": "some matching CI jobs were skipped",
     "NOT_INSPECTED": "the diff could not be inspected for test changes",
+    "GUARD_ERROR": "an integrity guard could not be evaluated",
 }
 WITHDRAWN_SYMBOL, WITHDRAWN_WORD = "⚠", "not verified"
 
@@ -57,17 +58,26 @@ def guard_text(reason: str) -> str:
 
 
 def withdrawn_reasons(verdict: Verdict) -> tuple[str, ...]:
-    """Reasons of required guards that withdrew a verification (the claim's evidence was
-    shaped by the same PR). Empty for every other verdict."""
+    """Reasons of guards that withdrew a verification: the deciding checks all said VERIFIED
+    and only guards made the claim UNVERIFIABLE. Empty for every other verdict, including a
+    claim that was already unverifiable for its own reasons (CI stale, no matching job)."""
     if verdict.result is not Result.UNVERIFIABLE:
         return ()
-    return tuple(
+    guard_reasons = {
         run.reason
         for run in verdict.check_runs
-        if run.role == "guard"
-        and run.result is Result.UNVERIFIABLE
-        and run.reason in verdict.reasons
-    )
+        if run.role == "guard" and run.result is Result.UNVERIFIABLE
+    }
+    other_reasons = {
+        run.reason
+        for run in verdict.check_runs
+        if run.role != "guard" and run.result is not Result.VERIFIED
+    }
+    if not verdict.reasons or any(
+        reason not in guard_reasons or reason in other_reasons for reason in verdict.reasons
+    ):
+        return ()
+    return verdict.reasons
 
 
 # Display order: problems first.

@@ -106,3 +106,23 @@ def test_a_withdrawn_verification_says_why_in_words(fake_github):
     assert "| ⚠ | Tests pass | not verified | this PR skips tests |" in markdown
     claim = next(c for c in to_json(report)["claims"] if c["type"] == "TESTS_PASS")
     assert (claim["result"], claim["withdrawn"]) == ("UNVERIFIABLE", ["PR_SKIPS_TESTS"])
+
+
+def test_a_claim_unverifiable_for_its_own_reasons_is_not_shown_as_withdrawn():
+    from second_source.core.model import CheckKind, CheckRun, Level, Result, Verdict
+    from second_source.report.render import withdrawn_reasons
+
+    def check_run(check_id, result, reason, role="check"):
+        return CheckRun(
+            check_id, "1.0.0", CheckKind.STATE, Level.L4, "c", result, reason, "h", role=role
+        )
+
+    ci_missing = check_run("coding.ci_result", Result.UNVERIFIABLE, "NO_CI_RECORDS")
+    skips = check_run("coding.integrity_guard", Result.UNVERIFIABLE, "PR_SKIPS_TESTS", "guard")
+    both = Verdict(
+        "c", Result.UNVERIFIABLE, ("NO_CI_RECORDS", "PR_SKIPS_TESTS"), (ci_missing, skips)
+    )
+    assert withdrawn_reasons(both) == ()
+    passed = check_run("coding.ci_result", Result.VERIFIED, "ALL_MATCHING_CI_JOBS_PASSED")
+    only_guard = Verdict("c", Result.UNVERIFIABLE, ("PR_SKIPS_TESTS",), (passed, skips))
+    assert withdrawn_reasons(only_guard) == ("PR_SKIPS_TESTS",)

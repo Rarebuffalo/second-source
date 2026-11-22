@@ -8,10 +8,13 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from second_source.core.checks import ENGINE_ERROR
 from second_source.core.model import DETERMINISTIC_KINDS, CheckRun, Result, Verdict
 
 # Reason used when no check applies to a claim type.
 NO_APPLICABLE_CHECKS = "NO_APPLICABLE_CHECKS"
+# Caveat shown when a guard could not be evaluated (it then withdraws nothing).
+GUARD_ERROR = "GUARD_ERROR"
 
 
 def aggregate(
@@ -36,21 +39,39 @@ def aggregate(
     an all-VERIFIED claim into UNVERIFIABLE and nothing else (rules 1 and 2 still win). A guard
     that found nothing adds no reason, so a clean claim keeps its deciding checks' reasons.
     Optional guards that found something become ``caveats``: shown, never deciding.
+
+    A guard that could not be evaluated (ENGINE_ERROR) never decides, required or not: a guard
+    that cannot look must not withdraw a verification, just as stale data withdraws nothing.
+    It is shown once as the caveat GUARD_ERROR.
     """
+
+    def guard_failed(run: CheckRun) -> bool:
+        return run.role == "guard" and run.reason == ENGINE_ERROR
+
     deciding = [
         run
         for run in runs
-        if run.kind in DETERMINISTIC_KINDS and (required is None or run.check_id in required)
+        if run.kind in DETERMINISTIC_KINDS
+        and (required is None or run.check_id in required)
+        and not guard_failed(run)
     ]
 
-    caveats = tuple(
-        run.reason
-        for run in sorted(runs, key=lambda r: r.check_id)
-        if run.role == "guard"
-        and run.result is Result.UNVERIFIABLE
-        and required is not None
-        and run.check_id not in required
-    )
+    found: list[str] = []
+    for run in sorted(runs, key=lambda r: r.check_id):
+        if guard_failed(run):
+            reason = GUARD_ERROR
+        elif (
+            run.role == "guard"
+            and run.result is Result.UNVERIFIABLE
+            and required is not None
+            and run.check_id not in required
+        ):
+            reason = run.reason
+        else:
+            continue
+        if reason not in found:
+            found.append(reason)
+    caveats = tuple(found)
 
     def with_reasons(result: Result, chosen: Sequence[CheckRun]) -> Verdict:
         # Keep reasons in a stable order (by check id) so outputs are reproducible.
@@ -69,6 +90,7 @@ def aggregate(
             result=Result.UNVERIFIABLE,
             reasons=(NO_APPLICABLE_CHECKS,),
             check_runs=tuple(runs),
+            caveats=caveats,
         )
 
     for result in (Result.CONTRADICTED, Result.PENDING, Result.UNVERIFIABLE):

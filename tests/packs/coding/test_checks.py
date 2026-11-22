@@ -568,3 +568,9 @@ def test_test_files_without_a_test_case_get_a_caution(engine):
     assert (result.result, result.caveats) == (Result.VERIFIED, ("NO_TEST_CASE_ADDED",))
     real = added_tests_evidence(test_source_changed=1, test_cases_added=3, asserts_added=4)
     assert verdict(engine, claim(TESTS_ADDED), real).caveats == ()
+
+
+def test_a_summary_missing_fields_withdraws_nothing(engine):
+    partial = Evidence("changed_files_summary", "7", T0, {"files": 3})
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("pytest"), partial])
+    assert result.result is Result.VERIFIED

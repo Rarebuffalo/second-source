@@ -1,7 +1,7 @@
 # Guard: are the "added tests" themselves switched off? (role: guard, required)
 # A PR that adds test files whose new tests are skipped has not added running tests.
 id: coding.tests_added_guard
-version: 1.0.0
+version: 1.1.0
 kind: state
 role: guard
 level: L4
@@ -11,8 +11,10 @@ evidence:
     record_type: changed_files_summary
 derive:
   known: "size(summary) > 0 && !('changed_files_summary' in stale)"
-  skips: "known ? summary[0].test_skips_net : 0"
-  added: "known ? summary[0].test_cases_added : 0"
+  # Every field read is guarded by has(): an older or newer summary must not error.
+  s: "known ? summary[0] : {}"
+  skips: "has(s.test_skips_net) ? s.test_skips_net : 0"
+  added: "has(s.test_cases_added) ? s.test_cases_added : 0"
 outcomes:
   - {when: "skips > 0 && added <= skips", result: UNVERIFIABLE, reason: ADDED_TESTS_ARE_SKIPPED}
   - {otherwise: true, result: VERIFIED, reason: ADDED_TESTS_NOT_SKIPPED}

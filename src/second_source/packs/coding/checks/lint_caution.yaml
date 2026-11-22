@@ -1,6 +1,6 @@
 # Optional guard for "lint passes": suppressions added in source, or lint configuration changed.
 id: coding.lint_caution
-version: 1.0.0
+version: 1.1.0
 kind: state
 role: guard
 required: false
@@ -10,9 +10,11 @@ evidence:
   summary:
     record_type: changed_files_summary
 derive:
+  # Field reads are guarded by has(): an older or newer summary must not error.
+  s: "size(summary) > 0 ? summary[0] : {}"
   known: "size(summary) > 0"
-  suppressions: "known ? summary[0].lint_suppressions_added : 0"
-  config: "known && summary[0].lint_config_changed"
+  suppressions: "known ? (has(s.lint_suppressions_added) ? s.lint_suppressions_added : 0) : 0"
+  config: "known && (has(s.lint_config_changed) ? s.lint_config_changed : false)"
 outcomes:
   - {when: "suppressions > 0", result: UNVERIFIABLE, reason: LINT_SUPPRESSIONS_ADDED}
   - {when: "config", result: UNVERIFIABLE, reason: LINT_CONFIG_CHANGED}

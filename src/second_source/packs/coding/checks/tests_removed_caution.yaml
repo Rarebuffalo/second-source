@@ -2,7 +2,7 @@
 # Most deleted tests go with deleted code, so this fires only when at least two more test cases
 # were removed than added, no source file was deleted and the source did not shrink.
 id: coding.tests_removed_caution
-version: 1.0.0
+version: 1.1.0
 kind: state
 role: guard
 required: false
@@ -12,9 +12,11 @@ evidence:
   summary:
     record_type: changed_files_summary
 derive:
+  # Field reads are guarded by has(): an older or newer summary must not error.
+  s: "size(summary) > 0 ? summary[0] : {}"
   known: "size(summary) > 0"
-  net_removed: "known ? summary[0].test_cases_removed - summary[0].test_cases_added : 0"
-  code_kept: "known && !summary[0].code_removed && summary[0].code_net >= 0"
+  net_removed: "known ? (has(s.test_cases_removed) ? s.test_cases_removed : 0) - (has(s.test_cases_added) ? s.test_cases_added : 0) : 0"
+  code_kept: "known && !(has(s.code_removed) ? s.code_removed : false) && (has(s.code_net) ? s.code_net : 0) >= 0"
 outcomes:
   - {when: "net_removed >= 2 && code_kept", result: UNVERIFIABLE, reason: PR_REMOVES_TESTS}
   - {otherwise: true, result: VERIFIED, reason: NO_TESTS_REMOVED}

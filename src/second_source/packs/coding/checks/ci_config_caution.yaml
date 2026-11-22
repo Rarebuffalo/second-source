@@ -5,7 +5,7 @@
 # guard so a claim can carry several cautions. A signal moves to a required guard only after
 # audited precision of at least 0.90 on at least 30 flagged PRs (docs/packs/coding.md).
 id: coding.ci_config_caution
-version: 1.0.0
+version: 1.1.0
 kind: state
 role: guard
 required: false
@@ -15,7 +15,9 @@ evidence:
   summary:
     record_type: changed_files_summary
 derive:
-  changed: "size(summary) > 0 && summary[0].ci_config_changed"
+  # Field reads are guarded by has(): an older or newer summary must not error.
+  s: "size(summary) > 0 ? summary[0] : {}"
+  changed: "size(summary) > 0 && (has(s.ci_config_changed) ? s.ci_config_changed : false)"
 outcomes:
   - {when: "changed", result: UNVERIFIABLE, reason: PR_CHANGES_CI_CONFIG}
   - {otherwise: true, result: VERIFIED, reason: CI_CONFIG_UNCHANGED}

@@ -123,3 +123,24 @@ def test_guards_can_only_move_verified_to_unverifiable():
         for guard_result in (Result.VERIFIED, Result.UNVERIFIABLE):
             after = aggregate("c1", [*base, guard("a.guard", guard_result)]).result
             assert after == before or (before, after) == (Result.VERIFIED, Result.UNVERIFIABLE)
+
+
+def test_a_guard_that_errors_withdraws_nothing():
+    # Code review H5: a guard that cannot be evaluated must not erase a verification.
+    runs = [
+        run("a.ci", Result.VERIFIED, "PASSED"),
+        guard("a.guard", Result.UNVERIFIABLE, "ENGINE_ERROR"),
+        guard("a.note", Result.UNVERIFIABLE, "ENGINE_ERROR"),
+    ]
+    verdict = aggregate("c1", runs, required=frozenset({"a.ci", "a.guard"}))
+    assert (verdict.result, verdict.reasons) == (Result.VERIFIED, ("PASSED",))
+    assert verdict.caveats == ("GUARD_ERROR",)  # shown once
+
+
+def test_caveats_are_not_repeated():
+    runs = [
+        run("a.ci", Result.VERIFIED),
+        guard("a.one", Result.UNVERIFIABLE, "CI_CHANGED"),
+        guard("a.two", Result.UNVERIFIABLE, "CI_CHANGED"),
+    ]
+    assert aggregate("c1", runs, required=frozenset({"a.ci"})).caveats == ("CI_CHANGED",)

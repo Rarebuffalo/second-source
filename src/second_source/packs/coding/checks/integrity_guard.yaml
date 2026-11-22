@@ -11,7 +11,7 @@
 # integrity_inspection guard shows "not inspected" instead (a rate limit must not silently erase
 # verifications). Facts come from packs/coding/diff_facts.py.
 id: coding.integrity_guard
-version: 1.0.0
+version: 1.1.0
 kind: state
 role: guard
 level: L4
@@ -21,9 +21,11 @@ evidence:
     record_type: changed_files_summary
 derive:
   known: "size(summary) > 0 && !('changed_files_summary' in stale)"
-  skips: "known ? summary[0].test_skips_net : 0"
-  weakened: "known ? summary[0].test_cmd_weakened : 0"
-  gate_lowered: "known && summary[0].coverage_gate_lowered"
+  # Every field read is guarded by has(): an older or newer summary must not error.
+  s: "known ? summary[0] : {}"
+  skips: "has(s.test_skips_net) ? s.test_skips_net : 0"
+  weakened: "has(s.test_cmd_weakened) ? s.test_cmd_weakened : 0"
+  gate_lowered: "has(s.coverage_gate_lowered) && s.coverage_gate_lowered"
 outcomes:
   - {when: "skips > 0", result: UNVERIFIABLE, reason: PR_SKIPS_TESTS}
   - {when: "weakened > 0", result: UNVERIFIABLE, reason: PR_WEAKENS_TEST_COMMAND}
