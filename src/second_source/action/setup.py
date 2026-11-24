@@ -12,6 +12,8 @@ from typing import Any
 
 import yaml
 
+from second_source import __version__
+
 WORKFLOW_DIR = Path(".github/workflows")
 WORKFLOW_FILE = WORKFLOW_DIR / "second-source.yml"
 CI_TRIGGERS = frozenset({"push", "pull_request", "pull_request_target"})
@@ -58,7 +60,14 @@ def ci_workflow_names(root: Path) -> list[str]:
     return sorted(set(names))
 
 
-def workflow_text(ci_names: list[str], action_ref: str = "Rarebuffalo/second-source@v1") -> str:
+def default_action_ref(version: str = __version__) -> str:
+    """The Action's moving major tag for this release (``v0`` while 0.x), so a generated
+    workflow points at a tag that exists and picks up fixes within the major version."""
+    return f"Rarebuffalo/second-source@v{version.split('.')[0]}"
+
+
+def workflow_text(ci_names: list[str], action_ref: str | None = None) -> str:
+    action_ref = action_ref or default_action_ref()
     if ci_names:
         quoted = ", ".join(f'"{name}"' for name in ci_names)
         workflow_run = (

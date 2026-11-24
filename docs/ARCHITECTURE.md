@@ -239,7 +239,8 @@ A pack is a directory containing:
 
 - Licence: Apache-2.0 (`LICENSE`), with third-party attributions in `NOTICE`.
 - `CONTRIBUTING.md`, `CODE_OF_CONDUCT.md`, `SECURITY.md`, and issue and PR templates.
-- Semantic versioning for the package, the Action (`v1` major tag) and each pack.
+- Semantic versioning for the package, the Action (a moving major tag: `v0` while 0.x, then
+  `v1`; `second-source init` writes the one matching its own version) and each pack.
 - Every change is a small, focused commit; `scripts/check.sh` must pass before each one.
 
 ## 10. Build plan

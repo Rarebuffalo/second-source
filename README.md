@@ -164,8 +164,8 @@ More: [architecture](docs/ARCHITECTURE.md), [coding pack](docs/packs/coding.md),
 - **Agent Claim Truth benchmark.** How often each coding agent's claims hold up, with
   confidence intervals, published as open data. The pipeline is built
   (`second-source bench`); the first full run is next.
-- **GitHub Action.** Built and tested (see above); next are a first tagged release (`v1`) and a
-  Marketplace listing.
+- **GitHub Action.** Built and tested (see above); next are a first tagged release
+  (`v0.5.0`, used as `@v0`) and a Marketplace listing.
 - **Durability checks over time.** The Action re-checks merged claims daily (reverts,
   reopened issues); a longer watch window is planned.
 - **More domains.** The same core for customer-support, voice and other agents.

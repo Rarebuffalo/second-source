@@ -9,6 +9,7 @@ from second_source.action.setup import (
     WORKFLOW_FILE,
     WorkflowExists,
     ci_workflow_names,
+    default_action_ref,
     workflow_text,
     write_workflow,
 )
@@ -19,6 +20,11 @@ def add_workflow(root, filename, text):
     path = root / ".github" / "workflows" / filename
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(text)
+
+
+def test_the_action_ref_is_the_major_tag_of_this_version():
+    assert default_action_ref("0.5.0") == "Rarebuffalo/second-source@v0"
+    assert default_action_ref("1.2.3") == "Rarebuffalo/second-source@v1"
 
 
 def test_finds_ci_workflows_by_name_or_path(tmp_path):
@@ -37,7 +43,7 @@ def test_generated_workflow_is_valid_and_safe():
     assert set(on) >= {"pull_request_target", "issue_comment", "schedule", "workflow_dispatch"}
     assert document["permissions"]["checks"] == "write"
     steps = document["jobs"]["check"]["steps"]
-    assert steps == [{"uses": "Rarebuffalo/second-source@v1"}]  # no checkout of PR code
+    assert steps == [{"uses": default_action_ref()}]  # no checkout of PR code
     assert "github.event.pull_request.number" in document["concurrency"]["group"]
     # CI finishing re-checks the same PR: it must share that PR's group.
     assert "workflow_run.pull_requests[0].number" in document["concurrency"]["group"]
