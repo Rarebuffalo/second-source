@@ -3,9 +3,11 @@
 One run: read inputs and the triggering event, plan what to do, then for each target PR
 check it, wait for CI if needed, and publish the check run and job summary.
 
-Failures on one PR (a deleted PR, a GitHub error, the rate limit) are reported as workflow
-warnings and never fail the workflow: Second Source is advice, and a broken advisor must not
-block anyone's merge. Only bad inputs fail the run, so misconfiguration is noticed.
+Failures (a deleted PR, a GitHub error, the rate limit) are reported as workflow warnings and
+never fail the workflow: Second Source is advice, and a broken advisor must not block anyone's
+merge. Only bad inputs fail the run, so misconfiguration is noticed. At the rate limit the run
+stops instead of failing every remaining PR, and the sweep stops early while requests remain
+for PR events (action/sweep.py).
 """
 
 from __future__ import annotations
@@ -27,10 +29,10 @@ from second_source.action.publish import (
     publish_check_run,
     write_job_summary,
 )
-from second_source.action.sweep import recent_pull_requests
+from second_source.action.sweep import SWEEP_RESERVE, recent_pull_requests
 from second_source.action.wait import wait_for_ci
 from second_source.pipeline import PullRequestReport, check_pull_request
-from second_source.sources.github.client import GitHubClient, GitHubError
+from second_source.sources.github.client import GitHubClient, GitHubError, RateLimited
 from second_source.sources.github.source import GitHubSource, PullRequestNotFound
 from second_source.sources.github.urls import PullRequestRef
 
@@ -62,12 +64,31 @@ def run_action(
 
     with client_factory(inputs.token) as client:
         run = ActionRun(client, inputs, plan, context.summary_path, now, sleep, clock, out)
-        refs, wait_seconds = run.targets(context.repository)
-        for ref in refs:
+        try:
+            refs, wait_seconds = run.targets(context.repository)
+        except GitHubError as error:
+            print(f"::warning::could not list what to check: {error}", file=out)
+            return EXIT_OK
+        for done, ref in enumerate(refs):
+            remaining = client.stats.rate_remaining
+            if plan.mode is Mode.SWEEP and remaining is not None and remaining < SWEEP_RESERVE:
+                print(
+                    f"Sweep stopped after {done} of {len(refs)} PR(s): {remaining} API requests "
+                    "left, kept for pull request events. The rest are checked next time.",
+                    file=out,
+                )
+                break
             try:
                 run.process(ref, wait_seconds)
             except PullRequestNotFound:
                 print(f"::warning::{ref} was not found or is not accessible.", file=out)
+            except RateLimited:
+                print(
+                    f"::warning::GitHub's rate limit was reached at {ref}; stopped. "
+                    "Remaining PRs are checked by their next event or the daily sweep.",
+                    file=out,
+                )
+                break
             except GitHubError as error:
                 print(f"::warning::could not check {ref}: {error}", file=out)
     return EXIT_OK

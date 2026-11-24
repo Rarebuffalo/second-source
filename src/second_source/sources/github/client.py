@@ -78,6 +78,9 @@ class RequestStats:
 
     requests: int = 0
     not_modified: int = 0
+    # Requests left in the token's rate-limit window, from the last response that said
+    # (``x-ratelimit-remaining``); None until GitHub has told us.
+    rate_remaining: int | None = None
 
 
 class GitHubClient:
@@ -164,6 +167,7 @@ class GitHubClient:
                 self._sleep(2**attempt)
                 continue
             self.stats.requests += 1
+            self._note_rate(response)
             if response.status_code in (200, 201):
                 return response.json()
             if response.status_code == 204:
@@ -177,6 +181,11 @@ class GitHubClient:
                 continue
             raise GitHubError(response.status_code, path)
         raise AssertionError("unreachable")  # the loop always returns or raises
+
+    def _note_rate(self, response: httpx.Response) -> None:
+        remaining = response.headers.get("x-ratelimit-remaining", "")
+        if remaining.isdigit():
+            self.stats.rate_remaining = int(remaining)
 
     def _url(self, path: str, params: dict[str, Any] | None) -> str:
         request = self._http.build_request("GET", path, params=params)
@@ -199,6 +208,7 @@ class GitHubClient:
                 self._sleep(2**attempt)
                 continue
             self.stats.requests += 1 + len(response.history)  # each redirect hop is a request
+            self._note_rate(response)
 
             if response.status_code == 304 and cached:
                 self.stats.not_modified += 1

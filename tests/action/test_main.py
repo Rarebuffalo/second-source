@@ -104,6 +104,57 @@ def test_sweep_rechecks_recent_agent_prs(fake_github, tmp_path):
     assert recorder.paths() == [("POST", "/repos/Octo/App/check-runs")]
 
 
+def listing_of(*numbers):
+    return [
+        {
+            "number": n,
+            "updated_at": "2026-11-20T12:00:00Z",
+            "user": {"login": "someone"},
+            "head": {"ref": "codex/fix-parser"},
+            "body": "",
+        }
+        for n in numbers
+    ]
+
+
+class Limited(Recorder):
+    """Every response says how many requests are left; optionally 403 at the limit."""
+
+    def __init__(self, fake, remaining, *, exhausted=False):
+        super().__init__(fake)
+        self.remaining, self.exhausted = remaining, exhausted
+
+    def __call__(self, request):
+        if self.exhausted and request.url.path == PR:
+            return httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
+        response = super().__call__(request)
+        response.headers["x-ratelimit-remaining"] = str(self.remaining)
+        return response
+
+
+def test_the_sweep_stops_while_requests_remain_for_pr_events(fake_github, tmp_path):
+    recorder = Limited(fake_github({"/repos/Octo/App/pulls": listing_of(7, 8, 9)}), 150)
+    code, out = run(tmp_path, recorder, "schedule", {})
+    assert code == EXIT_OK and "Sweep stopped after 0 of 3" in out
+    assert recorder.writes == []
+
+
+def test_the_rate_limit_stops_the_run_without_failing_it(fake_github, tmp_path):
+    fake = fake_github({"/repos/Octo/App/pulls": listing_of(7, 8)})
+    code, out = run(tmp_path, Limited(fake, 900, exhausted=True), "schedule", {})
+    assert code == EXIT_OK and out.count("rate limit was reached") == 1
+
+
+def test_a_failed_listing_warns_without_failing(fake_github, tmp_path):
+    def broken(request):
+        if request.url.path == "/repos/Octo/App/pulls":
+            return httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
+        return fake_github()(request)
+
+    code, out = run(tmp_path, Recorder(broken), "schedule", {})
+    assert code == EXIT_OK and "::warning::could not list what to check" in out
+
+
 def comment(body, association):
     return {
         "action": "created",

@@ -2,8 +2,12 @@
 
 Durability claims ("the merge was not reverted", "the issue stayed closed") are judged over the
 30 days after a merge, and pending claims need a later look. A scheduled run re-checks every
-agent PR updated in the last ``sweep_days`` days; most re-checks are cheap because unchanged
-responses come back as ``304 Not Modified`` from the ETag cache.
+agent PR updated in the last ``sweep_days`` days, newest first.
+
+Each re-check costs roughly 5-15 API requests: the response cache lives only for one run, so
+nothing is free across runs. ``GITHUB_TOKEN`` allows about 1,000 requests an hour per
+repository, so the run stops sweeping while ``SWEEP_RESERVE`` requests are still left for the
+repository's PR events; PRs not reached are re-checked by their own events or the next sweep.
 """
 
 from __future__ import annotations
@@ -16,6 +20,7 @@ from second_source.sources.github.client import GitHubClient
 from second_source.sources.github.urls import PullRequestRef
 
 MAX_PAGES = 5  # up to 500 recently updated PRs per run
+SWEEP_RESERVE = 200  # requests left untouched for PR events while the sweep runs
 
 
 def recent_pull_requests(
