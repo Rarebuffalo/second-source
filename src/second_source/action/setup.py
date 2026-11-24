@@ -15,10 +15,16 @@ import yaml
 WORKFLOW_DIR = Path(".github/workflows")
 WORKFLOW_FILE = WORKFLOW_DIR / "second-source.yml"
 CI_TRIGGERS = frozenset({"push", "pull_request", "pull_request_target"})
-# One run at a time per PR, so two events cannot publish out of order.
+# One run at a time per PR: PR events, comments and the CI-finished re-check of the same PR
+# share a group. A CI run from a fork lists no PR and gets its own group; publish_check_run
+# also refuses to replace a newer report with an older one, so overlap cannot reorder results.
 _CONCURRENCY_KEY = (
-    "${{ github.event.pull_request.number || github.event.issue.number || github.run_id }}"
+    "${{ github.event.pull_request.number || github.event.issue.number"
+    " || github.event.workflow_run.pull_requests[0].number || github.run_id }}"
 )
+# Longer than the longest CI wait (60 minutes) plus checking. A cancelled or timed-out run can
+# leave the check run "in progress"; the next event or the daily sweep republishes it.
+_JOB_TIMEOUT_MINUTES = 75
 
 
 def _triggers(document: dict[Any, Any]) -> set[str]:
@@ -101,6 +107,7 @@ jobs:
       github.event_name != 'issue_comment' ||
       (github.event.issue.pull_request && contains(github.event.comment.body, '/second-source'))
     runs-on: ubuntu-latest
+    timeout-minutes: {_JOB_TIMEOUT_MINUTES}
     steps:
       - uses: {action_ref}
 """

@@ -1,7 +1,7 @@
 """Tests for check-run publishing and conclusions (action/publish.py)."""
 
 import json
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 
 import httpx
 import pytest
@@ -141,6 +141,27 @@ def test_check_run_is_created_once_then_updated(fake_github, existing, method, p
     assert body["name"] == CHECK_NAME and body["conclusion"] == "success"
     assert body["output"]["title"] == "1 verified"
     assert ("head_sha" in body) is (method == "POST")
+
+
+def test_an_older_report_never_replaces_a_newer_one(fake_github):
+    # Two runs on one PR: a run still waiting for CI must not overwrite the verdict that a
+    # later run (triggered by CI finishing) already published.
+    def client_for(existing):
+        recorder = Recorder(fake_github(), existing)
+        transport = httpx.MockTransport(recorder)
+        return recorder, GitHubClient(transport=transport, sleep=lambda _s: None)
+
+    newer = (DAY_AFTER + timedelta(minutes=5)).isoformat()
+    recorder, client = client_for([{"id": 5, "external_id": newer}])
+    report = check_pull_request(REF, GitHubSource(client, clock=lambda: DAY_AFTER), now=DAY_AFTER)
+    assert publish_check_run(client, report, Outcome("in_progress", None, "Waiting")) == 5
+    assert recorder.writes == []
+    # An older or unreadable record is replaced, and the new one records its own time.
+    for shown in ((DAY_AFTER - timedelta(minutes=5)).isoformat(), "", "junk"):
+        recorder, client = client_for([{"id": 5, "external_id": shown}])
+        publish_check_run(client, report, Outcome("completed", "success", "1 verified"))
+        ((_method, _path, body),) = recorder.writes
+        assert body["external_id"] == report.checked_at.isoformat()
 
 
 def test_in_progress_checks_send_no_conclusion(fake_github):

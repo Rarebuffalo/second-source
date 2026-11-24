@@ -20,7 +20,9 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
+from datetime import datetime
 from pathlib import Path
+from typing import Any
 
 from second_source.action.commands import DISPUTED_LABEL
 from second_source.core.model import Claim, Result
@@ -95,12 +97,27 @@ def summary_markdown(report: PullRequestReport) -> str:
     return text
 
 
+def _checked_at(run: dict[str, Any]) -> datetime | None:
+    """When the report shown in an existing check run was made (its ``external_id``)."""
+    try:
+        return datetime.fromisoformat(str(run.get("external_id") or ""))
+    except ValueError:
+        return None  # written by an older version, or by hand: treat as older than anything
+
+
 def publish_check_run(client: GitHubClient, report: PullRequestReport, outcome: Outcome) -> int:
-    """Create or update the check run on the PR's head commit; return its id."""
+    """Create or update the check run on the PR's head commit; return its id.
+
+    Several runs can work on one PR at once (a PR event still waiting for CI, the run that CI's
+    completion triggered, the daily sweep). Each check run records when its report was made, in
+    ``external_id``, and a report older than the one already shown is not published, so a slow
+    run can never put an outdated "Waiting for CI" over a newer verdict.
+    """
     base = f"/repos/{report.ref.owner}/{report.ref.repo}"
     body: dict[str, object] = {
         "name": CHECK_NAME,
         "status": outcome.status,
+        "external_id": report.checked_at.isoformat(),
         "output": {"title": outcome.title, "summary": summary_markdown(report)},
     }
     if outcome.conclusion is not None:
@@ -111,6 +128,9 @@ def publish_check_run(client: GitHubClient, report: PullRequestReport, outcome: 
     )
     if existing:
         run_id = int(existing[0]["id"])
+        shown = _checked_at(existing[0])
+        if shown is not None and shown > report.checked_at:
+            return run_id  # a newer report is already shown
         client.patch(f"{base}/check-runs/{run_id}", body)
         return run_id
     created = client.post(f"{base}/check-runs", {**body, "head_sha": report.head_sha})
