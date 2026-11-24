@@ -110,7 +110,8 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  check:
+  # The job id is its check-run name; checks ignore "second-source" as CI evidence.
+  second-source:
     # Comments only matter when they hold a /second-source command on a pull request.
     if: >-
       github.event_name != 'issue_comment' ||

@@ -31,6 +31,7 @@ Keeping the mappers pure means almost all logic is tested with JSON fixtures and
 | Commits (texts, refs, trailers) | `GET /repos/{o}/{r}/pulls/{n}/commits` | 1–3 | Up to 250 commits |
 | Agent comments | `GET /repos/{o}/{r}/issues/{n}/comments` | 1+ | Only comments by the PR author are used as claim texts |
 | `check_result` | `GET /repos/{o}/{r}/commits/{ref}/check-runs?filter=latest` and `GET .../commits/{ref}/status` | 2 per referenced commit | `filter=latest` returns the newest run per job |
+| `ci_workflow_run` | `GET /repos/{o}/{r}/actions/runs?head_sha={ref}` | 1 per referenced commit | Needs `actions: read`; without it the type is stale and CI waiting falls back to check runs |
 | `changed_file` | `GET /repos/{o}/{r}/pulls/{n}/files` | 1+ | Paths and counts only; patches are discarded |
 | `issue_state` | `GET /repos/{repo}/issues/{n}` and `GET .../issues/{n}/events` | 2 per referenced issue | Events give the last `reopened` time |
 | `revert` | `GET /repos/{o}/{r}/commits?sha={base}&path={one changed file}&since={merged_at}&until={+30 days}` | 1 | Only commits touching one of the PR's files (a full revert must touch it); shares the PR file list with `changed_file`. Skipped for merges into a non-default branch |
@@ -38,7 +39,7 @@ Keeping the mappers pure means almost all logic is tested with JSON fixtures and
 
 Evidence is fetched **only for the record types the extracted claims need**
 (`Engine.evidence_types_for`). A PR with no claims costs about 3 calls; a typical agent PR
-costs about 6–10.
+costs about 7–11 (CI claims add one workflow-run lookup per commit).
 
 ## 3. Which commit a text refers to
 

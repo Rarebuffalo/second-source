@@ -70,6 +70,7 @@ ROUTES = {
         ],
     },
     "/repos/Octo/App/commits/c1/status": {"state": "success", "statuses": []},
+    "/repos/Octo/App/actions/runs": {"total_count": 0, "workflow_runs": []},
     "/repos/Octo/App/pulls/7/files": [
         {"filename": "src/parser.py", "status": "modified", "additions": 4, "deletions": 1},
         {"filename": "tests/test_parser.py", "status": "added", "additions": 30, "deletions": 0},

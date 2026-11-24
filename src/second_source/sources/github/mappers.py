@@ -185,6 +185,31 @@ def check_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidence:
     )
 
 
+def workflow_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidence:
+    """One GitHub Actions workflow run on a commit. Used only to know whether CI is still
+    coming: a run that is queued, waiting on ``needs:`` jobs or held for approval (Copilot and
+    fork PRs) may have no check runs yet. Never evidence that a claim is true or false."""
+    return Evidence(
+        record_type="ci_workflow_run",
+        external_ref=f"{ref}/workflow:{run['name']}",
+        observed_at=observed_at,
+        version=int(run["id"]),
+        occurred_at=parse_time(run.get("created_at")),
+        attributes=_without_none(
+            {
+                "ref": ref,
+                "name": run["name"],
+                "status": run.get("status"),
+                "conclusion": run.get("conclusion"),
+                "event": run.get("event"),
+                # When the run was triggered, close to when the commit was pushed (a commit's
+                # own date can be much older): CI waiting is counted from here.
+                "created_at": parse_time(run.get("created_at")),
+            }
+        ),
+    )
+
+
 # Commit statuses use a different vocabulary than check runs; map them onto it.
 _STATUS_CONCLUSION = {"success": "success", "failure": "failure", "error": "failure"}
 

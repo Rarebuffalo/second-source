@@ -23,12 +23,17 @@
 # matching job (NO_MATCHING_CI_JOBS): GitHub deletes old workflow runs, so for older PRs the
 # evidence is simply gone, which says nothing about job naming.
 #
-# Waiting: a matching job that is still running is waited for until `timeout_hours`. With no
-# matching job yet, the check waits only while other CI on the judged commit is still running
-# (a matching job may appear in it) or, if no CI has shown up at all, for a short grace period
-# (`start_grace_minutes`): CI creates its check runs within moments of a push, so a commit
-# whose CI has all finished without a matching job, or that has no CI after the grace period,
-# is decided now instead of sitting at "Waiting for CI" for hours.
+# Waiting (bounded by `timeout_hours`): the check waits while a matching job is running, while
+# any GitHub Actions workflow on the judged commit has not finished (queued, waiting on
+# `needs:` jobs that have no check run yet, or held for approval, as Copilot and fork PRs are
+# until someone clicks "Approve and run"), or, with no matching job yet, while other CI on the
+# commit still runs. A commit with no CI seen at all waits only a short grace period
+# (`start_grace_minutes`, counted from the commit's own time): workflow runs appear the moment
+# a commit is pushed, so this mostly concerns external CI. The waiting window runs from the
+# commit's time or, when later, from when a workflow run on it was triggered: a commit pushed
+# long after it was made still gets its CI waited for. A commit whose CI has all finished
+# without a matching job is decided at once instead of sitting at "Waiting for CI" for hours.
+# Second Source's own runs (check "Second Source", job "second-source") are never CI evidence.
 #
 # Editable texts (PR body and title) are read in their final form, but the PR may have gained
 # commits after it was opened: Copilot opens with an empty "Initial plan" commit and rewrites
@@ -43,7 +48,7 @@
 # Claims with a single commit (commit messages, comments, PRs without later commits) behave as
 # before: `final_ref` is absent and both views are the same commit.
 id: coding.ci_result
-version: 1.7.0
+version: 1.8.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -55,6 +60,11 @@ params:
 evidence:
   checks:
     record_type: check_result
+    where: >-
+      has(claim.attributes.ref) && (e.ref == claim.attributes.ref ||
+      (has(claim.attributes.final_ref) && e.ref == claim.attributes.final_ref))
+  workflows:
+    record_type: ci_workflow_run
     where: >-
       has(claim.attributes.ref) && (e.ref == claim.attributes.ref ||
       (has(claim.attributes.final_ref) && e.ref == claim.attributes.final_ref))
@@ -79,14 +89,23 @@ derive:
   started: "has(claim.attributes.final_at) ? claim.attributes.final_at : claim.made_at"
   deadline: "started + duration(string(params.timeout_hours) + 'h')"
   grace_end: "started + duration(string(params.start_grace_minutes) + 'm')"
-  # Our own check run sits on the head commit too; it is not CI evidence.
-  ci_records: "checks.filter(c, c.name != 'Second Source')"
+  # Our own check run and job sit on the head commit too; they are not CI evidence.
+  ci_records: "checks.filter(c, !(c.name in ['Second Source', 'second-source']))"
   ci_running_final: "ci_records.filter(c, c.ref == final && c.status != 'completed')"
-  ci_seen_final: "size(ci_records.filter(c, c.ref == final)) > 0"
-  # Worth waiting for: a matching job still running, or none yet while other CI on the commit
-  # still runs (or none has appeared within the grace period).
+  workflows_pending: >-
+    workflows.filter(w, w.ref == final && w.name != 'Second Source' &&
+    (w.status != 'completed' || (has(w.conclusion) && w.conclusion == 'action_required')))
+  ci_seen_final: >-
+    size(ci_records.filter(c, c.ref == final)) > 0 ||
+    size(workflows.filter(w, w.ref == final && w.name != 'Second Source')) > 0
+  # Worth waiting for: a matching job still running, a workflow not finished (its jobs may
+  # match), or no matching job yet while other CI runs or none has appeared within the grace.
+  window: "duration(string(params.timeout_hours) + 'h')"
+  in_window: >-
+    now < deadline || workflows.exists(w, w.ref == final && w.name != 'Second Source' &&
+    has(w.created_at) && now < w.created_at + window)
   awaiting: >-
-    now < deadline && (size(running) > 0 || (total == 0 &&
+    in_window && (size(running) > 0 || size(workflows_pending) > 0 || (total == 0 &&
     (size(ci_running_final) > 0 || (!ci_seen_final && now < grace_end))))
 outcomes:
   - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}

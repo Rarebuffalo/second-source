@@ -63,6 +63,14 @@ def check_result(name, conclusion="success", *, status="completed", ref=SHA, run
     )
 
 
+def workflow(name, status="completed", conclusion="success", *, ref=SHA, created=T0, run_id=1):
+    """A GitHub Actions workflow run on a commit (whether CI is still coming)."""
+    attributes = {"ref": ref, "name": name, "status": status, "created_at": created}
+    if conclusion is not None:
+        attributes["conclusion"] = conclusion
+    return Evidence("ci_workflow_run", f"{ref}/workflow:{name}", T0, attributes, version=run_id)
+
+
 def changed_file(path, status="modified", additions=5):
     return Evidence(
         "changed_file",
@@ -255,9 +263,54 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
     assert (later.result, later.reasons) == (Result.UNVERIFIABLE, ("CLAIM_COMMIT_AMBIGUOUS",))
 
 
+@pytest.mark.parametrize(
+    ("evidence", "hours", "expected", "reason"),
+    [
+        # A test job passed, but a workflow is still running: a later `needs:` job may match.
+        (
+            [check_result("pytest"), workflow("CI", "in_progress", None)],
+            1,
+            Result.PENDING,
+            "AWAITING_CI",
+        ),
+        # Held for approval (Copilot, forks): no check runs yet, so CI has not run.
+        ([workflow("CI", "completed", "action_required")], 1, Result.PENDING, "AWAITING_CI"),
+        ([workflow("CI", "completed", "action_required")], 7, Result.UNVERIFIABLE, "NO_CI_RECORDS"),
+        # Our own workflow running is not CI.
+        (
+            [check_result("build"), workflow("Second Source", "in_progress", None)],
+            1,
+            Result.UNVERIFIABLE,
+            "NO_MATCHING_CI_JOBS",
+        ),
+        # A commit made long ago but pushed just now: its CI is waited for from the push.
+        (
+            [workflow("CI", "queued", None, created=T0 + timedelta(hours=20))],
+            21,
+            Result.PENDING,
+            "AWAITING_CI",
+        ),
+        # Workflows all finished, no matching job: decided at once.
+        ([check_result("build"), workflow("CI")], 1, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
+    ],
+    ids=[
+        "workflow-running",
+        "held-for-approval",
+        "held-too-long",
+        "own-workflow",
+        "pushed-late",
+        "all-finished",
+    ],
+)
+def test_waiting_follows_workflow_runs(engine, evidence, hours, expected, reason):
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), evidence, hours=hours)
+    assert (result.result, result.reasons) == (expected, (reason,))
+
+
 def test_our_own_check_run_is_not_ci_evidence(engine):
-    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result("Second Source")], hours=12)
-    assert result.reasons == ("NO_CI_RECORDS",)
+    for own in ("Second Source", "second-source"):  # the check run, and the workflow's job
+        result = verdict(engine, claim(TESTS_PASS, ref=SHA), [check_result(own)], hours=12)
+        assert result.reasons == ("NO_CI_RECORDS",)
 
 
 def test_missing_commit_reference_is_unverifiable(engine):

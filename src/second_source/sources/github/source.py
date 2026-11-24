@@ -48,6 +48,7 @@ REVERT_MAX_PAGES = 10  # up to 1,000 commits in the window
 FETCH_ORDER = (
     "pr_state",
     "check_result",
+    "ci_workflow_run",
     "changed_file",
     "changed_files_summary",
     "issue_state",
@@ -138,6 +139,7 @@ class GitHubSource:
         fetchers = {
             "pr_state": self._pr_state,
             "check_result": self._check_results,
+            "ci_workflow_run": self._workflow_runs,
             "changed_file": self._changed_files,
             "changed_files_summary": self._files_summary,
             "issue_state": self._issue_states,
@@ -182,6 +184,16 @@ class GitHubSource:
             records.extend(
                 mappers.status_evidence(status, ref, now) for status in combined.get("statuses", [])
             )
+        return records
+
+    def _workflow_runs(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
+        records: list[Evidence] = []
+        for ref in sorted(_claim_refs(claims)):
+            now = self._clock()
+            runs = self.client.get_paginated(
+                f"{self._base(loaded)}/actions/runs", {"head_sha": ref}, max_pages=1
+            )
+            records.extend(mappers.workflow_run_evidence(run, ref, now) for run in runs)
         return records
 
     def _pull_files(self, loaded: LoadedPullRequest) -> list[Json]:

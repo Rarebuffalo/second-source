@@ -42,12 +42,12 @@ def test_generated_workflow_is_valid_and_safe():
     assert on["workflow_run"]["workflows"] == ["CI"]
     assert set(on) >= {"pull_request_target", "issue_comment", "schedule", "workflow_dispatch"}
     assert document["permissions"]["checks"] == "write"
-    steps = document["jobs"]["check"]["steps"]
+    steps = document["jobs"]["second-source"]["steps"]
     assert steps == [{"uses": default_action_ref()}]  # no checkout of PR code
     assert "github.event.pull_request.number" in document["concurrency"]["group"]
     # CI finishing re-checks the same PR: it must share that PR's group.
     assert "workflow_run.pull_requests[0].number" in document["concurrency"]["group"]
-    assert document["jobs"]["check"]["timeout-minutes"] > 60  # longer than the longest wait
+    assert document["jobs"]["second-source"]["timeout-minutes"] > 60  # longer than the longest wait
 
 
 def test_without_ci_workflows_the_workflow_still_works():
