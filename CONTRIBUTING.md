@@ -60,6 +60,18 @@ Checks are YAML files with CEL expressions in `src/second_source/packs/coding/ch
 an existing one, add scenario tests in `tests/packs/coding/test_checks.py`, and remember the
 rule: missing or stale evidence gives `UNVERIFIABLE`, never `CONTRADICTED`.
 
+## Releasing (maintainers)
+
+`second-source init` writes the Action's moving major tag (`@v0` while 0.x), so every release
+must move it, or new workflows point at a tag that does not exist:
+
+1. Set `__version__` in `src/second_source/__init__.py` and `pyproject.toml`; move the
+   `[Unreleased]` notes in `CHANGELOG.md` under the new version.
+2. Run `scripts/check.sh`, then tag: `git tag vX.Y.Z`.
+3. Move the major tag to the same commit: `git tag -f v0 vX.Y.Z`, and push both
+   (`git push origin vX.Y.Z` and `git push -f origin v0`).
+4. Workflows pinned to a commit SHA do not get the fix; say so in the release notes.
+
 ## Code of conduct and security
 
 By taking part you agree to the [Code of Conduct](CODE_OF_CONDUCT.md). Report security

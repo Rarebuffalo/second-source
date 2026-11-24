@@ -113,7 +113,8 @@ def publish_check_run(client: GitHubClient, report: PullRequestReport, outcome: 
     Several runs can work on one PR at once (a PR event still waiting for CI, the run that CI's
     completion triggered, the daily sweep). Each check run records when its report was made, in
     ``external_id``, and a report older than the one already shown is not published, so a slow
-    run can never put an outdated "Waiting for CI" over a newer verdict.
+    run does not put an outdated "Waiting for CI" over a newer verdict. (Read-then-write is not
+    atomic, and runners' clocks can differ by seconds; the remaining window is that small.)
     """
     base = f"/repos/{report.ref.owner}/{report.ref.repo}"
     body: dict[str, object] = {

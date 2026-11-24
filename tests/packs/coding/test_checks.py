@@ -259,6 +259,13 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
     assert (result.result, result.reasons) == (Result.PENDING, ("AWAITING_CI",))
     # No CI ever appears on the final head: after the grace period it is decided, and a
     # failure on the opening commit alone is still not a contradiction.
+    # Its CI is queued an hour after the push: still waited for, by the final head's own time.
+    queued = [
+        check_result("pytest", "failure"),
+        check_result("pytest", None, status="queued", ref=FINAL),
+    ]
+    still = verdict(engine, pushed, queued, hours=21)
+    assert (still.result, still.reasons) == (Result.PENDING, ("AWAITING_CI",))
     later = verdict(engine, pushed, [check_result("pytest", "failure")], hours=21)
     assert (later.result, later.reasons) == (Result.UNVERIFIABLE, ("CLAIM_COMMIT_AMBIGUOUS",))
 
@@ -305,6 +312,25 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
 def test_waiting_follows_workflow_runs(engine, evidence, hours, expected, reason):
     result = verdict(engine, claim(TESTS_PASS, ref=SHA), evidence, hours=hours)
     assert (result.result, result.reasons) == (expected, (reason,))
+
+
+def test_other_ci_running_on_the_final_head_is_waited_for(engine):
+    two_commits = claim(TESTS_PASS, ref=SHA, final_ref=FINAL)
+    other = [check_result("build", None, status="in_progress", ref=FINAL)]
+    result = verdict(engine, two_commits, other, hours=1)
+    assert (result.result, result.reasons) == (Result.PENDING, ("AWAITING_CI",))
+
+
+def test_a_pending_commit_status_counts_as_running(engine):
+    # Commit statuses (older CI) map "pending" to in_progress.
+    pending = Evidence(
+        "check_result",
+        f"{SHA}/status:ci/jenkins",
+        T0,
+        {"ref": SHA, "name": "ci/jenkins", "status": "in_progress", "source": "status"},
+    )
+    result = verdict(engine, claim(TESTS_PASS, ref=SHA), [pending], hours=1)
+    assert (result.result, result.reasons) == (Result.PENDING, ("AWAITING_CI",))
 
 
 def test_our_own_check_run_is_not_ci_evidence(engine):

@@ -24,7 +24,7 @@ The recommended workflow listens to four events. Each maps to one mode:
 |---|---|---|
 | `pull_request_target` (opened, edited, synchronize, reopened) | **check** | Check this PR. If CI has not finished, wait for it (see 3) |
 | `workflow_run` (completed) | **check** | CI finished: re-check the PRs whose head commit that run built |
-| `schedule` (daily) | **sweep** | Re-check agent PRs updated or merged in the last 30 days: durability (reverts, reopened issues) and anything still pending |
+| `schedule` (daily) | **sweep** | Re-check agent PRs updated in the last 30 days (merging updates a PR): durability (reverts, reopened issues) and anything still pending. Stops while 200 API requests remain for PR events; each day starts at a different PR, so a busy repository is covered over several days |
 | `issue_comment` (created) | **command** | `/second-source recheck` or `/second-source dispute <reason>` on a PR |
 
 **Why `pull_request_target`.** With plain `pull_request`, PRs from forks get a read-only
@@ -44,15 +44,26 @@ Claims like "tests pass" can only be judged once CI finishes. Two mechanisms, bo
 1. **Short wait.** In check mode, if any verdict is `PENDING` with reason `AWAITING_CI`, poll
    with backoff for up to `wait-minutes` (default 10). Public repositories have free Actions
    minutes; private repositories can set `wait-minutes: 0`.
-2. **Event follow-up.** `workflow_run: completed` re-checks after CI ends, and the daily sweep
-   catches anything left. The check run is updated in place, so the PR always shows the latest
-   verdict.
+2. **Event follow-up.** `workflow_run: completed` re-checks after CI ends (for the workflows
+   `init` found; a CI workflow added later must be added to the list), and the daily sweep
+   picks up what is left over the following days. The check run is updated in place.
 
 While anything is waiting for CI, the check run stays `in_progress` with the current table, so
-people see progress instead of nothing. A claim waits only while it can still be decided: a
-matching job is running (up to 6 hours), or other CI on the commit is still running, or no CI
-has appeared yet (up to 10 minutes). A commit whose CI finished without a matching job is
-decided at once (`NO_MATCHING_CI_JOBS`) instead of showing "Waiting for CI" for hours.
+people see progress instead of nothing. A claim waits, for at most 6 hours from the commit or
+from when its CI was triggered, only while it can still be decided: a matching job is running,
+a GitHub Actions workflow on the commit is unfinished (queued, waiting on `needs:` jobs, or
+held for approval as Copilot and fork PRs are until someone approves the run), or other CI on
+the commit is still running. A commit with no CI seen at all waits 10 minutes from the
+commit's own time; for CI outside GitHub Actions that registers late on a commit pushed long
+after it was made, the claim may be decided before its CI reports, and the next event or sweep
+corrects it. A commit whose CI finished without a matching job is decided at once
+(`NO_MATCHING_CI_JOBS`) instead of showing "Waiting for CI" for hours.
+
+Runs that overlap on one PR (a PR event, the CI-finished re-check) share a concurrency group;
+comment commands have their own, so they are never dropped from the queue. Each check run
+records when its report was made, and an older report is not published over a newer one. One
+wait budget covers a whole run, and the job times out after 75 minutes; a run cancelled
+mid-wait leaves the check "in progress" until the next event or sweep republishes it.
 
 ## 4. Check run conclusion
 
