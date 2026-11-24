@@ -157,7 +157,7 @@ def test_an_older_report_never_replaces_a_newer_one(fake_github):
     assert publish_check_run(client, report, Outcome("in_progress", None, "Waiting")) == 5
     assert recorder.writes == []
     # An older or unreadable record is replaced, and the new one records its own time.
-    for shown in ((DAY_AFTER - timedelta(minutes=5)).isoformat(), "", "junk"):
+    for shown in ((DAY_AFTER - timedelta(minutes=5)).isoformat(), "", "junk", "2030-01-01"):
         recorder, client = client_for([{"id": 5, "external_id": shown}])
         publish_check_run(client, report, Outcome("completed", "success", "1 verified"))
         ((_method, _path, body),) = recorder.writes

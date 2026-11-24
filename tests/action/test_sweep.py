@@ -4,8 +4,9 @@ from datetime import UTC, datetime
 
 import httpx
 
-from second_source.action.sweep import recent_pull_requests
+from second_source.action.sweep import recent_pull_requests, rotated
 from second_source.sources.github.client import GitHubClient
+from second_source.sources.github.urls import PullRequestRef
 
 NOW = datetime(2026, 11, 21, tzinfo=UTC)
 
@@ -59,3 +60,11 @@ def test_reads_further_pages_only_while_prs_are_recent():
     client, requests = client_serving([full_page, PULLS])
     refs = recent_pull_requests(client, "octo/app", now=NOW, days=30)
     assert len(refs) == 102 and len(requests) == 2
+
+
+def test_each_days_sweep_starts_elsewhere_and_covers_every_pr():
+    refs = [PullRequestRef("o", "r", n) for n in range(10)]
+    starts = {rotated(refs, day)[0].number for day in range(10)}
+    assert len(starts) == 10  # over ten days every PR is first once
+    assert sorted(r.number for r in rotated(refs, 3)) == list(range(10))
+    assert rotated([], 3) == []

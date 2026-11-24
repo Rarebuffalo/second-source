@@ -145,6 +145,56 @@ def test_the_rate_limit_stops_the_run_without_failing_it(fake_github, tmp_path):
     assert code == EXIT_OK and out.count("rate limit was reached") == 1
 
 
+def test_a_report_cut_short_by_the_rate_limit_is_not_published(fake_github, tmp_path):
+    limited = httpx.Response(403, headers={"x-ratelimit-remaining": "0"})
+    recorder = Recorder(fake_github({"/repos/Octo/App/actions/runs": limited}))
+    code, out = run(tmp_path, recorder, "pull_request", OPENED)
+    assert code == EXIT_OK and "rate limit was reached" in out
+    assert recorder.writes == []  # nothing "unverifiable" published over a real result
+
+
+def test_one_wait_budget_covers_every_pr_of_a_ci_run(fake_github, tmp_path):
+    # A CI run that built two PRs: waiting for the first must not give the second a fresh
+    # budget, or the job outlives its timeout.
+    running = {  # CI still running on every commit, so each PR would wait its full budget
+        "total_count": 1,
+        "workflow_runs": [
+            {"id": 1, "name": "CI", "status": "in_progress", "created_at": "2026-11-21T00:00:00Z"}
+        ],
+    }
+    claiming = {**fake_github.BASE_ROUTES[PR], "body": "All tests pass."}  # high confidence
+    pulls = {f"/repos/Octo/App/pulls/{n}": claiming for n in (7, 8)}
+    recorder = Recorder(fake_github({"/repos/Octo/App/actions/runs": running, **pulls}))
+    elapsed = [0.0]
+    event_file = tmp_path / "event.json"
+    event_file.write_text(
+        json.dumps(
+            {
+                "action": "completed",
+                "workflow_run": {"pull_requests": [{"number": 7}, {"number": 8}]},
+            }
+        )
+    )
+    env = {
+        "GITHUB_REPOSITORY": "Octo/App",
+        "GITHUB_EVENT_NAME": "workflow_run",
+        "GITHUB_EVENT_PATH": str(event_file),
+        "INPUT_GITHUB_TOKEN": "token",
+        "INPUT_WAIT_MINUTES": "1",
+    }
+    run_action(
+        env,
+        client_factory=lambda token: GitHubClient(
+            token, transport=httpx.MockTransport(recorder), sleep=lambda _s: None
+        ),
+        now=lambda: NOW,
+        sleep=lambda seconds: elapsed.__setitem__(0, elapsed[0] + seconds),
+        clock=lambda: elapsed[0],
+        out=io.StringIO(),
+    )
+    assert 0 < elapsed[0] <= 60
+
+
 def test_a_failed_listing_warns_without_failing(fake_github, tmp_path):
     def broken(request):
         if request.url.path == "/repos/Octo/App/pulls":

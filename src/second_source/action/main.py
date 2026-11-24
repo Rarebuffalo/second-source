@@ -29,7 +29,7 @@ from second_source.action.publish import (
     publish_check_run,
     write_job_summary,
 )
-from second_source.action.sweep import SWEEP_RESERVE, recent_pull_requests
+from second_source.action.sweep import SWEEP_RESERVE, recent_pull_requests, rotated
 from second_source.action.wait import wait_for_ci
 from second_source.pipeline import PullRequestReport, check_pull_request
 from second_source.sources.github.client import GitHubClient, GitHubError, RateLimited
@@ -69,17 +69,20 @@ def run_action(
         except GitHubError as error:
             print(f"::warning::could not list what to check: {error}", file=out)
             return EXIT_OK
+        # One wait budget for the whole run (a CI run can belong to several PRs), so the job
+        # never outlives its timeout.
+        wait_until = clock() + wait_seconds
         for done, ref in enumerate(refs):
             remaining = client.stats.rate_remaining
             if plan.mode is Mode.SWEEP and remaining is not None and remaining < SWEEP_RESERVE:
                 print(
                     f"Sweep stopped after {done} of {len(refs)} PR(s): {remaining} API requests "
-                    "left, kept for pull request events. The rest are checked next time.",
+                    "left, kept for pull request events. Tomorrow's sweep starts elsewhere.",
                     file=out,
                 )
                 break
             try:
-                run.process(ref, wait_seconds)
+                run.process(ref, max(0.0, wait_until - clock()))
             except PullRequestNotFound:
                 print(f"::warning::{ref} was not found or is not accessible.", file=out)
             except RateLimited:
@@ -118,6 +121,7 @@ class ActionRun:
                 days=self.inputs.sweep_days,
                 only_agents=self.inputs.only_agents,
             )
+            refs = rotated(refs, self.now().toordinal())
             print(f"Sweep: re-checking {len(refs)} recent agent pull request(s).", file=out)
             return refs, 0.0  # the sweep never waits; the next event or sweep picks CI up
 
@@ -138,7 +142,12 @@ class ActionRun:
         source = GitHubSource(self.client, clock=self.now)
 
         def check() -> PullRequestReport:
-            return check_pull_request(ref, source, now=self.now())
+            report = check_pull_request(ref, source, now=self.now())
+            if report.rate_limited:
+                # Evidence was cut short: publishing would show "unverifiable" over a real
+                # result, so stop instead (the caller ends the run with a warning).
+                raise RateLimited(403, str(ref), "(rate limit reached while reading evidence)")
+            return report
 
         def outcome(report: PullRequestReport) -> Outcome:
             return outcome_for(report, fail_on_contradiction=self.inputs.fail_on_contradiction)

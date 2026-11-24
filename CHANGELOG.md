@@ -27,9 +27,12 @@ Working towards the first public release, 0.5.0 (a beta).
 
 ### Fixed (from the pre-launch review)
 - A claim no longer shows "Waiting for CI" for hours when the commit's CI finished without a
-  matching job, or has no CI at all.
+  matching job, or has no CI at all; it does wait while GitHub Actions workflows on the commit
+  are queued, waiting on `needs:` jobs or held for approval (Copilot and fork PRs).
 - An older report can no longer replace a newer check run when runs on one PR overlap; CI
-  re-checks share the PR's concurrency group; the generated job has a timeout.
-- The daily sweep keeps API requests for PR events and stops at the rate limit instead of
-  failing.
+  re-checks share the PR's concurrency group, comment commands are never dropped from the
+  queue, and one wait budget covers a whole run, within the job's timeout.
+- The daily sweep keeps API requests for PR events, starts at a different PR each day, and
+  stops at the rate limit instead of failing; a report cut short by the rate limit is never
+  published.
 - `second-source init` writes the Action tag that matches its own version (`@v0`).

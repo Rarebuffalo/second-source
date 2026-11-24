@@ -7,7 +7,9 @@ agent PR updated in the last ``sweep_days`` days, newest first.
 Each re-check costs roughly 5-15 API requests: the response cache lives only for one run, so
 nothing is free across runs. ``GITHUB_TOKEN`` allows about 1,000 requests an hour per
 repository, so the run stops sweeping while ``SWEEP_RESERVE`` requests are still left for the
-repository's PR events; PRs not reached are re-checked by their own events or the next sweep.
+repository's PR events. Each day's sweep starts at a different place in the list
+(``rotated``), so on a busy repository every PR is reached over successive days instead of
+the same newest ones every time.
 """
 
 from __future__ import annotations
@@ -21,6 +23,15 @@ from second_source.sources.github.urls import PullRequestRef
 
 MAX_PAGES = 5  # up to 500 recently updated PRs per run
 SWEEP_RESERVE = 200  # requests left untouched for PR events while the sweep runs
+
+
+def rotated(refs: list[PullRequestRef], day: int) -> list[PullRequestRef]:
+    """``refs`` starting at a position that moves with the day (a stride coprime with most
+    list lengths), wrapping around, so a sweep cut short reaches different PRs each day."""
+    if not refs:
+        return refs
+    start = (day * 37) % len(refs)
+    return refs[start:] + refs[:start]
 
 
 def recent_pull_requests(

@@ -100,9 +100,11 @@ def summary_markdown(report: PullRequestReport) -> str:
 def _checked_at(run: dict[str, Any]) -> datetime | None:
     """When the report shown in an existing check run was made (its ``external_id``)."""
     try:
-        return datetime.fromisoformat(str(run.get("external_id") or ""))
+        shown = datetime.fromisoformat(str(run.get("external_id") or ""))
     except ValueError:
         return None  # written by an older version, or by hand: treat as older than anything
+    # A date without a zone (also written by hand) cannot be compared with ours: ignore it.
+    return shown if shown.tzinfo is not None else None
 
 
 def publish_check_run(client: GitHubClient, report: PullRequestReport, outcome: Outcome) -> int:

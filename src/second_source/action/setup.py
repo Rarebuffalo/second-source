@@ -17,11 +17,14 @@ from second_source import __version__
 WORKFLOW_DIR = Path(".github/workflows")
 WORKFLOW_FILE = WORKFLOW_DIR / "second-source.yml"
 CI_TRIGGERS = frozenset({"push", "pull_request", "pull_request_target"})
-# One run at a time per PR: PR events, comments and the CI-finished re-check of the same PR
-# share a group. A CI run from a fork lists no PR and gets its own group; publish_check_run
-# also refuses to replace a newer report with an older one, so overlap cannot reorder results.
+# One run at a time per PR: PR events and the CI-finished re-check of the same PR share a
+# group, and a newer queued run replaces an older one (harmless: it checks the same PR later).
+# Comment commands get a group of their own, because a dispute replaced in the queue would be
+# lost. A CI run from a fork lists no PR and gets its own group too. Overlap cannot reorder
+# results either way: publish_check_run never replaces a newer report with an older one.
 _CONCURRENCY_KEY = (
-    "${{ github.event.pull_request.number || github.event.issue.number"
+    "${{ github.event_name == 'issue_comment' && github.run_id"
+    " || github.event.pull_request.number"
     " || github.event.workflow_run.pull_requests[0].number || github.run_id }}"
 )
 # Longer than the longest CI wait (60 minutes) plus checking. A cancelled or timed-out run can
