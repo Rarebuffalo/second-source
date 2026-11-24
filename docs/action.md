@@ -22,7 +22,7 @@ The recommended workflow listens to four events. Each maps to one mode:
 
 | Event | Mode | What happens |
 |---|---|---|
-| `pull_request_target` (opened, edited, synchronize, reopened) | **check** | Check this PR. If CI has not finished, wait for it (see 3) |
+| `pull_request_target` (opened, edited, synchronize, reopened, ready_for_review, closed) | **check** | Check this PR. If CI has not finished, wait for it (see 3) |
 | `workflow_run` (completed) | **check** | CI finished: re-check the PRs whose head commit that run built |
 | `schedule` (daily) | **sweep** | Re-check agent PRs updated in the last 30 days (merging updates a PR): durability (reverts, reopened issues) and anything still pending. Stops while 200 API requests remain for PR events; each day starts at a different PR, so a busy repository is covered over several days |
 | `issue_comment` (created) | **command** | `/second-source recheck` or `/second-source dispute <reason>` on a PR |
@@ -53,7 +53,11 @@ people see progress instead of nothing. A claim waits, for at most 6 hours from 
 from when its CI was triggered, only while it can still be decided: a matching job is running,
 a GitHub Actions workflow on the commit is unfinished (queued, waiting on `needs:` jobs, or
 held for approval as Copilot and fork PRs are until someone approves the run), or other CI on
-the commit is still running. A commit with no CI seen at all waits 10 minutes from the
+the commit is still running. Any unfinished workflow holds the wait, even one unrelated to
+tests (CodeQL, a preview build), except one waiting for a deployment approval; if a workflow is
+still unfinished when the 6 hours end, passing jobs do not verify the claim (`CI_TIMEOUT`).
+Second Source's own workflow runs are recognised by their workflow file, so renaming the
+workflow or its job is safe. A commit with no CI seen at all waits 10 minutes from the
 commit's own time; for CI outside GitHub Actions that registers late on a commit pushed long
 after it was made, the claim may be decided before its CI reports, and the next event or sweep
 corrects it. A commit whose CI finished without a matching job is decided at once

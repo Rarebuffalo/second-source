@@ -6,7 +6,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from second_source.action.main import EXIT_BAD_INPUT, EXIT_OK, run_action
+from second_source.action.main import EXIT_BAD_INPUT, EXIT_OK, own_workflow_path, run_action
 from second_source.cli.main import main as cli_main
 from second_source.sources.github.client import GitHubClient
 
@@ -245,3 +245,9 @@ def test_the_cli_routes_to_the_action():
     out = io.StringIO()
     assert cli_main(["action"], env={}, stdout=out, stderr=io.StringIO()) == EXIT_BAD_INPUT
     assert "github-token is empty" in out.getvalue()
+
+
+def test_the_actions_own_workflow_file_is_read_from_the_environment():
+    ref = "Octo/App/.github/workflows/second-source.yml@refs/heads/main"
+    assert own_workflow_path({"GITHUB_WORKFLOW_REF": ref}) == ".github/workflows/second-source.yml"
+    assert own_workflow_path({}) is None

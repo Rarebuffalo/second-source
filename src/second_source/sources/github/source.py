@@ -47,8 +47,11 @@ REVERT_MAX_PAGES = 10  # up to 1,000 commits in the window
 
 FETCH_ORDER = (
     "pr_state",
-    "check_result",
+    # Workflow runs before check runs: a workflow seen unfinished keeps the claim waiting, and
+    # its check runs read afterwards are at least as new. It also finds Second Source's own
+    # runs, whose check runs are then left out.
     "ci_workflow_run",
+    "check_result",
     "changed_file",
     "changed_files_summary",
     "issue_state",
@@ -98,10 +101,19 @@ class EvidenceResult:
 
 class GitHubSource:
     def __init__(
-        self, client: GitHubClient, clock: Callable[[], datetime] = lambda: datetime.now(UTC)
+        self,
+        client: GitHubClient,
+        clock: Callable[[], datetime] = lambda: datetime.now(UTC),
+        *,
+        own_workflow_path: str | None = None,
     ) -> None:
+        """``own_workflow_path`` (the Action passes its workflow file, for example
+        ``.github/workflows/second-source.yml``): runs of that workflow, and their check runs,
+        are Second Source itself, never CI evidence, whatever the workflow or job is named."""
         self.client = client
         self._clock = clock
+        self._own_workflow_path = own_workflow_path
+        self._own_suites: set[int] = set()
         # PR files, shared by the changed_file and revert fetchers within one fetch_evidence
         # call. Reset on every call: the Action re-checks a PR after new commits.
         self._files: dict[str, list[Json]] = {}
@@ -179,7 +191,11 @@ class GitHubSource:
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/commits/{ref}/check-runs", {"filter": "latest"}
             )
-            records.extend(mappers.check_run_evidence(run, ref, now) for run in runs)
+            records.extend(
+                mappers.check_run_evidence(run, ref, now)
+                for run in runs
+                if (run.get("check_suite") or {}).get("id") not in self._own_suites
+            )
             combined = self.client.get(f"{self._base(loaded)}/commits/{ref}/status")
             records.extend(
                 mappers.status_evidence(status, ref, now) for status in combined.get("statuses", [])
@@ -191,9 +207,13 @@ class GitHubSource:
         for ref in sorted(_claim_refs(claims)):
             now = self._clock()
             runs = self.client.get_paginated(
-                f"{self._base(loaded)}/actions/runs", {"head_sha": ref}, max_pages=1
+                f"{self._base(loaded)}/actions/runs", {"head_sha": ref}, max_pages=3
             )
-            records.extend(mappers.workflow_run_evidence(run, ref, now) for run in runs)
+            for run in runs:
+                if self._own_workflow_path and run.get("path") == self._own_workflow_path:
+                    self._own_suites.add(run.get("check_suite_id"))
+                    continue
+                records.append(mappers.workflow_run_evidence(run, ref, now))
         return records
 
     def _pull_files(self, loaded: LoadedPullRequest) -> list[Json]:

@@ -189,11 +189,14 @@ def workflow_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidenc
     """One GitHub Actions workflow run on a commit. Used only to know whether CI is still
     coming: a run that is queued, waiting on ``needs:`` jobs or held for approval (Copilot and
     fork PRs) may have no check runs yet. Never evidence that a claim is true or false."""
+    # Keyed by run id, not workflow name: two runs of one workflow on a commit (different
+    # events, or a newer run beside an older one still going) must both be seen. A re-run keeps
+    # its id and counts up run_attempt, which is the version.
     return Evidence(
         record_type="ci_workflow_run",
-        external_ref=f"{ref}/workflow:{run['name']}",
+        external_ref=f"{ref}/workflow-run:{run['id']}",
         observed_at=observed_at,
-        version=int(run["id"]),
+        version=int(run.get("run_attempt") or 1),
         occurred_at=parse_time(run.get("created_at")),
         attributes=_without_none(
             {
@@ -202,9 +205,10 @@ def workflow_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidenc
                 "status": run.get("status"),
                 "conclusion": run.get("conclusion"),
                 "event": run.get("event"),
-                # When the run was triggered, close to when the commit was pushed (a commit's
-                # own date can be much older): CI waiting is counted from here.
-                "created_at": parse_time(run.get("created_at")),
+                # When the run (or its latest attempt) started, close to when the commit was
+                # pushed, approved or re-run (a commit's own date can be much older): CI
+                # waiting is counted from here.
+                "created_at": parse_time(run.get("run_started_at") or run.get("created_at")),
             }
         ),
     )

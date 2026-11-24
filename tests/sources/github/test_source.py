@@ -161,3 +161,63 @@ def test_reverts_are_not_scanned_for_merges_into_another_branch(fake_github):
     fake.requested.clear()
     assert source.fetch_evidence(loaded, [], {"revert"}).records == []
     assert fake.requested == []
+
+
+def test_second_sources_own_runs_are_never_ci_evidence(fake_github):
+    # Whatever the workflow or its job is called, runs of the Action's own workflow file and
+    # their check runs are left out; other workflows are kept, one record per run.
+    own = ".github/workflows/second-source.yml"
+    runs = {
+        "total_count": 3,
+        "workflow_runs": [
+            {
+                "id": 9,
+                "name": "Renamed",
+                "path": own,
+                "check_suite_id": 500,
+                "status": "in_progress",
+            },
+            {
+                "id": 3,
+                "name": "CI",
+                "path": ".github/workflows/ci.yml",
+                "check_suite_id": 501,
+                "status": "completed",
+                "conclusion": "success",
+            },
+            {
+                "id": 4,
+                "name": "CI",
+                "path": ".github/workflows/ci.yml",
+                "check_suite_id": 502,
+                "status": "in_progress",
+            },
+        ],
+    }
+    checks = {
+        "total_count": 2,
+        "check_runs": [
+            {"id": 1, "name": "check", "status": "in_progress", "check_suite": {"id": 500}},
+            {
+                "id": 2,
+                "name": "pytest",
+                "status": "completed",
+                "conclusion": "success",
+                "check_suite": {"id": 501},
+            },
+        ],
+    }
+    fake = fake_github(
+        {"/repos/Octo/App/actions/runs": runs, "/repos/Octo/App/commits/c1/check-runs": checks}
+    )
+    client = GitHubClient(transport=httpx.MockTransport(fake), sleep=lambda _s: None)
+    source = GitHubSource(client, clock=lambda: NOW, own_workflow_path=own)
+    result = source.fetch_evidence(
+        source.load(REF), [claim("TESTS_PASS", ref="c1")], {"check_result", "ci_workflow_run"}
+    )
+    names = sorted((r.record_type, r.external_ref) for r in result.records)
+    assert names == [
+        ("check_result", "c1/pytest"),
+        ("ci_workflow_run", "c1/workflow-run:3"),
+        ("ci_workflow_run", "c1/workflow-run:4"),
+    ]

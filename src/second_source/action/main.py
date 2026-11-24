@@ -64,6 +64,7 @@ def run_action(
 
     with client_factory(inputs.token) as client:
         run = ActionRun(client, inputs, plan, context.summary_path, now, sleep, clock, out)
+        run.own_workflow_path = own_workflow_path(env)
         try:
             refs, wait_seconds = run.targets(context.repository)
         except GitHubError as error:
@@ -97,6 +98,16 @@ def run_action(
     return EXIT_OK
 
 
+def own_workflow_path(env: Mapping[str, str]) -> str | None:
+    """This workflow's file, from ``GITHUB_WORKFLOW_REF``
+    (``owner/repo/.github/workflows/second-source.yml@refs/heads/main``), so its own runs are
+    never mistaken for CI, whatever the workflow or its job is called."""
+    ref = env.get("GITHUB_WORKFLOW_REF", "")
+    path = ref.split("@", 1)[0]
+    parts = path.split("/", 2)
+    return parts[2] if len(parts) == 3 and parts[2] else None
+
+
 @dataclass
 class ActionRun:
     """Everything one Action run shares across the PRs it checks."""
@@ -109,6 +120,7 @@ class ActionRun:
     sleep: Callable[[float], None]
     clock: Callable[[], float]
     out: TextIO
+    own_workflow_path: str | None = None
 
     def targets(self, repository: str) -> tuple[list[PullRequestRef], float]:
         """Which PRs to check, and how long to wait for CI on each."""
@@ -139,7 +151,7 @@ class ActionRun:
 
     def process(self, ref: PullRequestRef, wait_seconds: float) -> None:
         """Check one PR (waiting for CI within the budget) and publish the result."""
-        source = GitHubSource(self.client, clock=self.now)
+        source = GitHubSource(self.client, clock=self.now, own_workflow_path=self.own_workflow_path)
 
         def check() -> PullRequestReport:
             report = check_pull_request(ref, source, now=self.now())

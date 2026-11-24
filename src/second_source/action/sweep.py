@@ -2,7 +2,7 @@
 
 Durability claims ("the merge was not reverted", "the issue stayed closed") are judged over the
 30 days after a merge, and pending claims need a later look. A scheduled run re-checks every
-agent PR updated in the last ``sweep_days`` days, newest first.
+agent PR updated in the last ``sweep_days`` days.
 
 Each re-check costs roughly 5-15 API requests: the response cache lives only for one run, so
 nothing is free across runs. ``GITHUB_TOKEN`` allows about 1,000 requests an hour per
@@ -14,6 +14,7 @@ the same newest ones every time.
 
 from __future__ import annotations
 
+import math
 from datetime import datetime, timedelta
 
 from second_source.packs.coding.detection import detect_agent
@@ -26,11 +27,13 @@ SWEEP_RESERVE = 200  # requests left untouched for PR events while the sweep run
 
 
 def rotated(refs: list[PullRequestRef], day: int) -> list[PullRequestRef]:
-    """``refs`` starting at a position that moves with the day (a stride coprime with most
-    list lengths), wrapping around, so a sweep cut short reaches different PRs each day."""
+    """``refs`` starting at a position that moves with the day, wrapping around, so a sweep cut
+    short reaches different PRs each day. The stride is coprime with the list length, so over
+    ``len(refs)`` days every PR comes first once."""
     if not refs:
         return refs
-    start = (day * 37) % len(refs)
+    stride = next(s for s in (37, 41, 43) if math.gcd(s, len(refs)) == 1)
+    start = (day * stride) % len(refs)
     return refs[start:] + refs[:start]
 
 

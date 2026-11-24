@@ -68,7 +68,7 @@ def workflow(name, status="completed", conclusion="success", *, ref=SHA, created
     attributes = {"ref": ref, "name": name, "status": status, "created_at": created}
     if conclusion is not None:
         attributes["conclusion"] = conclusion
-    return Evidence("ci_workflow_run", f"{ref}/workflow:{name}", T0, attributes, version=run_id)
+    return Evidence("ci_workflow_run", f"{ref}/workflow-run:{run_id}", T0, attributes)
 
 
 def changed_file(path, status="modified", additions=5):
@@ -257,8 +257,6 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
     pushed = claim(TESTS_PASS, ref=SHA, final_ref=FINAL, final_at=T0 + timedelta(hours=20))
     result = verdict(engine, pushed, [check_result("pytest", "failure")], hours=20.1)
     assert (result.result, result.reasons) == (Result.PENDING, ("AWAITING_CI",))
-    # No CI ever appears on the final head: after the grace period it is decided, and a
-    # failure on the opening commit alone is still not a contradiction.
     # Its CI is queued an hour after the push: still waited for, by the final head's own time.
     queued = [
         check_result("pytest", "failure"),
@@ -266,6 +264,8 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
     ]
     still = verdict(engine, pushed, queued, hours=21)
     assert (still.result, still.reasons) == (Result.PENDING, ("AWAITING_CI",))
+    # No CI ever appears on the final head: after the grace period it is decided, and a
+    # failure on the opening commit alone is still not a contradiction.
     later = verdict(engine, pushed, [check_result("pytest", "failure")], hours=21)
     assert (later.result, later.reasons) == (Result.UNVERIFIABLE, ("CLAIM_COMMIT_AMBIGUOUS",))
 
@@ -297,6 +297,27 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
             Result.PENDING,
             "AWAITING_CI",
         ),
+        # Two runs of one workflow: the finished one does not hide the one still going.
+        (
+            [check_result("pytest"), workflow("CI"), workflow("CI", "in_progress", None, run_id=2)],
+            1,
+            Result.PENDING,
+            "AWAITING_CI",
+        ),
+        # Past the window with a workflow unfinished: passing jobs do not verify the claim.
+        (
+            [check_result("pytest"), workflow("CI", "in_progress", None)],
+            7,
+            Result.UNVERIFIABLE,
+            "CI_TIMEOUT",
+        ),
+        # A workflow waiting for a deployment approval does not hold a passing claim.
+        (
+            [check_result("pytest"), workflow("Deploy", "waiting", None)],
+            1,
+            Result.VERIFIED,
+            "ALL_MATCHING_CI_JOBS_PASSED",
+        ),
         # Workflows all finished, no matching job: decided at once.
         ([check_result("build"), workflow("CI")], 1, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
     ],
@@ -306,6 +327,9 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
         "held-too-long",
         "own-workflow",
         "pushed-late",
+        "two-runs-one-workflow",
+        "unfinished-past-window",
+        "deploy-approval",
         "all-finished",
     ],
 )

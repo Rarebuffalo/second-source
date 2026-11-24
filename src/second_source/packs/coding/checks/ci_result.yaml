@@ -33,7 +33,11 @@
 # commit's time or, when later, from when a workflow run on it was triggered: a commit pushed
 # long after it was made still gets its CI waited for. A commit whose CI has all finished
 # without a matching job is decided at once instead of sitting at "Waiting for CI" for hours.
-# Second Source's own runs (check "Second Source", job "second-source") are never CI evidence.
+# Second Source's own runs are never CI evidence: the Action leaves out its own workflow's runs
+# and their check runs (by workflow file), and the names "Second Source" / "second-source" are
+# ignored too. A workflow waiting for an environment approval (`waiting`, a deployment gate)
+# does not hold the claim. If a workflow is still unfinished when the window ends, passing
+# jobs do not verify the claim (CI_TIMEOUT): a job still to come could fail.
 #
 # Editable texts (PR body and title) are read in their final form, but the PR may have gained
 # commits after it was opened: Copilot opens with an empty "Initial plan" commit and rewrites
@@ -48,7 +52,7 @@
 # Claims with a single commit (commit messages, comments, PRs without later commits) behave as
 # before: `final_ref` is absent and both views are the same commit.
 id: coding.ci_result
-version: 1.8.0
+version: 1.9.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
@@ -94,7 +98,8 @@ derive:
   ci_running_final: "ci_records.filter(c, c.ref == final && c.status != 'completed')"
   workflows_pending: >-
     workflows.filter(w, w.ref == final && w.name != 'Second Source' &&
-    (w.status != 'completed' || (has(w.conclusion) && w.conclusion == 'action_required')))
+    ((w.status != 'completed' && w.status != 'waiting') ||
+    (has(w.conclusion) && w.conclusion == 'action_required')))
   ci_seen_final: >-
     size(ci_records.filter(c, c.ref == final)) > 0 ||
     size(workflows.filter(w, w.ref == final && w.name != 'Second Source')) > 0
@@ -122,7 +127,7 @@ outcomes:
   - {when: "awaiting", result: PENDING, reason: AWAITING_CI}
   - {when: "size(ci_records) == 0", result: UNVERIFIABLE, reason: NO_CI_RECORDS}
   - {when: "size(relevant) == 0", result: UNVERIFIABLE, reason: NO_MATCHING_CI_JOBS}
-  - {when: "size(running) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}
+  - {when: "size(running) > 0 || size(workflows_pending) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}
   - {when: "passed_count == 0", result: UNVERIFIABLE, reason: NO_CI_RESULTS}
   - {otherwise: true, result: VERIFIED, reason: ALL_MATCHING_CI_JOBS_PASSED}
 explain: "{passed_count} of {total} matching CI jobs passed"
