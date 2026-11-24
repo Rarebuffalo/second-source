@@ -23,6 +23,13 @@
 # matching job (NO_MATCHING_CI_JOBS): GitHub deletes old workflow runs, so for older PRs the
 # evidence is simply gone, which says nothing about job naming.
 #
+# Waiting: a matching job that is still running is waited for until `timeout_hours`. With no
+# matching job yet, the check waits only while other CI on the judged commit is still running
+# (a matching job may appear in it) or, if no CI has shown up at all, for a short grace period
+# (`start_grace_minutes`): CI creates its check runs within moments of a push, so a commit
+# whose CI has all finished without a matching job, or that has no CI after the grace period,
+# is decided now instead of sitting at "Waiting for CI" for hours.
+#
 # Editable texts (PR body and title) are read in their final form, but the PR may have gained
 # commits after it was opened: Copilot opens with an empty "Initial plan" commit and rewrites
 # the body as it works, while other agents write the body once and humans add commits later.
@@ -36,13 +43,15 @@
 # Claims with a single commit (commit messages, comments, PRs without later commits) behave as
 # before: `final_ref` is absent and both views are the same commit.
 id: coding.ci_result
-version: 1.6.0
+version: 1.7.0
 kind: state
 level: L4
 applies_to: [TESTS_PASS, BUILD_OK, LINT_OK]
 params:
   # How long to wait for CI before giving up on a running or missing job.
   timeout_hours: {type: int, default: 6, min: 1, max: 48}
+  # How long a commit with no CI at all may wait for its first CI record.
+  start_grace_minutes: {type: int, default: 10, min: 1, max: 120}
 evidence:
   checks:
     record_type: check_result
@@ -69,13 +78,21 @@ derive:
   # the PR (a push to an old PR), and its CI starts only then.
   started: "has(claim.attributes.final_at) ? claim.attributes.final_at : claim.made_at"
   deadline: "started + duration(string(params.timeout_hours) + 'h')"
+  grace_end: "started + duration(string(params.start_grace_minutes) + 'm')"
   # Our own check run sits on the head commit too; it is not CI evidence.
   ci_records: "checks.filter(c, c.name != 'Second Source')"
+  ci_running_final: "ci_records.filter(c, c.ref == final && c.status != 'completed')"
+  ci_seen_final: "size(ci_records.filter(c, c.ref == final)) > 0"
+  # Worth waiting for: a matching job still running, or none yet while other CI on the commit
+  # still runs (or none has appeared within the grace period).
+  awaiting: >-
+    now < deadline && (size(running) > 0 || (total == 0 &&
+    (size(ci_running_final) > 0 || (!ci_seen_final && now < grace_end))))
 outcomes:
   - {when: "'check_result' in stale", result: UNVERIFIABLE, reason: SOURCE_STALE}
   - {when: "!has(claim.attributes.ref)", result: UNVERIFIABLE, reason: NO_COMMIT_REFERENCE}
   # The final head's CI has not reported yet: wait rather than judge on the opening commit.
-  - when: "has(claim.attributes.final_ref) && (total == 0 || size(running) > 0) && now < deadline"
+  - when: "has(claim.attributes.final_ref) && awaiting"
     result: PENDING
     reason: AWAITING_CI
   - {when: "failed_somewhere && local", result: UNVERIFIABLE, reason: CI_FAILED_LOCAL_CLAIM}
@@ -83,7 +100,7 @@ outcomes:
   - {when: "failed_everywhere", result: CONTRADICTED, reason: CI_JOB_FAILED}
   - {when: "failed_somewhere", result: UNVERIFIABLE, reason: CLAIM_COMMIT_AMBIGUOUS}
   # CI may not have started yet, or may still be running.
-  - {when: "(total == 0 || size(running) > 0) && now < deadline", result: PENDING, reason: AWAITING_CI}
+  - {when: "awaiting", result: PENDING, reason: AWAITING_CI}
   - {when: "size(ci_records) == 0", result: UNVERIFIABLE, reason: NO_CI_RECORDS}
   - {when: "size(relevant) == 0", result: UNVERIFIABLE, reason: NO_MATCHING_CI_JOBS}
   - {when: "size(running) > 0", result: UNVERIFIABLE, reason: CI_TIMEOUT}

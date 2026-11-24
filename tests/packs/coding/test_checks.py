@@ -125,7 +125,12 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
             Result.UNVERIFIABLE,
             "CI_TIMEOUT",
         ),
-        ([], 1, Result.PENDING, "AWAITING_CI"),
+        ([], 0.1, Result.PENDING, "AWAITING_CI"),  # within the grace period for CI to appear
+        ([], 1, Result.UNVERIFIABLE, "NO_CI_RECORDS"),  # no CI showed up: not hours of waiting
+        # CI finished without a matching job: decided now, not after the 6-hour timeout.
+        ([check_result("build")], 1, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
+        # Other CI still running: a matching job may still appear in it.
+        ([check_result("build", None, status="queued")], 1, Result.PENDING, "AWAITING_CI"),
         ([check_result("build")], 12, Result.UNVERIFIABLE, "NO_MATCHING_CI_JOBS"),
         ([check_result("pytest", "skipped")], 12, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
         ([check_result("pytest", "cancelled")], 12, Result.UNVERIFIABLE, "NO_CI_RESULTS"),
@@ -141,6 +146,9 @@ def verdict(engine, the_claim, evidence, *, hours=1, stale=frozenset()):
         "running",
         "ci-timeout",
         "no-ci-yet",
+        "no-ci-after-grace",
+        "no-test-job-finished",
+        "other-ci-running",
         "no-test-jobs",
         "skipped",
         "cancelled",
@@ -239,8 +247,12 @@ def test_a_push_to_an_old_pr_waits_for_the_final_heads_ci(engine):
     # Code review M4: the PR opened long ago (made_at = T0) but the final head was pushed
     # recently; its CI has not reported, so the claim waits instead of being judged on `ref`.
     pushed = claim(TESTS_PASS, ref=SHA, final_ref=FINAL, final_at=T0 + timedelta(hours=20))
-    result = verdict(engine, pushed, [check_result("pytest", "failure")], hours=21)
+    result = verdict(engine, pushed, [check_result("pytest", "failure")], hours=20.1)
     assert (result.result, result.reasons) == (Result.PENDING, ("AWAITING_CI",))
+    # No CI ever appears on the final head: after the grace period it is decided, and a
+    # failure on the opening commit alone is still not a contradiction.
+    later = verdict(engine, pushed, [check_result("pytest", "failure")], hours=21)
+    assert (later.result, later.reasons) == (Result.UNVERIFIABLE, ("CLAIM_COMMIT_AMBIGUOUS",))
 
 
 def test_our_own_check_run_is_not_ci_evidence(engine):

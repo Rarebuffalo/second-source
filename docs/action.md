@@ -48,15 +48,18 @@ Claims like "tests pass" can only be judged once CI finishes. Two mechanisms, bo
    catches anything left. The check run is updated in place, so the PR always shows the latest
    verdict.
 
-While anything is pending, the check run stays `in_progress` with the current table, so people
-see progress instead of nothing.
+While anything is waiting for CI, the check run stays `in_progress` with the current table, so
+people see progress instead of nothing. A claim waits only while it can still be decided: a
+matching job is running (up to 6 hours), or other CI on the commit is still running, or no CI
+has appeared yet (up to 10 minutes). A commit whose CI finished without a matching job is
+decided at once (`NO_MATCHING_CI_JOBS`) instead of showing "Waiting for CI" for hours.
 
 ## 4. Check run conclusion
 
 | Verdicts | Conclusion | Title |
 |---|---|---|
 | any high-confidence `CONTRADICTED` | `neutral` (default) or `failure` (with `fail-on-contradiction: true`) | "1 claim contradicted" |
-| any `PENDING` | stays `in_progress` | "Waiting for CI" / "Watching for 30 days" |
+| any `PENDING` with `AWAITING_CI` | stays `in_progress` | "Waiting for CI" |
 | a high-confidence claim withdrawn by an integrity guard (CI passed, but the PR skipped tests, weakened its test command or lowered the coverage gate) | `neutral`, **never** `failure`, whatever `fail-on-contradiction` says | "1 claim not verified: this PR skips tests" |
 | otherwise | `success` | "4 claims verified, 1 unverifiable" |
 
