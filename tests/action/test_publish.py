@@ -67,6 +67,23 @@ def test_running_ci_keeps_the_check_in_progress(fake_github):
     assert outcome == Outcome("in_progress", None, "Waiting for CI")
 
 
+def test_ci_failing_behind_an_unverifiable_claim_is_grey_not_green(fake_github):
+    # Stage B (sandbox #12): "Tests pass locally." while CI failed. Not a contradiction, but a
+    # green check would read as "claims hold".
+    failing = {
+        "/repos/Octo/App/commits/c1/check-runs": {
+            "total_count": 1,
+            "check_runs": [
+                {"id": 1, "name": "pytest", "status": "completed", "conclusion": "failure"}
+            ],
+        }
+    }
+    report = report_for(with_body(fake_github, "Tests pass locally.", **failing))
+    outcome = outcome_for(report, fail_on_contradiction=True)
+    assert outcome.conclusion == "neutral" and outcome.title.endswith("(CI failed)")
+    assert "contradicted" not in outcome.title
+
+
 def test_low_confidence_contradictions_never_decide(fake_github):
     failing = {
         "/repos/Octo/App/commits/c1/check-runs": {

@@ -10,6 +10,9 @@ Conclusion rules (docs/action.md, section 4):
   merge) or ``failure`` when the repository opts in with ``fail-on-contradiction``.
 - a high-confidence claim withdrawn by an integrity guard (CI passed, but the PR skipped tests
   or weakened its CI) -> ``neutral``, never ``failure``: a guard is not proof of a false claim.
+- a claim unverifiable because CI failed where its wording leaves room ("tests pass locally",
+  a partial run, a failure on only one of two commits) -> ``neutral`` with "(CI failed)" in
+  the title: not a contradiction, but not green either.
 - otherwise -> ``success``, or ``neutral`` when there was nothing to check. Cautions never
   change the conclusion.
 
@@ -54,6 +57,13 @@ def awaiting_ci(report: PullRequestReport) -> bool:
     )
 
 
+# Unverifiable because CI failed where the claim's wording or commit leaves room (a local or
+# partial run, or a failure only on one of two commits): not a contradiction, but not green.
+CI_FAILED_REASONS = frozenset(
+    {"CI_FAILED_LOCAL_CLAIM", "CI_FAILED_SUBSET_CLAIM", "CLAIM_COMMIT_AMBIGUOUS"}
+)
+
+
 def outcome_for(report: PullRequestReport, *, fail_on_contradiction: bool) -> Outcome:
     deciding = [report.verdict_for(c) for c in report.claims if _counts(c)]
     results = Counter(v.result for v in deciding)
@@ -82,6 +92,10 @@ def outcome_for(report: PullRequestReport, *, fail_on_contradiction: bool) -> Ou
     parts = [f"{results[r]} {WORDS[r]}" for r in order if results[r]]
     if not parts:
         return Outcome("completed", "neutral", "Only low-confidence claims")
+    if any(CI_FAILED_REASONS & set(v.reasons) for v in deciding):
+        # Grey, not green: someone skimming the checks must not read "claims hold" while a
+        # CI job behind a claim failed.
+        return Outcome("completed", "neutral", ", ".join(parts) + " (CI failed)")
     return Outcome("completed", "success", ", ".join(parts))
 
 

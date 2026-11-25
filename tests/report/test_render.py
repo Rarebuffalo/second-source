@@ -126,3 +126,12 @@ def test_a_claim_unverifiable_for_its_own_reasons_is_not_shown_as_withdrawn():
     passed = check_run("coding.ci_result", Result.VERIFIED, "ALL_MATCHING_CI_JOBS_PASSED")
     only_guard = Verdict("c", Result.UNVERIFIABLE, ("PR_SKIPS_TESTS",), (passed, skips))
     assert withdrawn_reasons(only_guard) == ("PR_SKIPS_TESTS",)
+
+
+def test_watched_claims_say_what_is_being_watched(report):
+    # Stage B: "Fixes #3: pending (IN_WINDOW)" read as if the issue were still open.
+    markdown = to_markdown(report)
+    assert "issue closed; watching for a reopen" in markdown
+    assert "not reverted so far; watching for a revert" in markdown
+    reasons = {c["type"]: c["reasons"] for c in to_json(report)["claims"]}
+    assert reasons["FIXES_ISSUE"] == ["IN_WINDOW"]  # machine-readable codes are unchanged

@@ -61,6 +61,16 @@ GUARD_TEXT = {
 }
 WITHDRAWN_SYMBOL, WITHDRAWN_WORD = "⚠", "not verified"
 
+# Pending reasons whose code alone misleads a reader: after the merge, "Fixes #3: pending
+# (IN_WINDOW)" reads as if the issue were still open. Keyed by claim type and reason; the JSON
+# report keeps the codes.
+PENDING_TEXT = {
+    ("FIXES_ISSUE", "IN_WINDOW"): "issue closed; watching for a reopen",
+    ("MERGE_HOLDS", "IN_WINDOW"): "not reverted so far; watching for a revert",
+    ("FIXES_ISSUE", "NOT_MERGED_YET"): "decided once the PR is merged",
+    ("MERGE_HOLDS", "NOT_MERGED_YET"): "decided once the PR is merged",
+}
+
 
 def guard_text(reason: str) -> str:
     return GUARD_TEXT.get(reason, reason)
@@ -106,6 +116,7 @@ class Row:
     ref: str | None
     withdrawn: tuple[str, ...] = ()  # guard reasons that withdrew a verification
     cautions: tuple[str, ...] = ()  # optional guard reasons shown next to the result
+    claim_type: str = ""
 
     @property
     def symbol(self) -> str:
@@ -118,9 +129,14 @@ class Row:
     @property
     def why(self) -> str:
         """Reasons, with guard findings in words and cautions after them."""
-        parts = [guard_text(r) if r in GUARD_TEXT else r for r in self.reasons]
+        parts = [self._reason_text(r) for r in self.reasons]
         parts += [f"caution: {guard_text(c)}" for c in self.cautions]
         return ", ".join(parts)
+
+    def _reason_text(self, reason: str) -> str:
+        if self.result is Result.PENDING and (self.claim_type, reason) in PENDING_TEXT:
+            return PENDING_TEXT[(self.claim_type, reason)]
+        return guard_text(reason)
 
 
 def describe_claim(claim: Claim) -> str:
@@ -173,6 +189,7 @@ def rows(report: PullRequestReport) -> list[Row]:
                 ref=claim.attributes.get("ref"),
                 withdrawn=withdrawn_reasons(verdict),
                 cautions=verdict.caveats,
+                claim_type=claim.type,
             )
         )
     return sorted(prepared, key=lambda row: _ORDER.index(row.result))
