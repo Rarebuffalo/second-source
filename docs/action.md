@@ -24,7 +24,7 @@ The recommended workflow listens to four events. Each maps to one mode:
 |---|---|---|
 | `pull_request_target` (opened, edited, synchronize, reopened, ready_for_review, closed) | **check** | Check this PR. If CI has not finished, wait for it (see 3) |
 | `workflow_run` (completed) | **check** | CI finished: re-check the PRs whose head commit that run built |
-| `schedule` (daily) | **sweep** | Re-check agent PRs updated in the last 30 days (merging updates a PR): durability (reverts, reopened issues) and anything still pending. Stops while 200 API requests remain for PR events; each day starts at a different PR, so a busy repository is covered over several days |
+| `schedule` (daily) | **sweep** | Re-check agent PRs updated in the last 30 days (merging updates a PR; an agent known only from a commit trailer is found by reading the commits of up to 30 PRs per run): durability (reverts, reopened issues) and anything still pending. Stops while 200 API requests remain for PR events; each day starts at a different PR, so a busy repository is covered over several days |
 | `issue_comment` (created) | **command** | `/second-source recheck` or `/second-source dispute <reason>` on a PR |
 
 **Why `pull_request_target`.** With plain `pull_request`, PRs from forks get a read-only

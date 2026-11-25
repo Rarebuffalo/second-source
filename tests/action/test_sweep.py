@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 
 import httpx
 
-from second_source.action.sweep import recent_pull_requests, rotated
+from second_source.action.sweep import MAX_COMMIT_LOOKUPS, recent_pull_requests, rotated
 from second_source.sources.github.client import GitHubClient
 from second_source.sources.github.urls import PullRequestRef
 
@@ -30,11 +30,15 @@ PULLS = [
 ]
 
 
-def client_serving(pages):
+def client_serving(pages, commits=None):
+    """Serves the PR list by page, and each PR's commits (none unless given)."""
     requests = []
 
     def handler(request):
         requests.append(request)
+        if request.url.path.endswith("/commits"):
+            number = int(request.url.path.split("/")[-2])
+            return httpx.Response(200, json=(commits or {}).get(number, []))
         page = int(request.url.params["page"])
         return httpx.Response(200, json=pages[page - 1] if page <= len(pages) else [])
 
@@ -46,7 +50,22 @@ def test_finds_recent_agent_prs_and_stops_at_the_cutoff():
     refs = recent_pull_requests(client, "octo/app", now=NOW, days=30)
     assert [ref.number for ref in refs] == [5, 3]
     assert requests[0].url.params["sort"] == "updated"
-    assert len(requests) == 1
+    # One listing, plus the commits of the one PR that showed no agent itself (#4).
+    assert [r.url.path for r in requests[1:]] == ["/repos/octo/app/pulls/4/commits"]
+
+
+def test_an_agent_known_only_from_a_commit_trailer_is_swept():
+    trailer = {"commit": {"message": "Fix\n\nCo-Authored-By: Claude <noreply@anthropic.com>"}}
+    client, _ = client_serving([PULLS], commits={4: [trailer]})
+    refs = recent_pull_requests(client, "octo/app", now=NOW, days=30)
+    assert [ref.number for ref in refs] == [5, 4, 3]
+
+
+def test_commit_lookups_are_capped():
+    humans = [pull(900 - n, "2026-11-20T00:00:00Z") for n in range(MAX_COMMIT_LOOKUPS + 5)]
+    client, requests = client_serving([humans])
+    recent_pull_requests(client, "octo/app", now=NOW, days=30)
+    assert sum(r.url.path.endswith("/commits") for r in requests) == MAX_COMMIT_LOOKUPS
 
 
 def test_can_include_human_prs():
@@ -59,7 +78,8 @@ def test_reads_further_pages_only_while_prs_are_recent():
     full_page = [pull(1000 - n, "2026-11-20T00:00:00Z", branch="codex/x") for n in range(100)]
     client, requests = client_serving([full_page, PULLS])
     refs = recent_pull_requests(client, "octo/app", now=NOW, days=30)
-    assert len(refs) == 102 and len(requests) == 2
+    listings = [r for r in requests if not r.url.path.endswith("/commits")]
+    assert len(refs) == 102 and len(listings) == 2
 
 
 def test_each_days_sweep_starts_elsewhere_and_covers_every_pr():

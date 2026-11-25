@@ -24,6 +24,9 @@ from second_source.sources.github.urls import PullRequestRef
 
 MAX_PAGES = 5  # up to 500 recently updated PRs per run
 SWEEP_RESERVE = 200  # requests left untouched for PR events while the sweep runs
+# PRs whose own text shows no agent get their commits read (one request each), up to this
+# many per sweep, to find agents known only from a commit trailer ("Co-Authored-By: Claude").
+MAX_COMMIT_LOOKUPS = 30
 
 
 def rotated(refs: list[PullRequestRef], day: int) -> list[PullRequestRef]:
@@ -47,13 +50,14 @@ def recent_pull_requests(
 ) -> list[PullRequestRef]:
     """PRs updated within ``days``, newest first; only agent PRs unless told otherwise.
 
-    Agent detection here uses the PR alone (author, branch, body), without commit messages, to
-    keep the sweep at a few requests. A PR found only through a commit trailer is still checked
-    on its own events.
+    Agent detection uses the PR itself (author, branch, body) and, for up to
+    ``MAX_COMMIT_LOOKUPS`` PRs that show nothing, its commit messages: an agent known only from
+    a commit trailer would otherwise never have its durability re-checked.
     """
     owner, name = repository.split("/", 1)
     cutoff = now - timedelta(days=days)
     refs = []
+    lookups = 0
     # Newest-updated first, so reading stops at the first PR older than the cutoff.
     for page in range(1, MAX_PAGES + 1):
         params = {"state": "all", "sort": "updated", "direction": "desc", "per_page": 100}
@@ -63,7 +67,12 @@ def recent_pull_requests(
             if updated is None or updated < cutoff:
                 return refs
             if only_agents and detect_agent(mappers.signals_from_pull(pull, [])) is None:
-                continue
+                if lookups >= MAX_COMMIT_LOOKUPS:
+                    continue
+                lookups += 1
+                commits = client.get(f"/repos/{owner}/{name}/pulls/{pull['number']}/commits")
+                if detect_agent(mappers.signals_from_pull(pull, commits)) is None:
+                    continue
             refs.append(PullRequestRef(owner, name, int(pull["number"])))
         if len(pulls) < 100:
             break
