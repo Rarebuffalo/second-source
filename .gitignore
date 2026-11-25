@@ -20,3 +20,4 @@ data/
 
 # Local-only material (internal planning documents, backups); never committed.
 private/
+.hypothesis/
