@@ -25,6 +25,9 @@ inputs:
   fail-on-contradiction:
     description: Make the check fail when a claim is contradicted (by default it is advice and never blocks a merge).
     default: "false"
+  ignore-claims:
+    description: Claim types to switch off, comma-separated (TESTS_PASS, BUILD_OK, LINT_OK, TESTS_ADDED, DOCS_UPDATED, FIXES_ISSUE, DEPLOYED). They are neither checked nor shown.
+    default: ""
   sweep-days:
     description: How far back (in days) the scheduled sweep re-checks agent pull requests.
     default: "30"
@@ -67,6 +70,7 @@ runs:
         INPUT_ONLY_AGENTS: ${{ inputs.only-agents }}
         INPUT_FAIL_ON_CONTRADICTION: ${{ inputs.fail-on-contradiction }}
         INPUT_SWEEP_DAYS: ${{ inputs.sweep-days }}
+        INPUT_IGNORE_CLAIMS: ${{ inputs.ignore-claims }}
       run: >-
         uv run --no-sync --frozen --project "$GITHUB_ACTION_PATH"
         python -m second_source.cli.main action

@@ -167,7 +167,13 @@ class ActionRun:
         source = GitHubSource(self.client, clock=self.now, own_workflow_path=self.own_workflow_path)
 
         def check() -> PullRequestReport:
-            report = check_pull_request(ref, source, now=self.now(), extra_evidence=DIGEST_EVIDENCE)
+            report = check_pull_request(
+                ref,
+                source,
+                now=self.now(),
+                extra_evidence=DIGEST_EVIDENCE,
+                ignore_claims=self.inputs.ignore_claims,
+            )
             if report.rate_limited:
                 # Evidence was cut short: publishing would show "unverifiable" over a real
                 # result, so stop instead (the caller ends the run with a warning).

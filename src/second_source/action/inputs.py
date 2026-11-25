@@ -25,6 +25,7 @@ class ActionInputs:
     only_agents: bool = True
     fail_on_contradiction: bool = False
     sweep_days: int = 30
+    ignore_claims: frozenset[str] = frozenset()  # claim types neither checked nor shown
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,26 @@ def _number(env: Mapping[str, str], name: str, default: int, low: int, high: int
     return value
 
 
+# Claim types a repository may switch off (MERGE_HOLDS is implicit in every merge and stays).
+IGNORABLE_CLAIMS = frozenset(
+    {"TESTS_PASS", "BUILD_OK", "LINT_OK", "TESTS_ADDED", "DOCS_UPDATED", "FIXES_ISSUE", "DEPLOYED"}
+)
+
+
+def _claim_types(env: Mapping[str, str], name: str) -> frozenset[str]:
+    raw = env.get(f"INPUT_{name}", "")
+    names = frozenset(
+        part.strip().upper() for part in raw.replace("\n", ",").split(",") if part.strip()
+    )
+    unknown = names - IGNORABLE_CLAIMS
+    if unknown:
+        raise InputError(
+            f"input {name.lower().replace('_', '-')} has unknown claim types {sorted(unknown)}; "
+            f"use any of {sorted(IGNORABLE_CLAIMS)}"
+        )
+    return names
+
+
 def read_inputs(env: Mapping[str, str]) -> ActionInputs:
     token = env.get("INPUT_GITHUB_TOKEN", "").strip()
     if not token:
@@ -76,6 +97,7 @@ def read_inputs(env: Mapping[str, str]) -> ActionInputs:
         only_agents=_flag(env, "ONLY_AGENTS", True),
         fail_on_contradiction=_flag(env, "FAIL_ON_CONTRADICTION", False),
         sweep_days=_number(env, "SWEEP_DAYS", 30, 1, 90),
+        ignore_claims=_claim_types(env, "IGNORE_CLAIMS"),
     )
 
 

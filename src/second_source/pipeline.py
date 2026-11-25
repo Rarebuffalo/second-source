@@ -62,6 +62,7 @@ def check_pull_request(
     engine: Engine | None = None,
     now: datetime | None = None,
     extra_evidence: frozenset[str] = frozenset(),
+    ignore_claims: frozenset[str] = frozenset(),
 ) -> PullRequestReport:
     """Verify every claim in a pull request. Raises PullRequestNotFound for missing PRs.
 
@@ -80,6 +81,8 @@ def check_pull_request(
     episode = mappers.episode_from_pull(loaded.pull, agent.agent if agent else UNKNOWN_AGENT)
 
     claims = extract_claims(episode.id, loaded.texts, repo=ref.full_name)
+    # Claim types the repository switched off are neither checked nor shown.
+    claims = [claim for claim in claims if claim.type not in ignore_claims]
     merged_at = mappers.parse_time(loaded.pull.get("merged_at"))
     merge_sha = loaded.pull.get("merge_commit_sha")
     if merged_at and merge_sha:

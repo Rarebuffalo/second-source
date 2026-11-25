@@ -262,3 +262,10 @@ def test_a_dispute_that_github_refuses_says_so_and_still_rechecks(fake_github, t
     )
     assert code == EXIT_OK and "::warning::could not record the dispute" in out
     assert ("POST", "/repos/Octo/App/check-runs") in recorder.paths()
+
+
+def test_switched_off_claim_types_are_not_checked(fake_github, tmp_path):
+    recorder = Recorder(fake_github())
+    run(tmp_path, recorder, "pull_request", OPENED, ignore_claims="TESTS_ADDED,FIXES_ISSUE")
+    summary = recorder.writes[-1][2]["output"]["summary"]
+    assert "Tests added" not in summary and "Fixes #12" not in summary

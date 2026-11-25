@@ -90,3 +90,12 @@ def test_unreadable_event_payload_is_an_error(tmp_path):
     }
     with pytest.raises(InputError, match="cannot read the event payload"):
         read_context(env)
+
+
+def test_claim_types_can_be_switched_off():
+    inputs = read_inputs(
+        {"INPUT_GITHUB_TOKEN": "t", "INPUT_IGNORE_CLAIMS": " lint_ok, DOCS_UPDATED\n"}
+    )
+    assert inputs.ignore_claims == {"LINT_OK", "DOCS_UPDATED"}
+    with pytest.raises(InputError, match="unknown claim types"):
+        read_inputs({"INPUT_GITHUB_TOKEN": "t", "INPUT_IGNORE_CLAIMS": "LINT, MERGE_HOLDS"})

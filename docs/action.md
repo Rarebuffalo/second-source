@@ -106,9 +106,11 @@ chooses otherwise. Low-confidence contradictions are shown but never change the 
 | `only-agents` | `true` | Skip PRs with no detected coding agent |
 | `fail-on-contradiction` | `false` | Make a contradicted claim fail the check |
 | `sweep-days` | `30` | How far back the daily sweep looks |
+| `ignore-claims` | `""` | Claim types to switch off, comma-separated (for example `LINT_OK, DOCS_UPDATED`); they are neither checked nor shown. An unknown name fails the run, so a typo is noticed |
 
-Required permissions: `checks: write`, `contents: read`, `pull-requests: write` (labelling a disputed PR needs it; found live on the sandbox), `issues: write`
-(only for the dispute label and reply), `actions: read` (to map `workflow_run` to PRs).
+Required permissions: `checks: write`, `contents: read`, `pull-requests: write` (to label a
+disputed PR; GitHub requires it for PR labels), `issues: write` (the dispute reply),
+`actions: read` (workflow runs, to know whether CI is still coming).
 
 ## 7. Setup with minimal manual work
 
