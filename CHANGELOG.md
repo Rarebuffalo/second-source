@@ -8,7 +8,9 @@ writes for you.
 
 ## [Unreleased]
 
-Working towards the first public release, 0.5.0 (a beta).
+## [0.5.0] - 2026-11-26
+
+The first public release: a beta. Interfaces may change before 1.0.
 
 ### Added
 - Engine: claims → evidence → YAML + CEL checks → verdicts (VERIFIED, CONTRADICTED, PENDING,

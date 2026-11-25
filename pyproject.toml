@@ -1,6 +1,6 @@
 [project]
 name = "second-source"
-version = "0.1.0"
+version = "0.5.0"
 description = "Independent verification of AI agents' claims against the systems they act on."
 readme = "README.md"
 license = "Apache-2.0"
@@ -46,7 +46,7 @@ dev = [
 ]
 
 [build-system]
-requires = ["hatchling"]
+requires = ["hatchling==1.33.0"]  # pinned: the release builds with exactly this backend
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]

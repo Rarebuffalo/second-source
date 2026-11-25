@@ -63,14 +63,19 @@ rule: missing or stale evidence gives `UNVERIFIABLE`, never `CONTRADICTED`.
 ## Releasing (maintainers)
 
 `second-source init` writes the Action's moving major tag (`@v0` while 0.x), so every release
-must move it, or new workflows point at a tag that does not exist:
+must move it, or new workflows point at a tag that does not exist.
 
-1. Set `__version__` in `src/second_source/__init__.py` and `pyproject.toml`; move the
-   `[Unreleased]` notes in `CHANGELOG.md` under the new version.
-2. Run `scripts/check.sh`, then tag: `git tag vX.Y.Z`.
-3. Move the major tag to the same commit: `git tag -f v0 vX.Y.Z`, and push both
-   (`git push origin vX.Y.Z` and `git push -f origin v0`).
-4. Workflows pinned to a commit SHA do not get the fix; say so in the release notes.
+1. Set `version` in `pyproject.toml` and `__version__` in `src/second_source/__init__.py`, run
+   `uv lock`, and move the `[Unreleased]` notes in `CHANGELOG.md` under `## [X.Y.Z] - date`.
+2. Run `scripts/check.sh`, commit, and push `main`.
+3. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`. The Release workflow
+   (`.github/workflows/release.yml`) checks that the tag, the version and the changelog agree,
+   runs the tests, builds, publishes to PyPI through trusted publishing (the `pypi`
+   environment; no token is stored), and creates a pre-release with the changelog section.
+4. Move the major tag to the same commit: `git tag -f v0 vX.Y.Z && git push -f origin v0`.
+5. On the release page, edit the release and tick "Publish this Action to the GitHub
+   Marketplace" (GitHub has no API for this).
+6. Workflows pinned to a commit SHA do not get the fix; say so in the release notes.
 
 ## Code of conduct and security
 
