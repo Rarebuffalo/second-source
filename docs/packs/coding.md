@@ -58,12 +58,16 @@ and a later PR may have fixed it.
 
 `CONTRADICTED` comes only from these, each with its exceptions:
 
-| Claim | Contradicted when | Not when (UNVERIFIABLE or PENDING instead) |
-|---|---|---|
-| Tests pass, build, lint | a matching CI job failed on the claim's commit (and on the final head, if the PR gained commits) | local or subset claims; timed-out or cancelled jobs; failure on only one of two commits |
-| Fixes an issue | the issue is still open after a merge into the default branch, for a closing keyword in the body or a commit message, same repository | moments after the merge (`CLOSE_PENDING`); title, comment or cross-repository references (`NOT_AUTO_CLOSED`); merges into another branch; reopened then closed again |
-| Deployed | a deployment of the commit to that environment failed, nothing is still deploying, and the source saw every deployment of the commit | a retry in progress; more deployments than the source lists |
-| Merge holds | a revert of the merge commit on the base branch | merges into another branch |
+| Claim | Contradicted when | Reason | Not when (UNVERIFIABLE or PENDING instead) |
+|---|---|---|---|
+| Tests pass, build, lint | a matching CI job failed on the claim's commit (and on the final head, if the PR gained commits) | `coding.ci_result: CI_JOB_FAILED` | local or subset claims; timed-out or cancelled jobs; failure on only one of two commits |
+| Fixes an issue | the issue is still open after a merge into the default branch, for a closing keyword in the body or a commit message, same repository | `coding.fixes_issue: ISSUE_STILL_OPEN`, `coding.fixes_issue_durable: ISSUE_OPEN` | moments after the merge (`CLOSE_PENDING`); title, comment or cross-repository references (`NOT_AUTO_CLOSED`); merges into another branch |
+| Fixes an issue | the issue was reopened after the merge and is still open | `coding.fixes_issue_durable: ISSUE_REOPENED` | reopened then closed again (`REOPENED_THEN_CLOSED`) |
+| Deployed | a deployment of the commit to that environment failed, nothing is still deploying, and the source saw every deployment of the commit | `coding.deployed: DEPLOYMENT_FAILED` | a retry in progress; more deployments than the source lists |
+| Merge holds | a revert of the merge commit on the base branch | `coding.not_reverted: REVERTED` | merges into another branch; the revert itself reverted (`REVERT_UNDONE`) |
+
+This table is the complete list: `tests/packs/coding/test_contradiction_paths.py` fails if a
+check gains or loses a `CONTRADICTED` outcome without the table changing too.
 
 `MERGE_HOLDS` is an implicit claim: merging a PR asserts that the change is good. Making it
 a claim lets the L5 "stayed true" checks use the same engine as everything else.
