@@ -166,8 +166,8 @@ instead of claiming novelty:
   AIDev (2025) and on fresh 2026 PRs, and reports how often CI failed. `bench summarize`
   prints a **comparable cell** ("Comparable to testreceipt": high-confidence, unscoped body
   TESTS_PASS claims decided by CI, by year opened). Independent parsers and labels agreeing is
-  corroboration; disagreeing is a finding to explain. Their figures are quoted from their
-  study and must be re-checked against it before publication.
+  corroboration; disagreeing is a finding to explain. Their figures below were checked
+  against their study (`docs/study.md`, marked draft, 2026-10-06) on 2026-11-26.
 - **Gong et al., "Message-Code Inconsistency in AI Coding Agent-Authored PRs"** (MSR 2026
   mining challenge, <https://arxiv.org/abs/2601.04886>): hand-labelled descriptions that do not
   match the code ("phantom changes"), without CI or issue evidence. Our TESTS_ADDED and
@@ -269,8 +269,9 @@ PR commits: GitHub had expired them, not the repositories skipping CI.
   repository (or one agent's typical repositories) are not independent; the intervals assume
   they are.
 - **Compare with testreceipt, not against it.** testreceipt reports CI test failures on 8.7%
-  of 2025 AIDev PRs that claimed the tests pass (0.3% on 2026 PRs), measured while the CI
-  results still existed (figures quoted from their study). Our TESTS_PASS result is 0 of 41
+  (42 of 481) of 2025 AIDev PRs in repositories with 100+ stars that claimed the tests pass,
+  and 0.3% (2 of 644) of 2026 PRs, measured while the CI results still existed (from their
+  study, a draft dated 2026-10-06). Our TESTS_PASS result is 0 of 41
   verified PRs, all from December 2025 on; we cannot rule out their 2025 rate.
 - **Revert durability is a separate table.** 7 of 979 checkable merges were found reverted;
   one (a dotnet/maui revert that was itself reverted) is now handled by `REVERT_UNDONE`, but
