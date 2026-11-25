@@ -106,7 +106,7 @@ on:
 permissions:
   checks: write
   contents: read
-  pull-requests: read
+  pull-requests: write  # to label a disputed PR (GitHub requires it for PR labels)
   issues: write
   actions: read
 

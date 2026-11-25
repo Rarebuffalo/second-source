@@ -107,7 +107,7 @@ chooses otherwise. Low-confidence contradictions are shown but never change the 
 | `fail-on-contradiction` | `false` | Make a contradicted claim fail the check |
 | `sweep-days` | `30` | How far back the daily sweep looks |
 
-Required permissions: `checks: write`, `contents: read`, `pull-requests: read`, `issues: write`
+Required permissions: `checks: write`, `contents: read`, `pull-requests: write` (labelling a disputed PR needs it; found live on the sandbox), `issues: write`
 (only for the dispute label and reply), `actions: read` (to map `workflow_run` to PRs).
 
 ## 7. Setup with minimal manual work

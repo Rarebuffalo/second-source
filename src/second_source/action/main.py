@@ -148,7 +148,12 @@ class ActionRun:
                 print(f"Ignoring /second-source {command.name} from {command.author}.", file=out)
                 return [], 0.0
             if command.name is CommandName.DISPUTE:
-                apply_dispute(self.client, plan.refs[0], command)
+                try:
+                    apply_dispute(self.client, plan.refs[0], command)
+                except GitHubError as error:
+                    # Say what failed (a missing permission shows up here), then still
+                    # re-check the PR.
+                    print(f"::warning::could not record the dispute: {error}", file=out)
             return list(plan.refs), 0.0  # re-check now, so the check run shows the change
 
         return list(plan.refs), self.inputs.wait_minutes * 60.0

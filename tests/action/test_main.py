@@ -251,3 +251,14 @@ def test_the_actions_own_workflow_file_is_read_from_the_environment():
     ref = "Octo/App/.github/workflows/second-source.yml@refs/heads/main"
     assert own_workflow_path({"GITHUB_WORKFLOW_REF": ref}) == ".github/workflows/second-source.yml"
     assert own_workflow_path({}) is None
+
+
+def test_a_dispute_that_github_refuses_says_so_and_still_rechecks(fake_github, tmp_path):
+    # Found live on the sandbox: without pull-requests: write, labelling a PR is a 403.
+    refused = httpx.Response(403, json={"message": "Resource not accessible by integration"})
+    recorder = Recorder(fake_github({"/repos/Octo/App/issues/7/labels": refused}))
+    code, out = run(
+        tmp_path, recorder, "issue_comment", comment("/second-source dispute x", "MEMBER")
+    )
+    assert code == EXIT_OK and "::warning::could not record the dispute" in out
+    assert ("POST", "/repos/Octo/App/check-runs") in recorder.paths()
