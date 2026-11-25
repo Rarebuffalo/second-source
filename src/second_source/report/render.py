@@ -251,6 +251,9 @@ def printable(text: str) -> str:
     return _UNSAFE.sub("\ufffd", text)
 
 
+_CROSS_REPO_REF = re.compile(r"\S+/\S+#[0-9]+")
+
+
 def code_span(text: str) -> str:
     """PR text as an inline code span: GitHub renders it literally, so HTML, links, images and
     @-mentions in it stay inert (security review 1, M1). The fence is longer than any run of
@@ -280,7 +283,10 @@ def to_markdown(report: PullRequestReport) -> str:
         lines += ["| | Claim | Result | Why | Said in |", "|---|---|---|---|---|"]
         for row in table:
             said = f"{row.origin}: {code_span(row.span)}" if row.span else row.origin
-            label = escape_markdown_cell(row.label)
+            # A repository named in "Fixes owner/name#12" comes from PR text, and a name such
+            # as "a/_www.example.com" would render as a live link: show it as code
+            # (security review 2, N8).
+            label = escape_markdown_cell(_CROSS_REPO_REF.sub(lambda m: code_span(m[0]), row.label))
             why = escape_markdown_cell(row.why)
             lines.append(
                 f"| {row.symbol} | {label} | {row.word} | {why} | {escape_markdown_cell(said)} |"

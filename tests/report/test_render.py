@@ -158,3 +158,10 @@ def test_control_characters_never_reach_the_terminal(fake_github):
     # Security review 1, L2: an OSC 52 sequence would write the reader's clipboard.
     text = to_text(report_with_body(fake_github, "All tests pass \x1b]52;c;ZWNobw==\x07 ok"))
     assert "\x1b" not in text and "\x07" not in text
+
+
+def test_a_repository_named_in_pr_text_is_never_a_live_link(fake_github):
+    # Security review 2, N8: GitHub autolinks "www." names in plain table text.
+    markdown = to_markdown(report_with_body(fake_github, "Fixes a/_www.evil-example.com#1"))
+    row = next(line for line in markdown.splitlines() if "Fixes" in line and "#1" in line)
+    assert "`` a/_www.evil-example.com#1 ``" in row or "` a/_www.evil-example.com#1 `" in row
