@@ -401,6 +401,8 @@ def to_markdown(report: PullRequestReport) -> str:
             )
     digest = evidence_digest(report)
     if digest:
+        while lines and lines[-1] == "":
+            lines.pop()  # the claims line already ends a paragraph when there is no table
         lines += ["", "**Evidence at a glance** (from GitHub, whatever was claimed):", "", *digest]
     if report.stale:
         lines += ["", f"_Not fully checked (data unavailable): {', '.join(sorted(report.stale))}_"]
