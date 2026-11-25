@@ -231,8 +231,15 @@ class GitHubClient:
 
 
 def _next_link(response: httpx.Response) -> str | None:
+    """The next page's URL, only if it stays on the API host: the token goes with it
+    (security review 1, L7)."""
     found = _NEXT_LINK.search(response.headers.get("Link", ""))
-    return found.group(1) if found else None
+    if found is None:
+        return None
+    url = found.group(1)
+    if not url.startswith(API_ROOT + "/"):
+        raise GitHubError(response.status_code, url, "(next page is not on the GitHub API)")
+    return url
 
 
 def _is_rate_limited(response: httpx.Response) -> bool:

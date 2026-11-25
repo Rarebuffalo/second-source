@@ -48,7 +48,22 @@ Working towards the first public release, 0.5.0 (a beta).
 - "Fixes #N" is never contradicted in the minutes before GitHub closes the issue after the
   merge (the durability check lacked the close tolerance).
 
-### Security
+### Security (independent security review before release)
+- The Action installs only its hash-locked dependencies and runs from source; it no longer
+  builds itself, which fetched an unpinned build backend while the write token was present.
+- PR text can no longer stall a run (linear-time cleaning, bounded patterns, a 20,000-character
+  read per text), crash it (bounded numbers, a per-PR catch-all), or spend the repository's API
+  quota (at most 20 issue references, 8 CI commits and 4 deploy commits per PR; beyond that the
+  claims are unverifiable).
+- PR text is shown inert: quotes are code spans in the check table, control characters are
+  stripped in terminal output, and the dispute reply never repeats the commenter's words and is
+  posted once per PR. The report link is no longer prefilled with a possibly private PR.
+- Only a check run created by GitHub Actions is updated, and a future report time is ignored, so
+  a look-alike check cannot freeze the real one.
+- The CLI cache never stores diff patches, and its files are owner-only. Caches written by
+  earlier versions may hold patches: delete `~/.cache/second-source` to remove them.
+- The token is never sent to a pagination link off the API host; the job summary stays under
+  GitHub's 1 MiB limit.
 - The Action pins `astral-sh/setup-uv` to a commit and uv to an exact version whose checksum
   that release bundles, and keeps setup-uv's dependency cache off (it can be poisoned on
   `pull_request_target` and `workflow_run`).

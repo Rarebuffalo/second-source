@@ -265,3 +265,12 @@ def test_cautions_never_change_the_conclusion(fake_github):
     ]
     report = report_for(with_body(fake_github, "All tests pass.", **{f"{PR}/files": workflow}))
     assert outcome_for(report, fail_on_contradiction=False).conclusion == "success"
+
+
+def test_the_job_summary_stays_under_githubs_limit(fake_github, tmp_path):
+    path = tmp_path / "summary.md"
+    path.write_text("x" * (999_000))
+    report = report_for(fake_github())
+    write_job_summary(path, report, Outcome("completed", "success", "1 verified"))
+    assert path.stat().st_size <= 1_000_000
+    assert path.read_text().endswith("- Octo/App#7: 1 verified\n")

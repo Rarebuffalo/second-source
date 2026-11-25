@@ -228,3 +228,24 @@ def test_writes_do_not_follow_redirects():
 
     with pytest.raises(GitHubError):
         make_client(handler).post("/repos/old/name/check-runs", {"name": "x"})
+
+
+def test_the_token_never_leaves_the_api_host():
+    # Security review 1, L7: a pagination link or a redirect elsewhere must not carry the token.
+    seen = []
+
+    def handler(request):
+        seen.append((request.url.host, request.headers.get("Authorization")))
+        if request.url.path == "/list":
+            return httpx.Response(
+                200, json=[1], headers={"Link": '<https://evil.example/p2>; rel="next"'}
+            )
+        if request.url.path == "/moved":
+            return httpx.Response(301, headers={"Location": "https://evil.example/x"})
+        return httpx.Response(200, json={})
+
+    client = GitHubClient("secret", transport=httpx.MockTransport(handler), sleep=lambda _s: None)
+    with pytest.raises(GitHubError):
+        client.get_paginated("/list")
+    client.get("/moved")
+    assert ("evil.example", "Bearer secret") not in seen

@@ -37,6 +37,7 @@ CHECK_NAME = "Second Source"
 ACTIONS_APP = "github-actions"  # the app that owns check runs created with GITHUB_TOKEN
 CLOCK_SKEW = timedelta(minutes=5)  # how far ahead another runner's clock may plausibly be
 MAX_SUMMARY = 65_000  # GitHub limits check run output text to 65,535 characters
+MAX_JOB_SUMMARY = 1_000_000  # bytes; GitHub's step summary limit is 1 MiB
 
 
 @dataclass(frozen=True)
@@ -171,5 +172,13 @@ def write_job_summary(path: Path | None, report: PullRequestReport, outcome: Out
     """Append this PR's table to the workflow run's summary page (no-op outside Actions)."""
     if path is None:
         return
+    section = f"## {report.ref}: {outcome.title}\n\n{summary_markdown(report)}\n\n"
+    used = path.stat().st_size if path.exists() else 0
+    if used + len(section.encode("utf-8")) > MAX_JOB_SUMMARY:
+        # GitHub rejects a step summary over 1 MiB; a long sweep lists the rest by name only
+        # (security review 1, L8). Each PR's check run still has its full table.
+        section = f"- {report.ref}: {outcome.title}\n"
+        if used + len(section.encode("utf-8")) > MAX_JOB_SUMMARY:
+            return
     with path.open("a", encoding="utf-8") as handle:
-        handle.write(f"## {report.ref}: {outcome.title}\n\n{summary_markdown(report)}\n\n")
+        handle.write(section)

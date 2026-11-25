@@ -39,3 +39,20 @@ def test_unwritable_directory_does_not_raise(tmp_path):
 def test_default_dir_respects_xdg(monkeypatch, tmp_path):
     monkeypatch.setenv("XDG_CACHE_HOME", str(tmp_path))
     assert default_cache_dir() == tmp_path / "second-source" / "github"
+
+
+def test_responses_with_code_are_never_cached(tmp_path):
+    # Security review 1, M5: a PR's file list carries diff patches (code).
+    cache = DiskCache(tmp_path)
+    cache.put("https://api/files", '"e1"', [{"filename": "a.py", "patch": "+secret()"}])
+    assert cache.get("https://api/files") is None
+    assert not any(tmp_path.rglob("*.json"))
+
+
+def test_cache_files_are_private_to_the_owner(tmp_path):
+    cache = DiskCache(tmp_path / "c")
+    cache.put("https://api/x", '"e1"', {"title": "private PR"})
+    (entry,) = (tmp_path / "c").rglob("*.json")
+    assert entry.stat().st_mode & 0o777 == 0o600
+    assert (tmp_path / "c").stat().st_mode & 0o777 == 0o700
+    assert entry.parent.stat().st_mode & 0o777 == 0o700
