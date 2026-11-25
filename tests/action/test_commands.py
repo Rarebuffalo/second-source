@@ -58,14 +58,20 @@ def test_only_the_author_or_writers_may_run_commands(author, association, allowe
     assert may_run(command, "pr-author") is allowed
 
 
-def test_dispute_labels_the_pr_and_replies_with_a_report_link():
+def dispute_client(existing_labels=()):
     writes = []
 
     def handler(request):
+        if request.method == "GET":  # the PR's current labels
+            return httpx.Response(200, json=[{"name": name} for name in existing_labels])
         writes.append((request.url.path, json.loads(request.content)))
         return httpx.Response(201, json={})
 
-    client = GitHubClient(transport=httpx.MockTransport(handler), sleep=lambda _s: None)
+    return GitHubClient(transport=httpx.MockTransport(handler), sleep=lambda _s: None), writes
+
+
+def test_dispute_labels_the_pr_and_replies_with_a_report_link():
+    client, writes = dispute_client()
     command = parse_command("/second-source dispute CI job is unrelated", "alice", "MEMBER")
     apply_dispute(client, PullRequestRef("octo", "app", 7), command)
 
@@ -73,8 +79,23 @@ def test_dispute_labels_the_pr_and_replies_with_a_report_link():
     assert label_path == "/repos/octo/app/issues/7/labels"
     assert label_body == {"labels": [DISPUTED_LABEL]}
     assert comment_path == "/repos/octo/app/issues/7/comments"
-    assert "@alice" in comment_body["body"] and "CI job is unrelated" in comment_body["body"]
     link = re.search(r"\]\((https://[^)]+)\)", comment_body["body"]).group(1)
     query = parse_qs(urlparse(link).query)
-    assert query["template"] == ["wrong_verdict.yml"]
-    assert query["pr"] == ["https://github.com/octo/app/pull/7"]
+    assert query == {"template": ["wrong_verdict.yml"]}  # never prefilled: may be a private PR
+
+
+def test_the_dispute_reply_never_repeats_the_commenters_text():
+    # Security review 1, M3: the reply is posted as the bot; echoing would let anyone who may
+    # comment publish mentions and links under its name.
+    client, writes = dispute_client()
+    text = "/second-source dispute @org/everyone [log in](https://evil.example) <img src=x>"
+    apply_dispute(client, PullRequestRef("octo", "app", 7), parse_command(text, "a", "OWNER"))
+    reply = writes[-1][1]["body"]
+    assert "@" not in reply and "evil.example" not in reply and "<img" not in reply
+
+
+def test_a_pr_is_replied_to_once_however_many_disputes():
+    client, writes = dispute_client(existing_labels=[DISPUTED_LABEL])
+    command = parse_command("/second-source dispute again", "alice", "MEMBER")
+    apply_dispute(client, PullRequestRef("octo", "app", 7), command)
+    assert writes == []

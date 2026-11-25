@@ -6,6 +6,7 @@ always say the same thing about each claim.
 
 from __future__ import annotations
 
+import re
 from collections import Counter
 from dataclasses import dataclass
 from typing import Any
@@ -228,7 +229,7 @@ def to_text(report: PullRequestReport, *, color: bool = False) -> str:
     for row in rows(report):
         lines.append(paint(row.result, f"{row.symbol} {row.word:<12} {row.label}"))
         if row.span:
-            lines.append(f'    said in {row.origin}: "{row.span}"')
+            lines.append(f'    said in {row.origin}: "{printable(row.span)}"')
         lines.append(f"    why: {row.why}")
         lines.extend(f"    - {detail}" for detail in row.details)
     if report.stale:
@@ -238,6 +239,26 @@ def to_text(report: PullRequestReport, *, color: bool = False) -> str:
 
 
 # ---- Markdown (GitHub check runs and job summaries) ------------------------------------------
+
+
+# C0 and C1 control characters (except tab) and bidirectional overrides: in a terminal they can
+# rewrite the screen or the clipboard; in Markdown they can hide or reorder text.
+_UNSAFE = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f\u202a-\u202e\u2066-\u2069]")
+
+
+def printable(text: str) -> str:
+    """PR text with control and bidi-override characters replaced (security review 1, L2)."""
+    return _UNSAFE.sub("\ufffd", text)
+
+
+def code_span(text: str) -> str:
+    """PR text as an inline code span: GitHub renders it literally, so HTML, links, images and
+    @-mentions in it stay inert (security review 1, M1). The fence is longer than any run of
+    backticks inside, as CommonMark requires."""
+    text = printable(text).replace("\n", " ")
+    longest = max((len(run) for run in re.findall(r"`+", text)), default=0)
+    fence = "`" * (longest + 1)
+    return f"{fence} {text} {fence}"
 
 
 def escape_markdown_cell(text: str) -> str:
@@ -258,7 +279,7 @@ def to_markdown(report: PullRequestReport) -> str:
     if table:
         lines += ["| | Claim | Result | Why | Said in |", "|---|---|---|---|---|"]
         for row in table:
-            said = f'{row.origin}: "{row.span}"' if row.span else row.origin
+            said = f"{row.origin}: {code_span(row.span)}" if row.span else row.origin
             label = escape_markdown_cell(row.label)
             why = escape_markdown_cell(row.why)
             lines.append(

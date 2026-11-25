@@ -9,7 +9,6 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 from enum import StrEnum
-from urllib.parse import urlencode
 
 from second_source.sources.github.client import GitHubClient
 from second_source.sources.github.urls import PullRequestRef
@@ -62,22 +61,28 @@ PROJECT_URL = "https://github.com/Rarebuffalo/second-source"
 DISPUTED_LABEL = "second-source: disputed"
 
 
-def wrong_verdict_link(pr_url: str, reason: str) -> str:
-    """A link to the project's "wrong verdict" issue form with the PR and reason filled in."""
-    query = urlencode({"template": "wrong_verdict.yml", "pr": pr_url, "expected": reason})
-    return f"{PROJECT_URL}/issues/new?{query}"
+# The issue form, not prefilled: a prefilled link would copy a private repository's PR URL
+# and the commenter's text into a public issue (security review 1, L5).
+WRONG_VERDICT_FORM = f"{PROJECT_URL}/issues/new?template=wrong_verdict.yml"
 
 
 def apply_dispute(client: GitHubClient, ref: PullRequestRef, command: Command) -> None:
-    """Record a dispute: label the PR (the label is the only state) and reply with a link
-    for reporting the wrong verdict to the project."""
+    """Record a dispute: label the PR (the label is the only state) and, the first time only,
+    reply with where to report a wrong verdict.
+
+    The reply never repeats the commenter's text: it is posted as the bot, so echoing it would
+    let anyone who may comment publish mentions, links or images under the bot's name
+    (security review 1, M3). The reason stays in the comment that gave it.
+    """
     base = f"/repos/{ref.owner}/{ref.repo}/issues/{ref.number}"
+    labels = client.get_paginated(f"{base}/labels")
+    if any(label.get("name") == DISPUTED_LABEL for label in labels):
+        return  # already disputed: one reply per PR, however many commands follow
     client.post(f"{base}/labels", {"labels": [DISPUTED_LABEL]})
-    reason = command.argument or "(no reason given)"
     reply = (
-        f"Thanks @{command.author}, this PR is now marked **disputed** and the Second Source "
-        f"check says so.\n\nReason: {reason}\n\nIf a verdict is wrong because Second Source "
-        f"misread a claim or the evidence, please [report it here]"
-        f"({wrong_verdict_link(ref.url, reason)}) so the rules can be fixed."
+        "This PR is now marked **disputed**, and the Second Source check says so. The reason "
+        "is in the comment above.\n\nIf a verdict is wrong because Second Source misread a "
+        f"claim or the evidence, please [report it]({WRONG_VERDICT_FORM}) so the rules can be "
+        "fixed (for a private repository, describe it without the link)."
     )
     client.post(f"{base}/comments", {"body": reply})

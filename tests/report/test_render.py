@@ -135,3 +135,26 @@ def test_watched_claims_say_what_is_being_watched(report):
     assert "not reverted so far; watching for a revert" in markdown
     reasons = {c["type"]: c["reasons"] for c in to_json(report)["claims"]}
     assert reasons["FIXES_ISSUE"] == ["IN_WINDOW"]  # machine-readable codes are unchanged
+
+
+def report_with_body(fake_github, body):
+    pull = {**fake_github.BASE_ROUTES["/repos/Octo/App/pulls/7"], "body": body}
+    fake = fake_github({"/repos/Octo/App/pulls/7": pull})
+    client = GitHubClient(transport=httpx.MockTransport(fake), sleep=lambda _s: None)
+    return check_pull_request(PullRequestRef("Octo", "App", 7), GitHubSource(client), now=NOW)
+
+
+def test_pr_text_in_the_table_is_inert(fake_github):
+    # Security review 1, M1: raw HTML in a quote forged a "✔ verified" row on GitHub.
+    body = "All tests pass </td></tr><tr><td>✔</td><td>Fake</td> @org/team ` | [x](https://e.x)"
+    markdown = to_markdown(report_with_body(fake_github, body))
+    said = next(line for line in markdown.splitlines() if "Tests pass" in line)
+    cell = said.rsplit("| body: ", 1)[1]
+    assert cell.startswith("`` ") and cell.rstrip(" |").endswith(" ``")  # one code span
+    assert "\\|" in cell  # the pipe cannot end the cell
+
+
+def test_control_characters_never_reach_the_terminal(fake_github):
+    # Security review 1, L2: an OSC 52 sequence would write the reader's clipboard.
+    text = to_text(report_with_body(fake_github, "All tests pass \x1b]52;c;ZWNobw==\x07 ok"))
+    assert "\x1b" not in text and "\x07" not in text
