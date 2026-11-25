@@ -471,6 +471,10 @@ def test_fixes_issue_open_moments_after_the_merge_is_pending(engine):
     evidence = [pr_state(merged=True), issue_state(state="open")]
     result = verdict(engine, fixes_claim(), evidence, hours=1)
     assert runs_by_check(result)["coding.fixes_issue"] == (Result.PENDING, "CLOSE_PENDING")
+    # The durability check must agree: the final verdict is pending, never contradicted
+    # (review of the stage B fixes: it used to say ISSUE_OPEN and win).
+    assert runs_by_check(result)["coding.fixes_issue_durable"] == (Result.PENDING, "CLOSE_PENDING")
+    assert result.result is Result.PENDING
 
 
 @pytest.mark.parametrize(
