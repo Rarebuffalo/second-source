@@ -277,6 +277,10 @@ PR commits: GitHub had expired them, not the repositories skipping CI.
   one (a dotnet/maui revert that was itself reverted) is now handled by `REVERT_UNDONE`, but
   run 2's stored evidence predates that rule, so it is still counted.
 
+The aggregate results are published as open data in
+[docs/benchmark-data/run2/](benchmark-data/run2/README.md) (per agent and claim type; no
+per-PR verdicts).
+
 What this means for the product: an after-the-fact check loses most "tests pass" evidence
 within a year. The GitHub Action, which checks claims when the PR is made and keeps the
 evidence snapshot, is the way to keep claims checkable.

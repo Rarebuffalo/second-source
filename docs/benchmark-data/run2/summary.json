@@ -1,0 +1,970 @@
+{
+  "agents": {
+    "claude_code": {
+      "claims": {
+        "DOCS_UPDATED": {
+          "checkable": 27,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.9310344827586207,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.12455502974186705
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.12455502974186705
+          ],
+          "pending": 0,
+          "prs": 29,
+          "repos": 27,
+          "unverifiable": 2,
+          "verified": 27,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "FIXES_ISSUE": {
+          "checkable": 26,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.7878787878787878,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.1287289218592153
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.1287289218592153
+          ],
+          "pending": 0,
+          "prs": 33,
+          "repos": 26,
+          "unverifiable": 7,
+          "verified": 26,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "LINT_OK": {
+          "checkable": 1,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.09090909090909091,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.7934506856227626
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.7934506856227626
+          ],
+          "pending": 0,
+          "prs": 11,
+          "repos": 1,
+          "unverifiable": 10,
+          "verified": 1,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "MERGE_HOLDS": {
+          "checkable": 185,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 1,
+          "coverage": 0.9343434343434344,
+          "false_rate": 0.005405405405405406,
+          "false_rate_ci95": [
+            0.0009548249094924379,
+            0.029978312639718188
+          ],
+          "false_rate_without_guards": 0.005405405405405406,
+          "false_rate_without_guards_ci95": [
+            0.0009548249094924379,
+            0.029978312639718188
+          ],
+          "pending": 0,
+          "prs": 198,
+          "repos": 175,
+          "unverifiable": 13,
+          "verified": 184,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_ADDED": {
+          "checkable": 23,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.8518518518518519,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.14311661845042686
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.14311661845042686
+          ],
+          "pending": 0,
+          "prs": 27,
+          "repos": 23,
+          "unverifiable": 4,
+          "verified": 23,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_PASS": {
+          "checkable": 22,
+          "ci_failed_after_scoped_claim": 2,
+          "contradicted": 0,
+          "coverage": 0.4074074074074074,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.14865487460862087
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.14865487460862087
+          ],
+          "pending": 0,
+          "prs": 54,
+          "repos": 22,
+          "unverifiable": 30,
+          "verified": 22,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "all": {
+          "checkable": 77,
+          "ci_failed_after_scoped_claim": 2,
+          "contradicted": 0,
+          "coverage": 0.7549019607843137,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.04751842528243408
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.04751842528243408
+          ],
+          "pending": 0,
+          "prs": 102,
+          "repos": 76,
+          "unverifiable": 23,
+          "verified": 77,
+          "withdrawn_by_integrity_guard": 0
+        }
+      },
+      "detection_agreement": 1.0,
+      "errors": 2,
+      "low_confidence_claims": 92,
+      "prs": 198
+    },
+    "codex": {
+      "claims": {
+        "DOCS_UPDATED": {
+          "checkable": 16,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.8888888888888888,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.1936076805344365
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.1936076805344365
+          ],
+          "pending": 0,
+          "prs": 18,
+          "repos": 16,
+          "unverifiable": 2,
+          "verified": 16,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "FIXES_ISSUE": {
+          "checkable": 8,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.8,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.32440756488388023
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.32440756488388023
+          ],
+          "pending": 0,
+          "prs": 10,
+          "repos": 8,
+          "unverifiable": 2,
+          "verified": 8,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "LINT_OK": {
+          "checkable": 0,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.0,
+          "false_rate": null,
+          "false_rate_ci95": null,
+          "false_rate_without_guards": null,
+          "false_rate_without_guards_ci95": null,
+          "pending": 0,
+          "prs": 2,
+          "repos": 0,
+          "unverifiable": 2,
+          "verified": 0,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "MERGE_HOLDS": {
+          "checkable": 157,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.7969543147208121,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.023883511433308864
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.023883511433308864
+          ],
+          "pending": 0,
+          "prs": 197,
+          "repos": 136,
+          "unverifiable": 40,
+          "verified": 157,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_ADDED": {
+          "checkable": 21,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.9130434782608695,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.154639018924847
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.154639018924847
+          ],
+          "pending": 0,
+          "prs": 23,
+          "repos": 21,
+          "unverifiable": 2,
+          "verified": 21,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_PASS": {
+          "checkable": 2,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.2857142857142857,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.6576197724933469
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.6576197724933469
+          ],
+          "pending": 0,
+          "prs": 7,
+          "repos": 2,
+          "unverifiable": 5,
+          "verified": 2,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "all": {
+          "checkable": 41,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.82,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.08566757018443186
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.08566757018443186
+          ],
+          "pending": 0,
+          "prs": 50,
+          "repos": 40,
+          "unverifiable": 9,
+          "verified": 41,
+          "withdrawn_by_integrity_guard": 0
+        }
+      },
+      "detection_agreement": 0.9746192893401016,
+      "errors": 3,
+      "low_confidence_claims": 24,
+      "prs": 197
+    },
+    "copilot": {
+      "claims": {
+        "DOCS_UPDATED": {
+          "checkable": 37,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.925,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.09405782583720251
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.09405782583720251
+          ],
+          "pending": 0,
+          "prs": 40,
+          "repos": 37,
+          "unverifiable": 3,
+          "verified": 37,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "FIXES_ISSUE": {
+          "checkable": 94,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 2,
+          "coverage": 0.9215686274509803,
+          "false_rate": 0.02127659574468085,
+          "false_rate_ci95": [
+            0.005854336239172753,
+            0.07429020489102965
+          ],
+          "false_rate_without_guards": 0.02127659574468085,
+          "false_rate_without_guards_ci95": [
+            0.005854336239172753,
+            0.07429020489102965
+          ],
+          "pending": 0,
+          "prs": 102,
+          "repos": 89,
+          "unverifiable": 8,
+          "verified": 92,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "LINT_OK": {
+          "checkable": 0,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.0,
+          "false_rate": null,
+          "false_rate_ci95": null,
+          "false_rate_without_guards": null,
+          "false_rate_without_guards_ci95": null,
+          "pending": 0,
+          "prs": 5,
+          "repos": 0,
+          "unverifiable": 5,
+          "verified": 0,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "MERGE_HOLDS": {
+          "checkable": 144,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 1,
+          "coverage": 0.7384615384615385,
+          "false_rate": 0.006944444444444444,
+          "false_rate_ci95": [
+            0.001226918607059712,
+            0.038284723575657084
+          ],
+          "false_rate_without_guards": 0.006944444444444444,
+          "false_rate_without_guards_ci95": [
+            0.001226918607059712,
+            0.038284723575657084
+          ],
+          "pending": 0,
+          "prs": 195,
+          "repos": 137,
+          "unverifiable": 51,
+          "verified": 143,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_ADDED": {
+          "checkable": 34,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.8717948717948718,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.10151455415332376
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.10151455415332376
+          ],
+          "pending": 0,
+          "prs": 39,
+          "repos": 34,
+          "unverifiable": 5,
+          "verified": 34,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_PASS": {
+          "checkable": 11,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.44,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.2588329669680317
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.2588329669680317
+          ],
+          "pending": 0,
+          "prs": 25,
+          "repos": 11,
+          "unverifiable": 14,
+          "verified": 11,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "all": {
+          "checkable": 125,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 2,
+          "coverage": 0.9398496240601504,
+          "false_rate": 0.016,
+          "false_rate_ci95": [
+            0.004398800179193873,
+            0.05646250093046615
+          ],
+          "false_rate_without_guards": 0.016,
+          "false_rate_without_guards_ci95": [
+            0.004398800179193873,
+            0.05646250093046615
+          ],
+          "pending": 0,
+          "prs": 133,
+          "repos": 120,
+          "unverifiable": 8,
+          "verified": 123,
+          "withdrawn_by_integrity_guard": 0
+        }
+      },
+      "detection_agreement": 1.0,
+      "errors": 5,
+      "low_confidence_claims": 62,
+      "prs": 195
+    },
+    "cursor": {
+      "claims": {
+        "DOCS_UPDATED": {
+          "checkable": 19,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 1.0,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.16817922405261626
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.16817922405261626
+          ],
+          "pending": 0,
+          "prs": 19,
+          "repos": 19,
+          "unverifiable": 0,
+          "verified": 19,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "FIXES_ISSUE": {
+          "checkable": 9,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.9,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.2991450484195441
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.2991450484195441
+          ],
+          "pending": 0,
+          "prs": 10,
+          "repos": 9,
+          "unverifiable": 1,
+          "verified": 9,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "MERGE_HOLDS": {
+          "checkable": 162,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 2,
+          "coverage": 0.8350515463917526,
+          "false_rate": 0.012345679012345678,
+          "false_rate_ci95": [
+            0.003392185488483551,
+            0.04389067656817636
+          ],
+          "false_rate_without_guards": 0.012345679012345678,
+          "false_rate_without_guards_ci95": [
+            0.003392185488483551,
+            0.04389067656817636
+          ],
+          "pending": 0,
+          "prs": 194,
+          "repos": 120,
+          "unverifiable": 32,
+          "verified": 160,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_ADDED": {
+          "checkable": 6,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.75,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.3903342879021653
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.3903342879021653
+          ],
+          "pending": 0,
+          "prs": 8,
+          "repos": 6,
+          "unverifiable": 2,
+          "verified": 6,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_PASS": {
+          "checkable": 3,
+          "ci_failed_after_scoped_claim": 1,
+          "contradicted": 0,
+          "coverage": 0.42857142857142855,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.5614970317550454
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.5614970317550454
+          ],
+          "pending": 0,
+          "prs": 7,
+          "repos": 3,
+          "unverifiable": 3,
+          "verified": 3,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "all": {
+          "checkable": 33,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.9166666666666666,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.10426999754245206
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.10426999754245206
+          ],
+          "pending": 0,
+          "prs": 36,
+          "repos": 33,
+          "unverifiable": 3,
+          "verified": 33,
+          "withdrawn_by_integrity_guard": 0
+        }
+      },
+      "detection_agreement": 0.9896907216494846,
+      "errors": 6,
+      "low_confidence_claims": 42,
+      "prs": 194
+    },
+    "devin": {
+      "claims": {
+        "DOCS_UPDATED": {
+          "checkable": 31,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.9393939393939394,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.11025539546043596
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.11025539546043596
+          ],
+          "pending": 0,
+          "prs": 33,
+          "repos": 23,
+          "unverifiable": 2,
+          "verified": 31,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "FIXES_ISSUE": {
+          "checkable": 16,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.8421052631578947,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.1936076805344365
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.1936076805344365
+          ],
+          "pending": 0,
+          "prs": 19,
+          "repos": 14,
+          "unverifiable": 3,
+          "verified": 16,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "LINT_OK": {
+          "checkable": 1,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.06666666666666667,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.7934506856227626
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.7934506856227626
+          ],
+          "pending": 0,
+          "prs": 15,
+          "repos": 1,
+          "unverifiable": 14,
+          "verified": 1,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "MERGE_HOLDS": {
+          "checkable": 166,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 2,
+          "coverage": 0.8556701030927835,
+          "false_rate": 0.012048192771084338,
+          "false_rate_ci95": [
+            0.0033102913258154093,
+            0.04285899428408123
+          ],
+          "false_rate_without_guards": 0.012048192771084338,
+          "false_rate_without_guards_ci95": [
+            0.0033102913258154093,
+            0.04285899428408123
+          ],
+          "pending": 0,
+          "prs": 194,
+          "repos": 96,
+          "unverifiable": 28,
+          "verified": 164,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_ADDED": {
+          "checkable": 10,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.7142857142857143,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.2775327998628892
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.2775327998628892
+          ],
+          "pending": 0,
+          "prs": 14,
+          "repos": 10,
+          "unverifiable": 4,
+          "verified": 10,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_PASS": {
+          "checkable": 2,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.1,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.6576197724933469
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.6576197724933469
+          ],
+          "pending": 0,
+          "prs": 20,
+          "repos": 2,
+          "unverifiable": 18,
+          "verified": 2,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "all": {
+          "checkable": 57,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.7037037037037037,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.06313883485297894
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.06313883485297894
+          ],
+          "pending": 0,
+          "prs": 81,
+          "repos": 44,
+          "unverifiable": 24,
+          "verified": 57,
+          "withdrawn_by_integrity_guard": 0
+        }
+      },
+      "detection_agreement": 0.9896907216494846,
+      "errors": 6,
+      "low_confidence_claims": 51,
+      "prs": 194
+    },
+    "jules": {
+      "claims": {
+        "DOCS_UPDATED": {
+          "checkable": 23,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.92,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.14311661845042686
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.14311661845042686
+          ],
+          "pending": 0,
+          "prs": 25,
+          "repos": 22,
+          "unverifiable": 2,
+          "verified": 23,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "FIXES_ISSUE": {
+          "checkable": 16,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.6666666666666666,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.1936076805344365
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.1936076805344365
+          ],
+          "pending": 0,
+          "prs": 24,
+          "repos": 12,
+          "unverifiable": 8,
+          "verified": 16,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "MERGE_HOLDS": {
+          "checkable": 165,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 1,
+          "coverage": 0.8375634517766497,
+          "false_rate": 0.006060606060606061,
+          "false_rate_ci95": [
+            0.001070648118628812,
+            0.03352665316918832
+          ],
+          "false_rate_without_guards": 0.006060606060606061,
+          "false_rate_without_guards_ci95": [
+            0.001070648118628812,
+            0.03352665316918832
+          ],
+          "pending": 0,
+          "prs": 197,
+          "repos": 113,
+          "unverifiable": 32,
+          "verified": 164,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_ADDED": {
+          "checkable": 13,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 1.0,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.22809537235419838
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.22809537235419838
+          ],
+          "pending": 0,
+          "prs": 13,
+          "repos": 10,
+          "unverifiable": 0,
+          "verified": 13,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "TESTS_PASS": {
+          "checkable": 1,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.14285714285714285,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.7934506856227626
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.7934506856227626
+          ],
+          "pending": 0,
+          "prs": 7,
+          "repos": 1,
+          "unverifiable": 6,
+          "verified": 1,
+          "withdrawn_by_integrity_guard": 0
+        },
+        "all": {
+          "checkable": 52,
+          "ci_failed_after_scoped_claim": 0,
+          "contradicted": 0,
+          "coverage": 0.7878787878787878,
+          "false_rate": 0.0,
+          "false_rate_ci95": [
+            0.0,
+            0.06879223612386234
+          ],
+          "false_rate_without_guards": 0.0,
+          "false_rate_without_guards_ci95": [
+            0.0,
+            0.06879223612386234
+          ],
+          "pending": 0,
+          "prs": 66,
+          "repos": 43,
+          "unverifiable": 14,
+          "verified": 52,
+          "withdrawn_by_integrity_guard": 0
+        }
+      },
+      "detection_agreement": 1.0,
+      "errors": 3,
+      "low_confidence_claims": 52,
+      "prs": 197
+    }
+  },
+  "code_versions": {
+    "0.1.0/pack 0.5.0": 1175
+  },
+  "rescore_mismatches": 0,
+  "testreceipt_comparable": {
+    "2025": {
+      "checkable": 2,
+      "ci_failed_after_scoped_claim": 0,
+      "contradicted": 0,
+      "coverage": 1.0,
+      "false_rate": 0.0,
+      "false_rate_ci95": [
+        0.0,
+        0.6576197724933469
+      ],
+      "false_rate_without_guards": 0.0,
+      "false_rate_without_guards_ci95": [
+        0.0,
+        0.6576197724933469
+      ],
+      "pending": 0,
+      "prs": 2,
+      "repos": 2,
+      "unverifiable": 0,
+      "verified": 2,
+      "withdrawn_by_integrity_guard": 0
+    },
+    "2026": {
+      "checkable": 18,
+      "ci_failed_after_scoped_claim": 0,
+      "contradicted": 0,
+      "coverage": 1.0,
+      "false_rate": 0.0,
+      "false_rate_ci95": [
+        0.0,
+        0.17587922364665765
+      ],
+      "false_rate_without_guards": 0.0,
+      "false_rate_without_guards_ci95": [
+        0.0,
+        0.17587922364665765
+      ],
+      "pending": 0,
+      "prs": 18,
+      "repos": 17,
+      "unverifiable": 0,
+      "verified": 18,
+      "withdrawn_by_integrity_guard": 0
+    }
+  }
+}
