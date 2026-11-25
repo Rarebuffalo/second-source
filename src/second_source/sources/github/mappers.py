@@ -163,7 +163,13 @@ def texts_from_pull(
 
 def check_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidence:
     """One check run. Keyed by commit and job name; the run id is the version, so a re-run
-    (which gets a new, larger id) replaces the older result during de-duplication."""
+    (which gets a new, larger id) replaces the older result during de-duplication.
+
+    GitHub sets a conclusion only when a run completes, yet it has been seen answering
+    ``status: in_progress`` together with a conclusion and ``completed_at`` (a lagging field).
+    A run with a conclusion is treated as completed, so a claim does not wait on it for hours.
+    """
+    status = "completed" if run.get("conclusion") else run.get("status")
     return Evidence(
         record_type="check_result",
         external_ref=f"{ref}/{run['name']}",
@@ -174,7 +180,7 @@ def check_run_evidence(run: Json, ref: str, observed_at: datetime) -> Evidence:
             {
                 "ref": ref,
                 "name": run["name"],
-                "status": run.get("status"),
+                "status": status,
                 "conclusion": run.get("conclusion"),
                 "source": "check_run",
                 # The app that posted it (github-actions, a third-party CI, a bot). Recorded so

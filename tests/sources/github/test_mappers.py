@@ -135,6 +135,19 @@ def test_check_run_is_keyed_by_commit_and_job_with_run_id_version():
     assert evidence.attributes["conclusion"] == "success"
 
 
+def test_a_check_run_with_a_conclusion_is_completed_whatever_its_status_says():
+    # Seen live (stage B, sandbox PR #60): status in_progress, conclusion success, completed_at.
+    run = {
+        "id": 9,
+        "name": "test",
+        "status": "in_progress",
+        "conclusion": "success",
+        "completed_at": "2026-11-25T16:31:41Z",
+    }
+    attributes = mappers.check_run_evidence(run, "c1", NOW).attributes
+    assert (attributes["status"], attributes["conclusion"]) == ("completed", "success")
+
+
 def test_running_check_run_omits_conclusion():
     run = {"id": 1, "name": "pytest", "status": "in_progress", "conclusion": None}
     assert "conclusion" not in mappers.check_run_evidence(run, "c1", NOW).attributes
