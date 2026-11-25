@@ -23,7 +23,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from datetime import datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +34,8 @@ from second_source.report.render import WORDS, guard_text, to_markdown, withdraw
 from second_source.sources.github.client import GitHubClient
 
 CHECK_NAME = "Second Source"
+ACTIONS_APP = "github-actions"  # the app that owns check runs created with GITHUB_TOKEN
+CLOCK_SKEW = timedelta(minutes=5)  # how far ahead another runner's clock may plausibly be
 MAX_SUMMARY = 65_000  # GitHub limits check run output text to 65,535 characters
 
 
@@ -121,7 +123,13 @@ def _checked_at(run: dict[str, Any]) -> datetime | None:
     return shown if shown.tzinfo is not None else None
 
 
-def publish_check_run(client: GitHubClient, report: PullRequestReport, outcome: Outcome) -> int:
+def publish_check_run(
+    client: GitHubClient,
+    report: PullRequestReport,
+    outcome: Outcome,
+    *,
+    now: datetime | None = None,
+) -> int:
     """Create or update the check run on the PR's head commit; return its id.
 
     Several runs can work on one PR at once (a PR event still waiting for CI, the run that CI's
@@ -140,13 +148,18 @@ def publish_check_run(client: GitHubClient, report: PullRequestReport, outcome: 
     if outcome.conclusion is not None:
         body["conclusion"] = outcome.conclusion
 
-    existing = client.get_paginated(
+    found = client.get_paginated(
         f"{base}/commits/{report.head_sha}/check-runs", {"check_name": CHECK_NAME}, max_pages=1
     )
+    # Only a run that GitHub Actions created can be ours: any other app (or a workflow the PR
+    # edited) can create a look-alike "Second Source" check (security review 1, M2).
+    existing = [run for run in found if (run.get("app") or {}).get("slug") == ACTIONS_APP]
     if existing:
         run_id = int(existing[0]["id"])
         shown = _checked_at(existing[0])
-        if shown is not None and shown > report.checked_at:
+        # A time in the future cannot be a real report; it would freeze the check forever.
+        latest_possible = (now or datetime.now(UTC)) + CLOCK_SKEW
+        if shown is not None and report.checked_at < shown <= latest_possible:
             return run_id  # a newer report is already shown
         client.patch(f"{base}/check-runs/{run_id}", body)
         return run_id

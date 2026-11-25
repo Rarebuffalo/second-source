@@ -144,7 +144,12 @@ class Recorder:
     ("existing", "method", "path", "run_id"),
     [
         ([], "POST", "/repos/Octo/App/check-runs", 77),
-        ([{"id": 5}], "PATCH", "/repos/Octo/App/check-runs/5", 5),
+        (
+            [{"id": 5, "app": {"slug": "github-actions"}}],
+            "PATCH",
+            "/repos/Octo/App/check-runs/5",
+            5,
+        ),
     ],
 )
 def test_check_run_is_created_once_then_updated(fake_github, existing, method, path, run_id):
@@ -169,16 +174,40 @@ def test_an_older_report_never_replaces_a_newer_one(fake_github):
         return recorder, GitHubClient(transport=transport, sleep=lambda _s: None)
 
     newer = (DAY_AFTER + timedelta(minutes=5)).isoformat()
-    recorder, client = client_for([{"id": 5, "external_id": newer}])
+    ours = {"id": 5, "app": {"slug": "github-actions"}}
+    recorder, client = client_for([{**ours, "external_id": newer}])
     report = check_pull_request(REF, GitHubSource(client, clock=lambda: DAY_AFTER), now=DAY_AFTER)
     assert publish_check_run(client, report, Outcome("in_progress", None, "Waiting")) == 5
     assert recorder.writes == []
     # An older or unreadable record is replaced, and the new one records its own time.
     for shown in ((DAY_AFTER - timedelta(minutes=5)).isoformat(), "", "junk", "2030-01-01"):
-        recorder, client = client_for([{"id": 5, "external_id": shown}])
+        recorder, client = client_for([{**ours, "external_id": shown}])
         publish_check_run(client, report, Outcome("completed", "success", "1 verified"))
         ((_method, _path, body),) = recorder.writes
         assert body["external_id"] == report.checked_at.isoformat()
+
+
+def test_a_look_alike_check_run_is_never_adopted(fake_github):
+    # Security review 1, M2: another app (or a workflow the PR edited) creates a "Second
+    # Source" check with a far-future time, which would freeze the real check forever.
+    def client_for(existing):
+        recorder = Recorder(fake_github(), existing)
+        transport = httpx.MockTransport(recorder)
+        return recorder, GitHubClient(transport=transport, sleep=lambda _s: None)
+
+    other_app = {"id": 9, "app": {"slug": "evil-app"}, "external_id": "2026-11-21T00:01:00+00:00"}
+    recorder, client = client_for([other_app])
+    report = check_pull_request(REF, GitHubSource(client, clock=lambda: DAY_AFTER), now=DAY_AFTER)
+    publish_check_run(client, report, Outcome("completed", "success", "1 verified"))
+    assert recorder.writes[0][0] == "POST"  # our own run, beside the look-alike
+    future = {
+        "id": 5,
+        "app": {"slug": "github-actions"},
+        "external_id": "9999-12-31T00:00:00+00:00",
+    }
+    recorder, client = client_for([future])
+    publish_check_run(client, report, Outcome("completed", "success", "1 verified"), now=DAY_AFTER)
+    assert recorder.writes[0][:2] == ("PATCH", "/repos/Octo/App/check-runs/5")
 
 
 def test_in_progress_checks_send_no_conclusion(fake_github):
