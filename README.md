@@ -13,16 +13,16 @@ did "Fixes #123" really close the issue, and is it still closed a month later? W
 reverted? It checks while the evidence exists: GitHub deletes old CI runs, so a claim that is
 not checked when the PR is made often cannot be checked at all later.
 
-> **Status: beta, before the first release.** The engine, the coding pack, the CLI and the
-> GitHub Action are tested (1,000+ tests) and have run live on a sandbox repository with 30
-> agent pull requests. The Action has no tagged release yet. Interfaces may change before 1.0.
+> **Status: beta (0.5.0).** The engine, the coding pack, the CLI and the GitHub Action are
+> tested (1,000+ tests) and have run live on a sandbox repository with 30 agent pull requests.
+> Interfaces may change before 1.0.
 
 ## Try it
 
 Requires [uv](https://docs.astral.sh/uv/). Nothing to install or configure:
 
 ```bash
-uvx --from git+https://github.com/Rarebuffalo/second-source second-source check https://github.com/OWNER/REPO/pull/123
+uvx second-source check https://github.com/OWNER/REPO/pull/123
 ```
 
 A GitHub token is picked up automatically from `GITHUB_TOKEN`, `GH_TOKEN` or a logged-in
@@ -64,7 +64,7 @@ One command writes the workflow; commit it and every PR opened by a coding agent
 **Second Source** check next to your CI:
 
 ```bash
-uvx --from git+https://github.com/Rarebuffalo/second-source second-source init
+uvx second-source init
 ```
 
 The generated `.github/workflows/second-source.yml`:
@@ -243,8 +243,8 @@ More: [architecture](docs/ARCHITECTURE.md), [coding pack](docs/packs/coding.md),
 
 ## Roadmap
 
-- **First release (v0.5.0).** A tagged Action (`@v0`), the CLI on PyPI, a Marketplace listing
-  and the benchmark data as open data.
+- **Released: 0.5.0 (beta).** The Action as `@v0`, the CLI on PyPI (`uvx second-source`), and
+  run 2's aggregate results as [open data](docs/benchmark-data/run2/README.md).
 - **Evidence that outlives GitHub's retention.** The Action keeps a compact, tamper-evident
   record of the evidence behind each verdict, with a `replay` command, so a verdict can still be
   checked after GitHub deletes the CI runs.
