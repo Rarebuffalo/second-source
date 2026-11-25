@@ -36,3 +36,14 @@ Working towards the first public release, 0.5.0 (a beta).
   stops at the rate limit instead of failing; a report cut short by the rate limit is never
   published.
 - `second-source init` writes the Action tag that matches its own version (`@v0`).
+
+### Fixed (from live testing on a sandbox repository)
+- A CI job GitHub reports with a conclusion but a stale `in_progress` status counts as finished.
+- A check is grey, titled "(CI failed)", when CI failed behind a claim that is only
+  unverifiable ("tests pass locally", a partial run, a failure on one of two commits).
+- Watched claims say what is watched: "issue closed; watching for a reopen", "not reverted so
+  far; watching for a revert".
+- The daily sweep finds agent PRs known only from a commit trailer.
+
+### Security
+- The Action pins `astral-sh/setup-uv` to a commit and uv to an exact version.

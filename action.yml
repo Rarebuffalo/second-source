@@ -31,11 +31,16 @@ inputs:
 runs:
   using: composite
   steps:
+    # Pinned to a commit (v10.3.3) and an exact uv version: this step runs in a workflow that
+    # holds a write token, so a moved tag upstream must not change what runs. Update both
+    # deliberately, to releases at least two weeks old.
     - name: Install uv
-      uses: astral-sh/setup-uv@v6
+      uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
       with:
+        version: "0.13.7"
         enable-cache: true
         cache-dependency-glob: ${{ github.action_path }}/uv.lock
+        ignore-empty-workdir: true  # the workflow never checks out the PR, by design
 
     - name: Check agent claims
       shell: bash
