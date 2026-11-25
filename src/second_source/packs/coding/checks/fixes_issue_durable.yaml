@@ -7,7 +7,7 @@
 # a reopened-then-closed issue may also have been fixed by a later PR. Either way the evidence
 # is ambiguous, so it is UNVERIFIABLE (run-2 audit: 2 of 5 reopen contradictions were wrong).
 id: coding.fixes_issue_durable
-version: 2.2.0
+version: 2.3.0
 kind: temporal
 level: L5
 applies_to: [FIXES_ISSUE]
@@ -41,7 +41,10 @@ outcomes:
   # Merges into another branch first: GitHub never closed the issue for them, so an open issue
   # says nothing about the fix, reopened or not.
   - {when: "issues.exists(i, i.state == 'open') && other_branch", result: UNVERIFIABLE, reason: NOT_DEFAULT_BRANCH}
-  - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0] && i.state == 'open')"
+  # Reopened and still open contradicts only a reference GitHub itself closed: for a title,
+  # comment or cross-repository reference the PR was never linked to the issue, so its reopen
+  # says nothing about this PR (found by the randomised oracle tests).
+  - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0] && i.state == 'open') && auto_close"
     result: CONTRADICTED
     reason: ISSUE_REOPENED
   - when: "issues.exists(i, has(i.last_reopened_at) && i.last_reopened_at > merge_times[0])"

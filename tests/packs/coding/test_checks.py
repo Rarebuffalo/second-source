@@ -507,6 +507,18 @@ def test_fixes_issue_reopened_after_merge_and_still_open(engine):
     assert "ISSUE_REOPENED" in result.reasons
 
 
+@pytest.mark.parametrize(
+    ("origin", "repo"), [("title", ""), ("comment", ""), ("body", "other/repo")]
+)
+def test_a_reopened_issue_github_never_linked_is_not_a_contradiction(engine, origin, repo):
+    # Found by the randomised oracle tests: a reference GitHub does not auto-close was never
+    # linked to the PR, so its issue being reopened says nothing about this PR.
+    issue = issue_state(state="open", repo=repo or "octo/app", reopened_at=T0 + timedelta(days=3))
+    evidence = [pr_state(merged=True), issue]
+    result = verdict(engine, fixes_claim(repo=repo, origin=origin), evidence, hours=24 * 5)
+    assert result.result is not Result.CONTRADICTED
+
+
 def test_fixes_issue_reopened_then_closed_again_is_unverifiable(engine):
     # Reopened to verify the fix (or fixed by a later PR), then closed: ambiguous, not false.
     reopened = issue_state(state="closed", reopened_at=T0 + timedelta(days=3))
