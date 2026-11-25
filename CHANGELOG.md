@@ -25,6 +25,10 @@ Working towards the first public release, 0.5.0 (a beta).
   fails a check unless `fail-on-contradiction` is set.
 - Benchmark run 2 findings (docs/benchmark.md, section 11).
 
+- Every check ends with "Evidence at a glance" (CI on the head commit, what the change touched,
+  merge and revert state), also on PRs that make no claims; reasons are shown in words.
+- `ignore-claims` input to switch off claim types a repository finds noisy.
+
 ### Fixed (from the pre-launch review)
 - A claim no longer shows "Waiting for CI" for hours when the commit's CI finished without a
   matching job, or has no CI at all; it does wait while GitHub Actions workflows on the commit
