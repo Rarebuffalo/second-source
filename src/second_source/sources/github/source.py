@@ -213,10 +213,11 @@ class GitHubSource:
             self._left_out[what] = len(ordered) - limit
         return ordered[:limit]
 
-    def _ci_refs(self, claims: Sequence[Claim]) -> list[str]:
-        """Commits with CI claims, by claim priority. A claim's opening and final commit are
-        taken together or not at all: judging it on only one of them could verify it on a
-        commit that is not the one that matters."""
+    def _ci_refs(self, claims: Sequence[Claim], loaded: LoadedPullRequest) -> list[str]:
+        """Commits with CI claims, by claim priority, then the PR's head commit (for the
+        evidence summary every report shows). A claim's opening and final commit are taken
+        together or not at all: judging it on only one of them could verify it on a commit
+        that is not the one that matters."""
         ordered: list[str] = []
         left_out = 0
         ci_claims = [c for c in claims if c.type in {TESTS_PASS, BUILD_OK, LINT_OK}]
@@ -232,6 +233,9 @@ class GitHubSource:
                 left_out += len(refs)
         if left_out:
             self._left_out["commits with CI claims"] = left_out
+        head = (loaded.pull.get("head") or {}).get("sha")
+        if head and head not in ordered and len(ordered) < MAX_CI_REFS_PER_PR:
+            ordered.append(head)
         return ordered
 
     # ---- one fetcher per evidence type -------------------------------------------------------
@@ -244,7 +248,7 @@ class GitHubSource:
 
     def _check_results(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        for ref in self._ci_refs(claims):
+        for ref in self._ci_refs(claims, loaded):
             now = self._clock()
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/commits/{ref}/check-runs", {"filter": "latest"}
@@ -262,7 +266,7 @@ class GitHubSource:
 
     def _workflow_runs(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        for ref in self._ci_refs(claims):
+        for ref in self._ci_refs(claims, loaded):
             now = self._clock()
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/actions/runs", {"head_sha": ref}, max_pages=3

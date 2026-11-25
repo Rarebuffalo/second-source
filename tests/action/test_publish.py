@@ -274,3 +274,22 @@ def test_the_job_summary_stays_under_githubs_limit(fake_github, tmp_path):
     write_job_summary(path, report, Outcome("completed", "success", "1 verified"))
     assert path.stat().st_size <= 1_000_000
     assert path.read_text().endswith("- Octo/App#7: 1 verified\n")
+
+
+def test_every_check_shows_the_evidence_at_a_glance(fake_github):
+    # Product review 1, F3: most PRs make no claims; the check is useful on them too.
+    from second_source.action.main import DIGEST_EVIDENCE
+
+    fake = with_body(fake_github, "Small cleanup.")  # no claims at all
+    client = GitHubClient(transport=httpx.MockTransport(fake), sleep=lambda _s: None)
+    report = check_pull_request(
+        REF,
+        GitHubSource(client, clock=lambda: DAY_AFTER),
+        now=DAY_AFTER,
+        extra_evidence=DIGEST_EVIDENCE,
+    )
+    summary = summary_markdown(report)
+    assert "**Evidence at a glance**" in summary
+    assert "- CI on the head commit: 2 passed" in summary
+    assert "file(s) changed" in summary and "test files changed" in summary
+    assert "- Merged; no revert found so far" in summary

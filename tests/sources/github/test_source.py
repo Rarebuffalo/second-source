@@ -52,12 +52,17 @@ def test_only_needed_evidence_is_fetched(fake_github):
     assert fake.requested == [
         "/repos/Octo/App/commits/c1/check-runs",
         "/repos/Octo/App/commits/c1/status",
+        # The PR's head commit too, for the evidence summary every report shows.
+        "/repos/Octo/App/commits/c2/check-runs",
+        "/repos/Octo/App/commits/c2/status",
     ]
     assert {(r.external_ref, r.version) for r in result.records} == {
         ("c1/pytest", 205),
         ("c1/ruff", 206),
+        ("c2/pytest", 205),  # the fake serves c1's checks for the head commit c2
+        ("c2/ruff", 206),
     }
-    assert "issue_state" not in result.stale  # (the decoy commits do not exist in the fake)
+    assert result.stale == set()
 
 
 def test_inaccessible_issue_is_skipped_not_stale(fake_github):
@@ -67,7 +72,7 @@ def test_inaccessible_issue_is_skipped_not_stale(fake_github):
         loaded, [claim("FIXES_ISSUE", issue=12, repo="")], {"issue_state"}
     )
     assert result.records == []
-    assert "issue_state" not in result.stale  # (the decoy commits do not exist in the fake)
+    assert result.stale == set()
 
 
 def test_issues_of_a_renamed_repository_carry_its_current_name(fake_github):
@@ -215,7 +220,9 @@ def test_second_sources_own_runs_are_never_ci_evidence(fake_github):
     result = source.fetch_evidence(
         source.load(REF), [claim("TESTS_PASS", ref="c1")], {"check_result", "ci_workflow_run"}
     )
-    names = sorted((r.record_type, r.external_ref) for r in result.records)
+    names = sorted(
+        (r.record_type, r.external_ref) for r in result.records if "c1/" in r.external_ref
+    )
     assert names == [
         ("check_result", "c1/pytest"),
         ("ci_workflow_run", "c1/workflow-run:3"),
@@ -297,7 +304,7 @@ def test_a_claims_opening_and_final_commits_are_fetched_together(fake_github):
         )
         for n in range(5)
     ]
-    refs = source._ci_refs(claims)
+    refs = source._ci_refs(claims, source.load(REF))
     assert len(refs) == 8
     assert all((f"a{n}" in refs) == (f"b{n}" in refs) for n in range(5))
     assert source._left_out == {"commits with CI claims": 2}

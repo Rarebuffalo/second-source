@@ -36,6 +36,10 @@ from second_source.sources.github.client import GitHubClient, GitHubError, RateL
 from second_source.sources.github.source import GitHubSource, PullRequestNotFound
 from second_source.sources.github.urls import PullRequestRef
 
+# Fetched on every PR, claims or not, for the evidence summary in the check run (about four
+# requests: the head commit's CI and the file list).
+DIGEST_EVIDENCE = frozenset({"pr_state", "check_result", "changed_file", "changed_files_summary"})
+
 EXIT_OK = 0
 EXIT_BAD_INPUT = 2
 
@@ -163,7 +167,7 @@ class ActionRun:
         source = GitHubSource(self.client, clock=self.now, own_workflow_path=self.own_workflow_path)
 
         def check() -> PullRequestReport:
-            report = check_pull_request(ref, source, now=self.now())
+            report = check_pull_request(ref, source, now=self.now(), extra_evidence=DIGEST_EVIDENCE)
             if report.rate_limited:
                 # Evidence was cut short: publishing would show "unverifiable" over a real
                 # result, so stop instead (the caller ends the run with a warning).

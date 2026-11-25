@@ -60,6 +60,50 @@ GUARD_TEXT = {
     "REOPENED_THEN_CLOSED": "the issue was reopened after the merge, then closed again",
     "REVERT_UNDONE": "the merge was reverted, then the revert was itself reverted",
 }
+# Every other reason in words, for people reading a check run; the JSON report keeps the
+# codes. A reason missing here is shown as its code (tests keep this table complete).
+REASON_TEXT = {
+    "ALL_MATCHING_CI_JOBS_PASSED": "every matching CI job passed",
+    "AWAITING_CI": "waiting for CI to finish",
+    "CI_JOB_FAILED": "a matching CI job failed",
+    "CI_FAILED_LOCAL_CLAIM": "CI failed, but the claim was about a local run",
+    "CI_FAILED_SUBSET_CLAIM": "CI failed, but the claim covered only part of the checks",
+    "CLAIM_COMMIT_AMBIGUOUS": "CI failed on only one of the commits the claim could mean",
+    "CI_TIMEOUT": "CI did not finish in time",
+    "NO_CI_RECORDS": "no CI ran on this commit (or its results were deleted)",
+    "NO_CI_RESULTS": "the matching CI jobs were skipped, cancelled or timed out",
+    "NO_MATCHING_CI_JOBS": "CI ran, but no job matched this claim",
+    "NO_COMMIT_REFERENCE": "no commit to check it against",
+    "SOURCE_STALE": "GitHub's data could not be read",
+    "TEST_FILES_CHANGED": "test files changed",
+    "DOC_FILES_CHANGED": "documentation files changed",
+    "NO_FILE_LIST": "the changed files could not be read",
+    "ISSUE_CLOSED_BY_MERGE": "the issue was closed when the PR merged",
+    "ISSUE_ALREADY_CLOSED": "the issue was already closed before the PR",
+    "ISSUE_STILL_OPEN": "the issue is still open after the merge",
+    "ISSUE_OPEN": "the issue is open",
+    "ISSUE_REOPENED": "the issue was reopened after the merge",
+    "ISSUE_STAYED_CLOSED": "the issue stayed closed",
+    "ISSUE_NOT_ACCESSIBLE": "the issue could not be read",
+    "NOT_AUTO_CLOSED": "GitHub does not close issues referenced this way",
+    "NOT_DEFAULT_BRANCH": "merged into a branch other than the default",
+    "NO_CLOSE_TIME": "GitHub gave no close time for the issue",
+    "NO_MERGE_TIME": "GitHub gave no merge time",
+    "NO_PR_STATE": "the PR's state could not be read",
+    "NOT_MERGED": "the PR was not merged",
+    "PR_NOT_MERGED": "the PR was closed without merging",
+    "NOT_MERGED_YET": "decided once the PR is merged",
+    "CLOSE_PENDING": "merged; waiting for GitHub to close the issue",
+    "IN_WINDOW": "still being watched",
+    "NOT_REVERTED": "not reverted",
+    "REVERTED": "the merge was reverted",
+    "DEPLOYMENT_SUCCEEDED": "a deployment of this commit succeeded",
+    "DEPLOYMENT_FAILED": "every deployment of this commit failed",
+    "DEPLOYMENT_FAILED_UNCLEAR": "a deployment failed, but GitHub may not list them all",
+    "DEPLOYMENT_UNCLEAR": "the deployments do not settle it",
+    "DEPLOYING": "a deployment is still running",
+    "NO_DEPLOYMENT_RECORDS": "no deployment of this commit was found",
+}
 WITHDRAWN_SYMBOL, WITHDRAWN_WORD = "⚠", "not verified"
 
 # Pending reasons whose code alone misleads a reader: after the merge, "Fixes #3: pending
@@ -74,7 +118,7 @@ PENDING_TEXT = {
 
 
 def guard_text(reason: str) -> str:
-    return GUARD_TEXT.get(reason, reason)
+    return GUARD_TEXT.get(reason) or REASON_TEXT.get(reason, reason)
 
 
 def withdrawn_reasons(verdict: Verdict) -> tuple[str, ...]:
@@ -269,6 +313,70 @@ def escape_markdown_cell(text: str) -> str:
     return text.replace("|", "\\|").replace("\n", " ")
 
 
+_OWN_CHECKS = frozenset({"Second Source", "second-source"})
+
+
+def evidence_digest(report: PullRequestReport) -> list[str]:
+    """What GitHub's own record says about this PR, whatever the agent claimed: CI on the head
+    commit, what the change touched, merge and revert state. Shown on every report, so the
+    check is useful on PRs that make no claims too (product review 1, F3).
+
+    Only evidence that was fetched is described; a line is left out rather than guessed.
+    """
+    records = report.evidence
+    lines: list[str] = []
+    if "check_result" in report.fetched and "check_result" not in report.stale:
+        jobs = [
+            e.attributes
+            for e in records
+            if e.record_type == "check_result"
+            and e.attributes.get("ref") == report.head_sha
+            and e.attributes.get("name") not in _OWN_CHECKS
+        ]
+        if not jobs:
+            lines.append("CI on the head commit: no CI results (yet)")
+        else:
+            running = sum(1 for j in jobs if j.get("status") != "completed")
+            failed = sorted(j["name"] for j in jobs if j.get("conclusion") == "failure")
+            passed = sum(1 for j in jobs if j.get("conclusion") == "success")
+            parts = [f"{passed} passed"]
+            if failed:
+                shown = ", ".join(failed[:5]) + (" …" if len(failed) > 5 else "")
+                parts.append(f"{len(failed)} failed ({shown})")
+            if running:
+                parts.append(f"{running} still running")
+            others = len(jobs) - passed - len(failed) - running
+            if others:
+                parts.append(f"{others} skipped, cancelled or neutral")
+            lines.append(f"CI on the head commit: {', '.join(parts)}")
+    summary = next(
+        (e.attributes for e in records if e.record_type == "changed_files_summary"), None
+    )
+    if summary is not None:
+        touched = [
+            f"{summary.get('files', 0)} file(s) changed",
+            "test files changed" if summary.get("test_source_changed") else "no test files changed",
+        ]
+        if summary.get("ci_config_changed"):
+            touched.append("**CI configuration changed**")
+        if summary.get("removed_test_files"):
+            touched.append(f"{summary['removed_test_files']} test file(s) removed")
+        if summary.get("lint_suppressions_added"):
+            touched.append("lint suppressions added")
+        lines.append("Change: " + "; ".join(touched))
+    pr = next((e.attributes for e in records if e.record_type == "pr_state"), None)
+    if pr is not None:
+        if pr.get("merged"):
+            reverts = [
+                e for e in records if e.record_type == "revert" and not e.attributes.get("undone")
+            ]
+            watch = "reverted" if reverts else "no revert found so far"
+            lines.append(f"Merged; {watch}")
+        else:
+            lines.append("Not merged" + (" (closed)" if pr.get("state") == "closed" else ""))
+    return [f"- {line}" for line in lines]
+
+
 def to_markdown(report: PullRequestReport) -> str:
     lines = [
         f"**Second Source** checked the claims in {report.ref}.",
@@ -291,6 +399,9 @@ def to_markdown(report: PullRequestReport) -> str:
             lines.append(
                 f"| {row.symbol} | {label} | {row.word} | {why} | {escape_markdown_cell(said)} |"
             )
+    digest = evidence_digest(report)
+    if digest:
+        lines += ["", "**Evidence at a glance** (from GitHub, whatever was claimed):", "", *digest]
     if report.stale:
         lines += ["", f"_Not fully checked (data unavailable): {', '.join(sorted(report.stale))}_"]
     lines += [

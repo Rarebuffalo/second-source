@@ -165,3 +165,24 @@ def test_a_repository_named_in_pr_text_is_never_a_live_link(fake_github):
     markdown = to_markdown(report_with_body(fake_github, "Fixes a/_www.evil-example.com#1"))
     row = next(line for line in markdown.splitlines() if "Fixes" in line and "#1" in line)
     assert "`` a/_www.evil-example.com#1 ``" in row or "` a/_www.evil-example.com#1 `" in row
+
+
+def test_every_reason_a_check_can_give_has_words():
+    # People read check runs; codes stay in the JSON. Guards' own "nothing found" reasons
+    # never reach a reader (a guard that found nothing is not shown).
+    import re as _re
+    from pathlib import Path
+
+    from second_source.report.render import GUARD_TEXT, REASON_TEXT
+
+    checks = Path(__file__).resolve().parents[2] / "src/second_source/packs/coding/checks"
+    shown = set()
+    for path in checks.glob("*.yaml"):
+        text = path.read_text(encoding="utf-8")
+        guard = "role: guard" in text
+        for result, reason in _re.findall(r"result: (\w+), reason: (\w+)", text) + [
+            (r, c) for r, c in _re.findall(r"result: (\w+)\n\s+reason: (\w+)", text)
+        ]:
+            if not (guard and result == "VERIFIED"):
+                shown.add(reason)
+    assert shown - set(GUARD_TEXT) - set(REASON_TEXT) == set()
