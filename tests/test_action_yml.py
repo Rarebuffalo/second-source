@@ -42,3 +42,5 @@ def test_the_project_is_never_built_and_the_token_comes_after_the_install():
     assert "INPUT_GITHUB_TOKEN" not in install.get("env", {})
     assert "--no-sync" in steps[-1]["run"]
     assert steps[-1]["env"]["PYTHONPATH"] == "${{ github.action_path }}/src"
+    assert "--no-build" in install["run"]
+    assert steps[-1]["env"]["PYTHONSAFEPATH"] == "1"  # the workspace is never importable

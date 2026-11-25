@@ -50,13 +50,18 @@ runs:
     # PyPI unpinned on every run. This step runs before the token is in the environment.
     - name: Install locked dependencies
       shell: bash
-      run: uv sync --frozen --no-dev --no-install-project --project "$GITHUB_ACTION_PATH"
+      # --no-build: wheels only, so no package is ever built (and no build backend fetched).
+      run: uv sync --frozen --no-dev --no-install-project --no-build --project "$GITHUB_ACTION_PATH"
 
     # Run from the Action's own source; the PR's code is never checked out or imported.
     - name: Check agent claims
       shell: bash
       env:
         PYTHONPATH: ${{ github.action_path }}/src
+        # Without this, `python -m` puts the working directory first on sys.path, so a file
+        # such as yaml.py left in the workspace (a self-hosted runner, an earlier checkout)
+        # would run with the token (security review 2, N3).
+        PYTHONSAFEPATH: "1"
         INPUT_GITHUB_TOKEN: ${{ inputs.github-token }}
         INPUT_WAIT_MINUTES: ${{ inputs.wait-minutes }}
         INPUT_ONLY_AGENTS: ${{ inputs.only-agents }}
