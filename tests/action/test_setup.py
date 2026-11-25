@@ -47,10 +47,10 @@ def test_generated_workflow_is_valid_and_safe():
     assert "github.event.pull_request.number" in document["concurrency"]["group"]
     # CI finishing re-checks the same PR: it must share that PR's group.
     assert "workflow_run.pull_requests[0].number" in document["concurrency"]["group"]
-    # A queued command must never be replaced by a later event: commands get their own group.
-    assert (
-        "github.event_name == 'issue_comment' && github.run_id" in document["concurrency"]["group"]
-    )
+    group = document["concurrency"]["group"]
+    # A dispute must never be replaced in the queue; rechecks share the PR's group.
+    assert "contains(github.event.comment.body, '/second-source dispute')" in group
+    assert "github.event.issue.number" in group
     assert document["jobs"]["second-source"]["timeout-minutes"] > 60  # longer than the longest wait
 
 

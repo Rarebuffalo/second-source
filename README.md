@@ -76,7 +76,8 @@ By default the check is advice: a contradicted claim makes it *neutral*, never f
 `fail-on-contradiction: "true"` to make it block merges. Other inputs: `wait-minutes`
 (default 10; use 0 on private repositories to save Actions minutes), `only-agents`,
 `sweep-days`. It costs nothing to run on public repositories, needs no server and no secrets,
-and never checks out the PR's code. Design: [docs/action.md](docs/action.md).
+and never checks out the PR's code. Design: [docs/action.md](docs/action.md). To run exactly
+the code you reviewed, pin a commit SHA instead of `@v0`; see [SECURITY.md](SECURITY.md).
 
 ## What it checks
 

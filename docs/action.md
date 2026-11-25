@@ -63,8 +63,9 @@ after it was made, the claim may be decided before its CI reports, and the next 
 corrects it. A commit whose CI finished without a matching job is decided at once
 (`NO_MATCHING_CI_JOBS`) instead of showing "Waiting for CI" for hours.
 
-Runs that overlap on one PR (a PR event, the CI-finished re-check) share a concurrency group;
-comment commands have their own, so they are never dropped from the queue. Each check run
+Runs that overlap on one PR (a PR event, the CI-finished re-check, `/second-source recheck`
+comments) share a concurrency group, and a newer queued run replaces an older one, so a burst
+of rechecks costs one run. A dispute has a group of its own, so it is never dropped. Each check run
 records when its report was made, and an older report is not published over a newer one. One
 wait budget covers a whole run, and the job times out after 75 minutes; a run cancelled
 mid-wait leaves the check "in progress" until the next event or sweep republishes it.
