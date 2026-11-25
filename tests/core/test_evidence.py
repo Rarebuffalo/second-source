@@ -45,3 +45,10 @@ def test_output_order_is_stable():
 
 def test_empty_input_gives_empty_output():
     assert dedupe_evidence([]) == []
+
+
+def test_an_exact_tie_is_decided_by_content_not_arrival_order():
+    # Found by the randomised cardinal-rule tests: same record, version and observation time,
+    # different contents. The arrival order must not change the verdict.
+    one, other = record("pay-1", status="SUCCESS"), record("pay-1", status="FAILED")
+    assert dedupe_evidence([one, other]) == dedupe_evidence([other, one])
