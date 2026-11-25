@@ -221,3 +221,20 @@ def test_second_sources_own_runs_are_never_ci_evidence(fake_github):
         ("ci_workflow_run", "c1/workflow-run:3"),
         ("ci_workflow_run", "c1/workflow-run:4"),
     ]
+
+
+def test_too_many_references_are_not_fetched_and_say_so(fake_github):
+    # Security review 1, H3: PR text must not be able to spend the repository's hourly quota.
+    fake = fake_github()
+    source = make_source(fake)
+    loaded = source.load(REF)
+    fake.requested.clear()
+    issues = [claim("FIXES_ISSUE", issue=n, repo="") for n in range(1, 30)]
+    issues = [
+        Claim(f"c{n}", c.episode_id, c.type, c.made_at, c.attributes) for n, c in enumerate(issues)
+    ]
+    ci = [Claim(f"t{n}", "octo/app#7", "TESTS_PASS", NOW, {"ref": f"sha{n}"}) for n in range(9)]
+    result = source.fetch_evidence(loaded, issues + ci, {"issue_state", "check_result"})
+    assert result.stale == {"issue_state", "check_result"}
+    assert fake.requested == []  # not one request spent
+    assert any("too many issue references" in error for error in result.errors)

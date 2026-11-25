@@ -39,7 +39,9 @@ Keeping the mappers pure means almost all logic is tested with JSON fixtures and
 
 Evidence is fetched **only for the record types the extracted claims need**
 (`Engine.evidence_types_for`). A PR with no claims costs about 3 calls; a typical agent PR
-costs about 7–11 (CI claims add one workflow-run lookup per commit).
+costs about 7–11 (CI claims add one workflow-run lookup per commit). PR text cannot raise this
+without bound: past 20 issue references, 8 commits with CI claims or 4 with deploy claims, that
+evidence type is not fetched and its claims are reported stale (UNVERIFIABLE).
 
 ## 3. Which commit a text refers to
 

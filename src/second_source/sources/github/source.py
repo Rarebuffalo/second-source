@@ -60,6 +60,19 @@ FETCH_ORDER = (
 )
 
 MAX_DEPLOYMENTS_PER_REF = 5
+# PR text is attacker-controlled, and each distinct reference costs requests from the
+# repository's shared hourly quota (security review 1, H3: one body of "Fixes #N" lines made
+# 5,000 requests). Past these caps the evidence type is not fetched at all and is reported
+# stale, so its claims are UNVERIFIABLE rather than checked against part of the evidence.
+MAX_ISSUES_PER_PR = 20  # two requests each
+MAX_CI_REFS_PER_PR = 8  # three requests each (check runs, statuses, workflow runs)
+MAX_DEPLOY_REFS_PER_PR = 4  # up to six requests each
+
+
+def _capped(items: set[Any], limit: int, what: str) -> list[Any]:
+    if len(items) > limit:
+        raise GitHubError(0, what, f"too many {what} in the PR text ({len(items)} > {limit})")
+    return sorted(items)
 
 
 class PullRequestNotFound(Exception):
@@ -186,7 +199,7 @@ class GitHubSource:
 
     def _check_results(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        for ref in sorted(_claim_refs(claims)):
+        for ref in _capped(_claim_refs(claims), MAX_CI_REFS_PER_PR, "commits with CI claims"):
             now = self._clock()
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/commits/{ref}/check-runs", {"filter": "latest"}
@@ -204,7 +217,7 @@ class GitHubSource:
 
     def _workflow_runs(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        for ref in sorted(_claim_refs(claims)):
+        for ref in _capped(_claim_refs(claims), MAX_CI_REFS_PER_PR, "commits with CI claims"):
             now = self._clock()
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/actions/runs", {"head_sha": ref}, max_pages=3
@@ -256,7 +269,7 @@ class GitHubSource:
             for claim in claims
             if claim.type == FIXES_ISSUE
         }
-        for repo, number in sorted(targets):
+        for repo, number in _capped(targets, MAX_ISSUES_PER_PR, "issue references"):
             try:
                 issue = self.client.get(f"/repos/{repo}/issues/{number}")
             except NotFound:
@@ -302,7 +315,8 @@ class GitHubSource:
     def _deployments(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
         refs = {claim.attributes.get("ref") for claim in claims if claim.type == DEPLOYED}
-        for ref in sorted(r for r in refs if r):
+        refs.discard(None)
+        for ref in _capped(refs, MAX_DEPLOY_REFS_PER_PR, "commits with deploy claims"):
             deployments = self.client.get(f"{self._base(loaded)}/deployments", {"sha": ref})
             # GitHub lists deployments newest first; past the cap, a success may be unseen.
             complete = len(deployments) <= MAX_DEPLOYMENTS_PER_REF
