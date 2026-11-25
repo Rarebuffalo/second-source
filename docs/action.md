@@ -11,7 +11,7 @@ user nothing, need no manual work beyond adding the workflow.
 
 | Decision | Choice | Why |
 |---|---|---|
-| Action type | **Composite** action using `astral-sh/setup-uv`, then `uv run --project $GITHUB_ACTION_PATH second-source action` | No Docker image to build or pull; `uv` caches dependencies, so a run takes seconds |
+| Action type | **Composite** action: `astral-sh/setup-uv` (pinned), `uv sync --frozen --no-install-project` (locked, hash-checked dependencies; the project is not built, so no build backend is fetched), then `python -m second_source.cli.main action` from the Action's source | No Docker image to build or pull; a run takes seconds |
 | State | **None.** Every run rebuilds the verdict from GitHub | Stateless means no database, nothing to host, nothing to leak |
 | Output | A **check run** named "Second Source" on the PR's head commit, plus the job summary | Check runs show next to CI, support Markdown, and can be updated in place |
 | Token | The workflow's own `GITHUB_TOKEN` | No secrets to create. Never printed; the CLI's token handling is reused |
