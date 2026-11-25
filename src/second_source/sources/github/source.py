@@ -62,17 +62,21 @@ FETCH_ORDER = (
 MAX_DEPLOYMENTS_PER_REF = 5
 # PR text is attacker-controlled, and each distinct reference costs requests from the
 # repository's shared hourly quota (security review 1, H3: one body of "Fixes #N" lines made
-# 5,000 requests). Past these caps the evidence type is not fetched at all and is reported
-# stale, so its claims are UNVERIFIABLE rather than checked against part of the evidence.
+# 5,000 requests). Up to these caps, references are fetched in priority order: the PR body
+# and title first, then commit messages, then comments, each in the order written. The rest
+# are not fetched, so their claims find no evidence and are UNVERIFIABLE; the report says how
+# many were left out. Adding references can therefore never hide the body's own claims
+# (security review 2, N2: a whole-type cap let 21 decoy references hide every issue claim).
 MAX_ISSUES_PER_PR = 20  # two requests each
 MAX_CI_REFS_PER_PR = 8  # three requests each (check runs, statuses, workflow runs)
 MAX_DEPLOY_REFS_PER_PR = 4  # up to six requests each
 
 
-def _capped(items: set[Any], limit: int, what: str) -> list[Any]:
-    if len(items) > limit:
-        raise GitHubError(0, what, f"too many {what} in the PR text ({len(items)} > {limit})")
-    return sorted(items)
+_ORIGIN_RANK = {"body": 0, "title": 0, "commit": 1, "comment": 2}
+
+
+def _priority(claim: Claim) -> tuple[int, Any]:
+    return _ORIGIN_RANK.get(claim.origin, 3), claim.made_at
 
 
 class PullRequestNotFound(Exception):
@@ -161,6 +165,7 @@ class GitHubSource:
         result = EvidenceResult()
         self._files = {}
         self._mapped = {}
+        self._left_out: dict[str, int] = {}
         fetchers = {
             "pr_state": self._pr_state,
             "check_result": self._check_results,
@@ -187,7 +192,31 @@ class GitHubSource:
             except GitHubError as error:  # includes PageLimitReached
                 result.stale.add(kind)
                 result.errors.append(f"{kind}: {error}")
+        result.errors += [
+            f"{count} {what} not checked (more than the per-PR limit)"
+            for what, count in self._left_out.items()
+        ]
         return result
+
+    def _first(self, keyed: Iterable[tuple[Any, Claim]], limit: int, what: str) -> list[Any]:
+        """Distinct keys in claim priority order, at most ``limit``; counts the rest."""
+        ordered: list[Any] = []
+        for key, _claim in sorted(keyed, key=lambda pair: _priority(pair[1])):
+            if key not in ordered:
+                ordered.append(key)
+        if len(ordered) > limit:
+            self._left_out[what] = len(ordered) - limit
+        return ordered[:limit]
+
+    def _ci_refs(self, claims: Sequence[Claim]) -> list[str]:
+        keyed = [
+            (ref, claim)
+            for claim in claims
+            if claim.type in {TESTS_PASS, BUILD_OK, LINT_OK}
+            for ref in (claim.attributes.get("ref"), claim.attributes.get("final_ref"))
+            if ref
+        ]
+        return self._first(keyed, MAX_CI_REFS_PER_PR, "commits with CI claims")
 
     # ---- one fetcher per evidence type -------------------------------------------------------
 
@@ -199,7 +228,7 @@ class GitHubSource:
 
     def _check_results(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        for ref in _capped(_claim_refs(claims), MAX_CI_REFS_PER_PR, "commits with CI claims"):
+        for ref in self._ci_refs(claims):
             now = self._clock()
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/commits/{ref}/check-runs", {"filter": "latest"}
@@ -217,7 +246,7 @@ class GitHubSource:
 
     def _workflow_runs(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        for ref in _capped(_claim_refs(claims), MAX_CI_REFS_PER_PR, "commits with CI claims"):
+        for ref in self._ci_refs(claims):
             now = self._clock()
             runs = self.client.get_paginated(
                 f"{self._base(loaded)}/actions/runs", {"head_sha": ref}, max_pages=3
@@ -264,12 +293,12 @@ class GitHubSource:
     def _issue_states(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
         own_repo = loaded.repo
-        targets = {
-            (claim.attributes.get("repo") or own_repo, int(claim.attributes["issue"]))
+        keyed = [
+            ((claim.attributes.get("repo") or own_repo, int(claim.attributes["issue"])), claim)
             for claim in claims
             if claim.type == FIXES_ISSUE
-        }
-        for repo, number in _capped(targets, MAX_ISSUES_PER_PR, "issue references"):
+        ]
+        for repo, number in self._first(keyed, MAX_ISSUES_PER_PR, "issue references"):
             try:
                 issue = self.client.get(f"/repos/{repo}/issues/{number}")
             except NotFound:
@@ -314,9 +343,12 @@ class GitHubSource:
 
     def _deployments(self, loaded: LoadedPullRequest, claims: Sequence[Claim]) -> list[Evidence]:
         records: list[Evidence] = []
-        refs = {claim.attributes.get("ref") for claim in claims if claim.type == DEPLOYED}
-        refs.discard(None)
-        for ref in _capped(refs, MAX_DEPLOY_REFS_PER_PR, "commits with deploy claims"):
+        keyed = [
+            (claim.attributes["ref"], claim)
+            for claim in claims
+            if claim.type == DEPLOYED and claim.attributes.get("ref")
+        ]
+        for ref in self._first(keyed, MAX_DEPLOY_REFS_PER_PR, "commits with deploy claims"):
             deployments = self.client.get(f"{self._base(loaded)}/deployments", {"sha": ref})
             # GitHub lists deployments newest first; past the cap, a success may be unseen.
             complete = len(deployments) <= MAX_DEPLOYMENTS_PER_REF
@@ -331,16 +363,3 @@ class GitHubSource:
                 if evidence is not None:
                     records.append(evidence)
         return records
-
-
-def _claim_refs(claims: Iterable[Claim]) -> set[str]:
-    """Commits referenced by CI-dependent claims (tests, build, lint)."""
-    refs: set[str] = set()
-    for claim in claims:
-        if claim.type in {TESTS_PASS, BUILD_OK, LINT_OK}:
-            refs.update(
-                ref
-                for ref in (claim.attributes.get("ref"), claim.attributes.get("final_ref"))
-                if ref
-            )
-    return refs

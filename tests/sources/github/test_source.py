@@ -57,7 +57,7 @@ def test_only_needed_evidence_is_fetched(fake_github):
         ("c1/pytest", 205),
         ("c1/ruff", 206),
     }
-    assert result.stale == set()
+    assert "issue_state" not in result.stale  # (the decoy commits do not exist in the fake)
 
 
 def test_inaccessible_issue_is_skipped_not_stale(fake_github):
@@ -67,7 +67,7 @@ def test_inaccessible_issue_is_skipped_not_stale(fake_github):
         loaded, [claim("FIXES_ISSUE", issue=12, repo="")], {"issue_state"}
     )
     assert result.records == []
-    assert result.stale == set()
+    assert "issue_state" not in result.stale  # (the decoy commits do not exist in the fake)
 
 
 def test_issues_of_a_renamed_repository_carry_its_current_name(fake_github):
@@ -223,18 +223,52 @@ def test_second_sources_own_runs_are_never_ci_evidence(fake_github):
     ]
 
 
-def test_too_many_references_are_not_fetched_and_say_so(fake_github):
-    # Security review 1, H3: PR text must not be able to spend the repository's hourly quota.
+def test_references_past_the_cap_are_left_out_body_first(fake_github):
+    # Security review 1, H3: PR text must not spend the repository's hourly quota; and review 2,
+    # N2: decoy references in commits or comments must never hide the body's own claims.
     fake = fake_github()
     source = make_source(fake)
     loaded = source.load(REF)
     fake.requested.clear()
-    issues = [claim("FIXES_ISSUE", issue=n, repo="") for n in range(1, 30)]
-    issues = [
-        Claim(f"c{n}", c.episode_id, c.type, c.made_at, c.attributes) for n, c in enumerate(issues)
+    decoys = [
+        Claim(
+            f"d{n}",
+            "octo/app#7",
+            "FIXES_ISSUE",
+            NOW,
+            {"issue": 100 + n, "repo": ""},
+            origin="comment",
+        )
+        for n in range(25)
     ]
-    ci = [Claim(f"t{n}", "octo/app#7", "TESTS_PASS", NOW, {"ref": f"sha{n}"}) for n in range(9)]
-    result = source.fetch_evidence(loaded, issues + ci, {"issue_state", "check_result"})
-    assert result.stale == {"issue_state", "check_result"}
-    assert fake.requested == []  # not one request spent
-    assert any("too many issue references" in error for error in result.errors)
+    body = Claim("b", "octo/app#7", "FIXES_ISSUE", NOW, {"issue": 12, "repo": ""}, origin="body")
+    ci_decoys = [
+        Claim(f"t{n}", "octo/app#7", "TESTS_PASS", NOW, {"ref": f"sha{n}"}, origin="commit")
+        for n in range(12)
+    ]
+    ci_body = Claim("tb", "octo/app#7", "TESTS_PASS", NOW, {"ref": "c1"}, origin="body")
+    claims = [*decoys, body, *ci_decoys, ci_body]
+    result = source.fetch_evidence(loaded, claims, {"issue_state", "check_result"})
+
+    assert "issue_state" not in result.stale  # (the decoy commits do not exist in the fake)
+    assert "/repos/Octo/App/issues/12" in fake.requested  # the body's claim is checked
+    ci_reads = [p for p in fake.requested if p.endswith("/check-runs")]
+    assert ci_reads[0] == "/repos/Octo/App/commits/c1/check-runs"  # the body's commit first
+    issue_reads = [p for p in fake.requested if p.count("/issues/") and not p.endswith("events")]
+    assert len(issue_reads) == 20
+    assert "6 issue references not checked (more than the per-PR limit)" in result.errors
+
+
+def test_the_cap_keeps_the_first_references_by_origin_then_time(fake_github):
+    source = make_source(fake_github())
+    source.fetch_evidence(source.load(REF), [], set())  # resets the per-fetch counters
+    later = NOW.replace(hour=5)
+    keyed = [
+        (f"comment{n}", Claim(f"c{n}", "e", "TESTS_PASS", NOW, {}, origin="comment"))
+        for n in range(10)
+    ]
+    keyed += [("body", Claim("b", "e", "TESTS_PASS", later, {}, origin="body"))]
+    keyed += [("commit", Claim("k", "e", "TESTS_PASS", NOW, {}, origin="commit"))]
+    kept = source._first(keyed, 8, "commits with CI claims")
+    assert kept[:2] == ["body", "commit"] and len(kept) == 8
+    assert source._left_out == {"commits with CI claims": 4}
