@@ -809,7 +809,7 @@ def rule_hits(text: str, origin: str = "body") -> set[tuple[str, str]]:
 # the claim but ignored when deciding whether two claims are the same.
 # "Tests pass" and "tests pass locally" are one claim; the first statement made is kept.
 # "rule" records which extraction rule found the claim; it is not part of what was claimed.
-_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule", "confidence", "final_at"})
+_DESCRIPTIVE_ATTRIBUTES = frozenset({"scope", "rule", "confidence", "final_at", "stated_in_body"})
 
 
 def extract_claims(
@@ -873,6 +873,10 @@ def _merge_statement(
       replaces the kept one, so a report quotes the text that earned the trust.
     """
     merged = dict(kept.attributes)
+    if source.origin in ("body", "title"):
+        # The claim was also made in the PR's own description, whatever said it first: the
+        # source fetches its evidence with the body's priority (sources/github/source.py).
+        merged["stated_in_body"] = True
     scopes = [kept.attributes.get("scope"), attributes.get("scope")]
     scope = max(scopes, key=lambda value: _SCOPE_RANK.get(value or "", 0))
     if scope:

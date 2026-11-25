@@ -272,3 +272,32 @@ def test_the_cap_keeps_the_first_references_by_origin_then_time(fake_github):
     kept = source._first(keyed, 8, "commits with CI claims")
     assert kept[:2] == ["body", "commit"] and len(kept) == 8
     assert source._left_out == {"commits with CI claims": 4}
+
+
+def test_a_claim_also_made_in_the_body_keeps_the_bodys_priority(fake_github):
+    # Focused review of N2, F2: said first in a (backdatable) commit, then in the body.
+    source = make_source(fake_github())
+    source.fetch_evidence(source.load(REF), [], set())
+    early = NOW.replace(year=2020)
+    decoys = [
+        (f"d{n}", Claim(f"d{n}", "e", "FIXES_ISSUE", early, {}, origin="commit")) for n in range(25)
+    ]
+    restated = Claim("r", "e", "FIXES_ISSUE", NOW, {"stated_in_body": True}, origin="commit")
+    kept = source._first([*decoys, ("real", restated)], 20, "issue references")
+    assert kept[0] == "real"
+
+
+def test_a_claims_opening_and_final_commits_are_fetched_together(fake_github):
+    # Focused review of N2, F3: never one of the pair without the other.
+    source = make_source(fake_github())
+    source.fetch_evidence(source.load(REF), [], set())
+    claims = [
+        Claim(
+            f"t{n}", "e", "TESTS_PASS", NOW, {"ref": f"a{n}", "final_ref": f"b{n}"}, origin="body"
+        )
+        for n in range(5)
+    ]
+    refs = source._ci_refs(claims)
+    assert len(refs) == 8
+    assert all((f"a{n}" in refs) == (f"b{n}" in refs) for n in range(5))
+    assert source._left_out == {"commits with CI claims": 2}

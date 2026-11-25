@@ -65,8 +65,10 @@ MAX_DEPLOYMENTS_PER_REF = 5
 # 5,000 requests). Up to these caps, references are fetched in priority order: the PR body
 # and title first, then commit messages, then comments, each in the order written. The rest
 # are not fetched, so their claims find no evidence and are UNVERIFIABLE; the report says how
-# many were left out. Adding references can therefore never hide the body's own claims
-# (security review 2, N2: a whole-type cap let 21 decoy references hide every issue claim).
+# many were left out. References in commits or comments therefore never push out a claim the
+# body or title makes (security review 2, N2: a whole-type cap let 21 decoy references hide
+# every issue claim). The body itself is written by the agent too, so a body full of decoys
+# can still push out its own later claims; they then fail closed, as UNVERIFIABLE.
 MAX_ISSUES_PER_PR = 20  # two requests each
 MAX_CI_REFS_PER_PR = 8  # three requests each (check runs, statuses, workflow runs)
 MAX_DEPLOY_REFS_PER_PR = 4  # up to six requests each
@@ -76,6 +78,8 @@ _ORIGIN_RANK = {"body": 0, "title": 0, "commit": 1, "comment": 2}
 
 
 def _priority(claim: Claim) -> tuple[int, Any]:
+    if claim.attributes.get("stated_in_body"):
+        return 0, claim.made_at  # said first in a commit, but also in the body
     return _ORIGIN_RANK.get(claim.origin, 3), claim.made_at
 
 
@@ -129,6 +133,7 @@ class GitHubSource:
         are Second Source itself, never CI evidence, whatever the workflow or job is named."""
         self.client = client
         self._clock = clock
+        self._left_out: dict[str, int] = {}  # per fetch_evidence call: references not fetched
         self._own_workflow_path = own_workflow_path
         self._own_suites: set[int] = set()
         # PR files, shared by the changed_file and revert fetchers within one fetch_evidence
@@ -209,14 +214,25 @@ class GitHubSource:
         return ordered[:limit]
 
     def _ci_refs(self, claims: Sequence[Claim]) -> list[str]:
-        keyed = [
-            (ref, claim)
-            for claim in claims
-            if claim.type in {TESTS_PASS, BUILD_OK, LINT_OK}
-            for ref in (claim.attributes.get("ref"), claim.attributes.get("final_ref"))
-            if ref
-        ]
-        return self._first(keyed, MAX_CI_REFS_PER_PR, "commits with CI claims")
+        """Commits with CI claims, by claim priority. A claim's opening and final commit are
+        taken together or not at all: judging it on only one of them could verify it on a
+        commit that is not the one that matters."""
+        ordered: list[str] = []
+        left_out = 0
+        ci_claims = [c for c in claims if c.type in {TESTS_PASS, BUILD_OK, LINT_OK}]
+        for claim in sorted(ci_claims, key=_priority):
+            refs = [
+                r
+                for r in (claim.attributes.get("ref"), claim.attributes.get("final_ref"))
+                if r and r not in ordered
+            ]
+            if len(ordered) + len(refs) <= MAX_CI_REFS_PER_PR:
+                ordered += refs
+            else:
+                left_out += len(refs)
+        if left_out:
+            self._left_out["commits with CI claims"] = left_out
+        return ordered
 
     # ---- one fetcher per evidence type -------------------------------------------------------
 

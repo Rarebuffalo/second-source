@@ -623,3 +623,20 @@ def test_code_identifiers_are_not_file_names():
     text = "Update header icons from `ButtonIconSize.Lg` to `ButtonIconSize.Md` for the banner."
     assert DOCS_UPDATED not in types(text)
     assert types("Updated `docs/setup.md` with the new flag.") == [DOCS_UPDATED]
+
+
+def test_a_claim_restated_in_the_body_is_marked_so():
+    from datetime import UTC, datetime, timedelta
+
+    from second_source.packs.coding.extract import TextSource, extract_claims
+
+    t0 = datetime(2026, 11, 20, tzinfo=UTC)
+    claims = extract_claims(
+        "o/r#1",
+        [
+            TextSource("commit", "Fixes #12", t0, ref="c1"),
+            TextSource("body", "Fixes #12", t0 + timedelta(hours=1), ref="c1"),
+        ],
+    )
+    (fixes,) = [c for c in claims if c.type == "FIXES_ISSUE"]
+    assert fixes.attributes.get("stated_in_body") is True
