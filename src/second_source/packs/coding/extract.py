@@ -46,6 +46,11 @@ DEPLOYED = "DEPLOYED"
 MERGE_HOLDS = "MERGE_HOLDS"
 
 MAX_SPAN = 200  # characters of supporting text kept on each claim
+# Text read per source. PR bodies are at most 65,536 characters on GitHub, but commit messages
+# and comments are not bounded; claims sit near the top of what agents write. Every pattern
+# below is linear or near-linear in its input, and this cap bounds the rest (security review 1,
+# H2: PR text is attacker-controlled).
+MAX_TEXT = 20_000
 
 
 @dataclass(frozen=True)
@@ -66,26 +71,51 @@ class TextSource:
 # Step 1: cleaning. Remove text that is not the agent's own statement.
 # --------------------------------------------------------------------------------------------
 
-_FENCED_CODE = re.compile(r"```.*?```|~~~.*?~~~", re.DOTALL)
 _INLINE_CODE = re.compile(r"`[^`\n]*`")
-_HTML_COMMENT = re.compile(r"<!--.*?-->", re.DOTALL)
-_QUOTED_LINE = re.compile(r"^\s*>.*$", re.MULTILINE)
-
+# [ \t], not \s: a quote marker must not let the pattern run across blank lines.
+_QUOTED_LINE = re.compile(r"^[ \t]*>.*$", re.MULTILINE)
 
 # Review bots (CodeRabbit, Cursor Bugbot) append summaries to the PR body between marker
 # comments. Those are the bot's words about the change, not the agent's claims.
-_BOT_SECTION = re.compile(
-    r"<!--\s*This is an auto-generated comment.*?-->.*?<!--\s*end of auto-generated comment.*?-->"
-    r"|<!--\s*CURSOR_SUMMARY\s*-->.*?<!--\s*/CURSOR_SUMMARY\s*-->",
-    re.DOTALL | re.IGNORECASE,
+_BOT_MARKERS = (  # (start, end); both end at the next "-->"
+    ("<!-- this is an auto-generated comment", "<!-- end of auto-generated comment"),
+    ("<!--this is an auto-generated comment", "<!--end of auto-generated comment"),
+    ("<!-- cursor_summary", "<!-- /cursor_summary"),
+    ("<!--cursor_summary", "<!--/cursor_summary"),
 )
+
+
+def _remove_between(text: str, start: str, end: str, *, end_until: str = "") -> str:
+    """Remove every span from ``start`` to ``end`` (case-insensitive), in one left-to-right
+    pass; with ``end_until`` the span runs on past ``end`` to the next ``end_until``.
+
+    Linear time, unlike a lazy ``.*?`` regex, which rescans to the end of the text for every
+    start marker that is never closed. An unclosed span is kept, as the regexes kept it.
+    """
+    lowered = text.lower()
+    out, position = [], 0
+    while (begin := lowered.find(start, position)) != -1:
+        close = lowered.find(end, begin + len(start))
+        if close == -1:
+            break
+        stop = close + len(end)
+        if end_until:
+            found = lowered.find(end_until, stop)
+            stop = len(text) if found == -1 else found + len(end_until)
+        out += [text[position:begin], " "]
+        position = stop
+    out.append(text[position:])
+    return "".join(out)
 
 
 def without_blocks(text: str) -> str:
     """Drop bot sections, code blocks, HTML comments and quoted lines; keep inline code."""
-    for pattern in (_BOT_SECTION, _FENCED_CODE, _HTML_COMMENT, _QUOTED_LINE):
-        text = pattern.sub(" ", text)
-    return text
+    for start, end in _BOT_MARKERS:
+        text = _remove_between(text, start, end, end_until="-->")
+    for fence in ("```", "~~~"):
+        text = _remove_between(text, fence, fence)
+    text = _remove_between(text, "<!--", "-->")
+    return _QUOTED_LINE.sub(" ", text)
 
 
 def clean(text: str) -> str:
@@ -98,7 +128,7 @@ def clean(text: str) -> str:
 # Step 2: clauses. Each line, sentence and checklist item is judged on its own.
 # --------------------------------------------------------------------------------------------
 
-_CHECKBOX = re.compile(r"^\s*(?:[-*+]|\d+[.)])?\s*\[( |x|X)\]\s*(.*)$")
+_CHECKBOX = re.compile(r"^\s*+(?:[-*+]|\d+[.)])?\s*+\[( |x|X)\]\s*(.*)$")
 _BULLET = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+")
 _SENTENCE_END = re.compile(r"(?<=[.!;])\s+")
 # Where one statement ends and an independent one starts inside a sentence, so a negation in
@@ -108,20 +138,21 @@ _SENTENCE_END = re.compile(r"(?<=[.!;])\s+")
 # A relative clause after a comma describes something else ("fixes bug #12, where the plugin
 # would misapply filters"), so it is judged on its own too.
 _CLAUSE_BREAK = re.compile(
-    r",?\s+but\s+|\s+and\s+(?=(?:no|not|none|nothing|never)\b)|,\s+(?=(?:where|which|when)\b)"
+    r",?\s++but\s+|\s++and\s++(?=(?:no|not|none|nothing|never)\b)|,\s++(?=(?:where|which|when)\b)"
 )
 
 
 # A Markdown heading ("## Local testing") or a line that is only bold text, possibly as a list
 # item ("**Testing:**", "1. **New Files**:").
+# Matched on a right-stripped line, so no trailing-whitespace backtracking is possible.
 _HEADING = re.compile(
-    r"^\s*(?:#{1,6}\s+(?P<hash>.+?)|(?:(?:[-*+]|\d+[.)])\s+)?\*\*(?P<bold>[^*]+)\*\*:?)\s*$"
+    r"^\s*+(?:#{1,6}\s++(?P<hash>\S.*)|(?:(?:[-*+]|\d+[.)])\s++)?\*\*(?P<bold>[^*]+)\*\*:?)$"
 )
 
 
 def heading_of(line: str) -> str | None:
     """The heading text if ``line`` is a heading, else None."""
-    found = _HEADING.match(line)
+    found = _HEADING.match(line.rstrip())
     return None if found is None else (found.group("hash") or found.group("bold")).strip()
 
 
@@ -170,7 +201,7 @@ _NOT_AN_ASSERTION = re.compile(
     r"|n't\b"
 )
 # A partial count ("19/22 tests passing") is a hedge, however positive the wording.
-_COUNT = re.compile(r"\b(\d+)\s*/\s*(\d+)\b")
+_COUNT = re.compile(r"\b([0-9]{1,9})\s*+/\s*+([0-9]{1,9})\b")
 
 # "No lint errors" or "compiles with no warnings" are positive claims even though they contain
 # "no"; these exact phrases are removed before the negation test so claim patterns can still
@@ -420,9 +451,11 @@ _PATTERNS: dict[str, tuple[Rule, ...]] = {
 
 # Matched separately because they capture values.
 _ISSUE_REF = re.compile(
-    r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)\s*:?\s+"
+    r"\b(?:close|closes|closed|fix|fixes|fixed|resolve|resolves|resolved)(?:\s*+:)?\s++"
     r"(?:(?:the\s+)?(?:issue|bug)\s+)?"  # "fixes issue #12", "fixes bug #12"
-    r"(?P<repo>[\w.-]+/[\w.-]+)?#(?P<number>\d+)\b"
+    # GitHub owner and repository names; anything else ("../..") is not a reference.
+    r"(?P<repo>[a-z0-9][a-z0-9-]{0,38}/[a-z0-9._-]{1,100})?#(?P<number>[0-9]{1,9})\b",
+    re.ASCII,
 )
 _DEPLOY = re.compile(
     r"\b(?:deployed|deploys|shipped)\s+(?:to|on)\s+(?:the\s+)?"
@@ -559,6 +592,8 @@ def _match_clause(
             yield claim_type, attributes
 
     for found in _ISSUE_REF.finditer(lowered):
+        if found.group("repo") and found.group("repo").split("/")[1] in (".", ".."):
+            continue
         issue = int(found.group("number"))
         yield FIXES_ISSUE, {"issue": issue, "repo": found.group("repo") or "", "rule": ISSUE_RULE}
 
@@ -721,7 +756,7 @@ def _candidates(
     source: TextSource, *, all_rules: bool = False
 ) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Every (claim type, attributes, span) found in one text source, in reading order."""
-    for clause, heading in clauses_in_sections(clean(source.text)):
+    for clause, heading in clauses_in_sections(clean(source.text[:MAX_TEXT])):
         if is_assertion(clause):
             scope = scope_of(clause, heading)
             matches = _match_clause(asserted_part(clause), scope, all_rules=all_rules)

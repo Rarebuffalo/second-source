@@ -184,7 +184,9 @@ _COMMAND_FILES = re.compile(
 # after it ("fail_under = 90", '"lines": 80', "target: 85%"), so unrelated keys such as a build
 # matrix "target: x86_64-…" never match. Codecov's "threshold" is the allowed *drop*, so for it a
 # higher number is a weaker gate.
-_NUMBER = r"""\s*["']?\s*[:=]\s*["']?(\d+(?:\.\d+)?)%?["']?\s*(?:,|#|$)"""
+# Possessive whitespace runs: adjacent \s* groups would backtrack quadratically on long
+# blank runs in attacker-written config lines (security review 1, H2).
+_NUMBER = r"""\s*+["']?\s*+[:=]\s*+["']?([0-9]{1,9}(?:\.[0-9]{1,9})?)%?["']?\s*+(?:,|#|$)"""
 _COVERAGE_PY_FILES = re.compile(r"(^|/)(pyproject\.toml|setup\.cfg|\.coveragerc|tox\.ini)$", re.I)
 _JS_COVERAGE_FILES = re.compile(
     r"(^|/)(jest\.config\.[\w.]+|vitest\.config\.[\w.]+|\.nycrc[\w.]*|nyc\.config\.[\w.]+"

@@ -95,6 +95,10 @@ def run_action(
                 break
             except GitHubError as error:
                 print(f"::warning::could not check {ref}: {error}", file=out)
+            except Exception as error:  # noqa: BLE001 - one bad PR must never fail the run
+                # Only the type is printed: the message may carry PR text, and PR text must
+                # never reach the runner's log as a workflow command.
+                print(f"::warning::could not check {ref}: {type(error).__name__}", file=out)
     return EXIT_OK
 
 

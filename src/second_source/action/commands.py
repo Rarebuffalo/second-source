@@ -17,7 +17,9 @@ from second_source.sources.github.urls import PullRequestRef
 PREFIX = "/second-source"
 # Author associations GitHub reports for people with write access to the repository.
 TRUSTED_ASSOCIATIONS = frozenset({"OWNER", "MEMBER", "COLLABORATOR"})
-_COMMAND_LINE = re.compile(rf"^\s*{re.escape(PREFIX)}\s+(\w+)\s*(.*?)\s*$", re.MULTILINE)
+# One line only ([ \t], not \s): the argument must never come from the next line, and the
+# pattern stays linear on long comments (security review 1, M3 and H2).
+_COMMAND_LINE = re.compile(rf"^[ \t]*{re.escape(PREFIX)}[ \t]+(\w+)(.*)$", re.MULTILINE)
 
 
 class CommandName(StrEnum):
@@ -43,7 +45,7 @@ def parse_command(body: str, author: str, author_association: str) -> Command | 
         name = CommandName(found.group(1).lower())
     except ValueError:
         return None
-    return Command(name, found.group(2), author, author_association)
+    return Command(name, found.group(2).strip(), author, author_association)
 
 
 def may_run(command: Command, pr_author: str) -> bool:
