@@ -39,11 +39,16 @@ Working towards the first public release, 0.5.0 (a beta).
 
 ### Fixed (from live testing on a sandbox repository)
 - A CI job GitHub reports with a conclusion but a stale `in_progress` status counts as finished.
-- A check is grey, titled "(CI failed)", when CI failed behind a claim that is only
+- A check is grey, titled "(a CI job failed)", when CI failed behind a claim that is only
   unverifiable ("tests pass locally", a partial run, a failure on one of two commits).
 - Watched claims say what is watched: "issue closed; watching for a reopen", "not reverted so
   far; watching for a revert".
 - The daily sweep finds agent PRs known only from a commit trailer.
 
+- "Fixes #N" is never contradicted in the minutes before GitHub closes the issue after the
+  merge (the durability check lacked the close tolerance).
+
 ### Security
-- The Action pins `astral-sh/setup-uv` to a commit and uv to an exact version.
+- The Action pins `astral-sh/setup-uv` to a commit and uv to an exact version whose checksum
+  that release bundles, and keeps setup-uv's dependency cache off (it can be poisoned on
+  `pull_request_target` and `workflow_run`).

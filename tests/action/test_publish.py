@@ -80,7 +80,7 @@ def test_ci_failing_behind_an_unverifiable_claim_is_grey_not_green(fake_github):
     }
     report = report_for(with_body(fake_github, "Tests pass locally.", **failing))
     outcome = outcome_for(report, fail_on_contradiction=True)
-    assert outcome.conclusion == "neutral" and outcome.title.endswith("(CI failed)")
+    assert outcome.conclusion == "neutral" and outcome.title.endswith("(a CI job failed)")
     assert "contradicted" not in outcome.title
 
 

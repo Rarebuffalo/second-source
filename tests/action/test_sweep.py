@@ -93,3 +93,17 @@ def test_each_days_sweep_starts_elsewhere_and_covers_every_pr():
 def test_rotation_covers_every_pr_even_when_the_stride_divides_the_count():
     refs = [PullRequestRef("o", "r", n) for n in range(37)]
     assert {rotated(refs, day)[0].number for day in range(37)} == set(range(37))
+
+
+def test_an_unreadable_pr_does_not_stop_the_sweep():
+    def handler(request):
+        if request.url.path.endswith("/pulls/4/commits"):
+            return httpx.Response(500)
+        if request.url.path.endswith("/commits"):
+            return httpx.Response(200, json=[])
+        page = int(request.url.params["page"])
+        return httpx.Response(200, json=PULLS if page == 1 else [])
+
+    client = GitHubClient(transport=httpx.MockTransport(handler), sleep=lambda _s: None)
+    refs = recent_pull_requests(client, "octo/app", now=NOW, days=30)
+    assert [ref.number for ref in refs] == [5, 3]  # #4's commits failed; the rest still swept

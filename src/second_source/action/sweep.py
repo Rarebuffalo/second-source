@@ -19,7 +19,7 @@ from datetime import datetime, timedelta
 
 from second_source.packs.coding.detection import detect_agent
 from second_source.sources.github import mappers
-from second_source.sources.github.client import GitHubClient
+from second_source.sources.github.client import GitHubClient, GitHubError, RateLimited
 from second_source.sources.github.urls import PullRequestRef
 
 MAX_PAGES = 5  # up to 500 recently updated PRs per run
@@ -70,7 +70,13 @@ def recent_pull_requests(
                 if lookups >= MAX_COMMIT_LOOKUPS:
                     continue
                 lookups += 1
-                commits = client.get(f"/repos/{owner}/{name}/pulls/{pull['number']}/commits")
+                try:
+                    commits = client.get(f"/repos/{owner}/{name}/pulls/{pull['number']}/commits")
+                except RateLimited:
+                    lookups = MAX_COMMIT_LOOKUPS  # no more lookups; keep sweeping what we found
+                    continue
+                except GitHubError:
+                    continue  # one unreadable PR must not stop the whole sweep
                 if detect_agent(mappers.signals_from_pull(pull, commits)) is None:
                     continue
             refs.append(PullRequestRef(owner, name, int(pull["number"])))

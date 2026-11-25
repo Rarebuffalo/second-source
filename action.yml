@@ -31,15 +31,17 @@ inputs:
 runs:
   using: composite
   steps:
-    # Pinned to a commit (v10.3.3) and an exact uv version: this step runs in a workflow that
-    # holds a write token, so a moved tag upstream must not change what runs. Update both
-    # deliberately, to releases at least two weeks old.
+    # Pinned to a commit (v10.3.3) and an exact uv version whose checksum that release bundles:
+    # this step runs in a workflow that holds a write token, so a moved tag upstream must not
+    # change what runs. Update both deliberately, to releases at least two weeks old.
+    # No dependency cache: on pull_request_target and workflow_run a cache can be poisoned by
+    # other runs, so setup-uv's own default (off for these events) is kept. Installing costs a
+    # few seconds.
     - name: Install uv
       uses: astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2  # v10.3.3
       with:
-        version: "0.13.7"
-        enable-cache: true
-        cache-dependency-glob: ${{ github.action_path }}/uv.lock
+        version: "0.13.6"
+        enable-cache: false
         ignore-empty-workdir: true  # the workflow never checks out the PR, by design
 
     - name: Check agent claims

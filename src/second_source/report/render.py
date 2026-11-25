@@ -68,7 +68,7 @@ PENDING_TEXT = {
     ("FIXES_ISSUE", "IN_WINDOW"): "issue closed; watching for a reopen",
     ("MERGE_HOLDS", "IN_WINDOW"): "not reverted so far; watching for a revert",
     ("FIXES_ISSUE", "NOT_MERGED_YET"): "decided once the PR is merged",
-    ("MERGE_HOLDS", "NOT_MERGED_YET"): "decided once the PR is merged",
+    ("FIXES_ISSUE", "CLOSE_PENDING"): "merged; waiting for GitHub to close the issue",
 }
 
 

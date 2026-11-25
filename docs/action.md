@@ -76,7 +76,7 @@ mid-wait leaves the check "in progress" until the next event or sweep republishe
 | any high-confidence `CONTRADICTED` | `neutral` (default) or `failure` (with `fail-on-contradiction: true`) | "1 claim contradicted" |
 | any `PENDING` with `AWAITING_CI` | stays `in_progress` | "Waiting for CI" |
 | a high-confidence claim withdrawn by an integrity guard (CI passed, but the PR skipped tests, weakened its test command or lowered the coverage gate) | `neutral`, **never** `failure`, whatever `fail-on-contradiction` says | "1 claim not verified: this PR skips tests" |
-| a high-confidence claim unverifiable because CI failed where its wording leaves room ("tests pass locally", a partial run, a failure on only one of two commits) | `neutral` | "1 verified, 1 unverifiable (CI failed)" |
+| a high-confidence claim unverifiable because CI failed where its wording leaves room ("tests pass locally", a partial run, a failure on only one of two commits) | `neutral` | "1 verified, 1 unverifiable (a CI job failed)" |
 | otherwise | `success` | "4 claims verified, 1 unverifiable" |
 
 Integrity cautions (CI config changed, tests removed, lint suppressions…) appear in the table

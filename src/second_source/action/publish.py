@@ -11,8 +11,8 @@ Conclusion rules (docs/action.md, section 4):
 - a high-confidence claim withdrawn by an integrity guard (CI passed, but the PR skipped tests
   or weakened its CI) -> ``neutral``, never ``failure``: a guard is not proof of a false claim.
 - a claim unverifiable because CI failed where its wording leaves room ("tests pass locally",
-  a partial run, a failure on only one of two commits) -> ``neutral`` with "(CI failed)" in
-  the title: not a contradiction, but not green either.
+  a partial run, a failure on only one of two commits) -> ``neutral`` with "(a CI job
+  failed)" in the title: not a contradiction, but not green either.
 - otherwise -> ``success``, or ``neutral`` when there was nothing to check. Cautions never
   change the conclusion.
 
@@ -95,7 +95,7 @@ def outcome_for(report: PullRequestReport, *, fail_on_contradiction: bool) -> Ou
     if any(CI_FAILED_REASONS & set(v.reasons) for v in deciding):
         # Grey, not green: someone skimming the checks must not read "claims hold" while a
         # CI job behind a claim failed.
-        return Outcome("completed", "neutral", ", ".join(parts) + " (CI failed)")
+        return Outcome("completed", "neutral", ", ".join(parts) + " (a CI job failed)")
     return Outcome("completed", "success", ", ".join(parts))
 
 

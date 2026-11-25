@@ -37,7 +37,7 @@ Claims: 1 unverifiable, 2 pending, 3 verified
     why: NO_DEPLOYMENT_RECORDS
 … pending      Fixes #12
     said in body: "Fixes #12"
-    why: IN_WINDOW
+    why: issue closed; watching for a reopen
 ✔ verified     Tests added
     said in body: "Added unit tests for empty input"
     why: TEST_FILES_CHANGED
