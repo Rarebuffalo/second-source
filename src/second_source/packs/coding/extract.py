@@ -76,33 +76,48 @@ _INLINE_CODE = re.compile(r"`[^`\n]*`")
 _QUOTED_LINE = re.compile(r"^[ \t]*>.*$", re.MULTILINE)
 
 # Review bots (CodeRabbit, Cursor Bugbot) append summaries to the PR body between marker
-# comments. Those are the bot's words about the change, not the agent's claims.
-_BOT_MARKERS = (  # (start, end); both end at the next "-->"
-    ("<!-- this is an auto-generated comment", "<!-- end of auto-generated comment"),
-    ("<!--this is an auto-generated comment", "<!--end of auto-generated comment"),
-    ("<!-- cursor_summary", "<!-- /cursor_summary"),
-    ("<!--cursor_summary", "<!--/cursor_summary"),
+# comments. Those are the bot's words about the change, not the agent's claims. (start, end);
+# the span runs on past ``end`` to the next "-->".
+_BOT_MARKERS = (
+    (r"<!--\s*this is an auto-generated comment", r"<!--\s*end of auto-generated comment"),
+    (r"<!--\s*cursor_summary", r"<!--\s*/cursor_summary"),
 )
+_HORIZONTAL_RUN = re.compile(r"[ \t\f\v\u00a0]{2,}")
+_BLANK_LINES = re.compile(r"\n(?:[ \t]*\n){2,}")
+
+
+def squeeze(text: str) -> str:
+    """Collapse runs of spaces and tabs to one space, and of blank lines to one blank line.
+
+    Whitespace runs carry no meaning in a claim, but a pattern that starts with whitespace is
+    retried at every position of a run, so long runs made matching quadratic or worse
+    (security review 2, N1 and N5). Squeezing first bounds every pattern by the text's words.
+    """
+    return _BLANK_LINES.sub("\n\n", _HORIZONTAL_RUN.sub(" ", text.replace("\r\n", "\n")))
 
 
 def _remove_between(text: str, start: str, end: str, *, end_until: str = "") -> str:
-    """Remove every span from ``start`` to ``end`` (case-insensitive), in one left-to-right
-    pass; with ``end_until`` the span runs on past ``end`` to the next ``end_until``.
+    """Remove every span from regex ``start`` to regex ``end`` (case-insensitive), in one
+    left-to-right pass; with ``end_until`` the span runs on past ``end`` to that literal.
 
     Linear time, unlike a lazy ``.*?`` regex, which rescans to the end of the text for every
-    start marker that is never closed. An unclosed span is kept, as the regexes kept it.
+    start marker that is never closed. An unclosed span, or one whose ``end_until`` never
+    comes, is kept, as the regexes kept it. Searching the text itself (not a lower-cased copy,
+    whose length can differ: "İ") keeps the positions right.
     """
-    lowered = text.lower()
+    starts, ends = re.compile(start, re.IGNORECASE), re.compile(end, re.IGNORECASE)
     out, position = [], 0
-    while (begin := lowered.find(start, position)) != -1:
-        close = lowered.find(end, begin + len(start))
-        if close == -1:
+    while (begin := starts.search(text, position)) is not None:
+        close = ends.search(text, begin.end())
+        if close is None:
             break
-        stop = close + len(end)
+        stop = close.end()
         if end_until:
-            found = lowered.find(end_until, stop)
-            stop = len(text) if found == -1 else found + len(end_until)
-        out += [text[position:begin], " "]
+            found = text.find(end_until, stop)
+            if found == -1:
+                break
+            stop = found + len(end_until)
+        out += [text[position : begin.start()], " "]
         position = stop
     out.append(text[position:])
     return "".join(out)
@@ -113,15 +128,22 @@ def without_blocks(text: str) -> str:
     for start, end in _BOT_MARKERS:
         text = _remove_between(text, start, end, end_until="-->")
     for fence in ("```", "~~~"):
-        text = _remove_between(text, fence, fence)
+        text = _remove_between(text, re.escape(fence), re.escape(fence))
     text = _remove_between(text, "<!--", "-->")
     return _QUOTED_LINE.sub(" ", text)
+
+
+def prepared(text: str) -> str:
+    """The part of a text that extraction reads: whitespace squeezed, blocks removed, then at
+    most ``MAX_TEXT`` characters. Cutting after removing blocks means a long body can never
+    leave a bot section open and have the bot's words credited to the agent."""
+    return without_blocks(squeeze(text))[:MAX_TEXT]
 
 
 def clean(text: str) -> str:
     """Drop everything that is not the agent's own prose: bot sections, code, HTML comments
     and quoted lines (quotes are someone else's words)."""
-    return _INLINE_CODE.sub(" ", without_blocks(text))
+    return _INLINE_CODE.sub(" ", without_blocks(squeeze(text)))
 
 
 # --------------------------------------------------------------------------------------------
@@ -624,7 +646,7 @@ _FAILURE_MARK = re.compile(r"❌|⚠|✗|✖|🚫")
 _INLINE_COMMAND = re.compile(r"`([^`\n]+)`")
 # A success mark directly before or after inline code (bold markers and separators allowed).
 _MARKED_CODE = re.compile(
-    r"(?:✅|✔)\s*(?:\*\*)?\s*`[^`\n]+`|`[^`\n]+`\s*(?:\*\*)?\s*[:\-–—]?\s*(?:✅|✔)"
+    r"(?:✅|✔)\s*+(?:\*\*)?\s*+`[^`\n]++`|`[^`\n]++`\s*+(?:\*\*)?\s*+[:\-–—]?\s*+(?:✅|✔)"
 )
 # Prose saying a command succeeded ("201 passed" included).
 _SUCCESS_PROSE = re.compile(
@@ -711,7 +733,7 @@ def _changed_file_claims(sentence: str, prose: str, heading: str) -> Iterator[st
 def _code_sentence_claims(text: str) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Yield (claim type, attributes, span) from sentences that contain inline code."""
     heading = ""
-    for line in without_blocks(text).splitlines():
+    for line in text.splitlines():  # already prepared: see _candidates
         heading = heading_of(line) or heading
         box = _CHECKBOX.match(line)
         if box and box.group(1) == " ":
@@ -756,7 +778,8 @@ def _candidates(
     source: TextSource, *, all_rules: bool = False
 ) -> Iterator[tuple[str, dict[str, Any], str]]:
     """Every (claim type, attributes, span) found in one text source, in reading order."""
-    for clause, heading in clauses_in_sections(clean(source.text[:MAX_TEXT])):
+    text = prepared(source.text)
+    for clause, heading in clauses_in_sections(_INLINE_CODE.sub(" ", text)):
         if is_assertion(clause):
             scope = scope_of(clause, heading)
             matches = _match_clause(asserted_part(clause), scope, all_rules=all_rules)
@@ -767,7 +790,7 @@ def _candidates(
             for claim_type, attributes in _match_clause(asserted_part(clause), None):
                 if claim_type == FIXES_ISSUE:
                     yield claim_type, attributes, clause
-    yield from _code_sentence_claims(source.text)
+    yield from _code_sentence_claims(text)
 
 
 def rule_hits(text: str, origin: str = "body") -> set[tuple[str, str]]:

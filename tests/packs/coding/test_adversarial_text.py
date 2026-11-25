@@ -34,6 +34,12 @@ ADVERSARIAL = {
     "huge issue number": "Fixes #" + "1" * 5000,
     "huge count": "Tests pass: " + "9" * 5000 + "/" + "9" * 5000,
     "many references": " ".join(f"Fixes #{n}." for n in range(1, 6000)),
+    # Security review 2 (N1, N5): what the first fixes missed.
+    "marked code of spaces": "`a`"
+    + " " * 2000
+    + "\n"
+    + ("`pytest`" + " " * 4000 + "passed\n") * 15,
+    "clause break run": "x" + " " * 40_000 + "y",
 }
 
 
@@ -71,3 +77,28 @@ def test_coverage_config_lines_are_fast():
     started = time.perf_counter()
     diff_facts.facts("pyproject.toml", "modified", patch)
     assert time.perf_counter() - started < BUDGET
+
+
+def test_skip_markers_in_long_lines_are_fast():
+    # Security review 2, N5: 300 lines like this took 19 s in one call.
+    line = "+@unittest.skip" + " " * 1980 + "!\n"
+    patch = "@@ -1,1 +1,300 @@\n" + line * 300
+    started = time.perf_counter()
+    diff_facts.facts("tests/test_x.py", "modified", patch)
+    assert time.perf_counter() - started < BUDGET
+
+
+def test_case_folding_cannot_shift_what_is_removed():
+    # Security review 2, N4: "İ" lower-cases to two characters, which shifted the cut and
+    # turned fenced (quoted) text into a claim.
+    text = "İ" * 50 + "\n```\nAll tests pass\n```\n"
+    assert extract_claims("o/r#1", [TextSource("body", text, T0, ref="c1")]) == []
+
+
+def test_a_bot_section_past_the_length_cap_is_still_the_bots():
+    # Security review 2, N4: cutting before removing blocks credited a bot's words to the agent.
+    bot = "<!-- This is an auto-generated comment: summary -->\nFixes #77.\n"
+    bot += "<!-- end of auto-generated comment: summary -->"
+    text = "Some notes. " * 2000 + bot
+    claims = extract_claims("o/r#1", [TextSource("body", text, T0, ref="c1")])
+    assert not any(c.attributes.get("issue") == 77 for c in claims)

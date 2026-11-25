@@ -382,11 +382,14 @@ def revert_evidence(
     return found
 
 
-_SQUASH_SUFFIX = re.compile(r"(\s+\(#\d+\))+$")
+_SQUASH_SUFFIX = re.compile(r"(?: \(#[0-9]{1,9}\))+$")
 
 
 def _subject(message: str) -> str:
-    return _SQUASH_SUFFIX.sub("", (message.strip().splitlines() or [""])[0].strip()).lower()
+    # Whitespace squeezed first: the suffix pattern then needs no leading \s+, which was
+    # retried at every position of a long run (security review 2, N5).
+    subject = " ".join((message.strip().splitlines() or [""])[0].split())
+    return _SQUASH_SUFFIX.sub("", subject).lower()
 
 
 def _is_undone(revert: Json, commits: Sequence[Json]) -> bool:

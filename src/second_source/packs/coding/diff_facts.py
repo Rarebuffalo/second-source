@@ -294,6 +294,7 @@ def facts(path: str, status: str, patch: str | None) -> dict[str, Any]:
                     new_in_string = not new_in_string
             if sign == " " or len(text) > MAX_LINE:
                 continue
+            text = _squeezed(text)
             if test_file and language and not _COMMENT_LINE.match(text) and not starts_in_string:
                 skip = (
                     not js_self_test
@@ -409,6 +410,17 @@ def _gate_weakened(family: str, removed: float | None, added: float | None) -> b
         # Deleted and added nowhere. Removing Codecov's allowed drop makes the gate stricter.
         return family not in _HIGHER_IS_WEAKER
     return added > removed if family in _HIGHER_IS_WEAKER else added < removed
+
+
+_INNER_RUN = re.compile(r"[ \t]{2,}")
+
+
+def _squeezed(line: str) -> str:
+    """The line with runs of spaces after its indentation collapsed. Patterns that start with
+    whitespace were retried at every position of a long run (security review 2, N5); the
+    indentation itself is kept, because test groups are found by it."""
+    body = line.lstrip(" \t")
+    return line[: len(line) - len(body)] + _INNER_RUN.sub(" ", body)
 
 
 def _indent(text: str) -> int:
