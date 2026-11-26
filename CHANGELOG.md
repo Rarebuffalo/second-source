@@ -8,6 +8,13 @@ writes for you.
 
 ## [Unreleased]
 
+## [0.5.1] - 2026-11-27
+
+### Changed
+- The Action is listed on the GitHub Marketplace as "Second Source Claim Check": Marketplace
+  names must be unique, and a GitHub account named second-source exists. Workflows, `@v0`
+  and the "Second Source" check run are unchanged.
+
 ## [0.5.0] - 2026-11-26
 
 The first public release: a beta. Interfaces may change before 1.0.

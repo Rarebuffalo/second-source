@@ -5,7 +5,9 @@
 # code, which is why the recommended workflow can safely use `pull_request_target` (fork PRs
 # then get a token that can write check runs). Do not add an actions/checkout step to the
 # workflow that uses it.
-name: Second Source
+# The Marketplace name must be unique across all actions, users and organisations, and a
+# GitHub account named second-source exists. The check run on PRs is still "Second Source".
+name: Second Source Claim Check
 description: Check whether an AI coding agent's claims in a pull request are true, against CI, Git and issue evidence.
 author: Rarebuffalo
 branding:
