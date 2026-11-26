@@ -13,7 +13,7 @@ did "Fixes #123" really close the issue, and is it still closed a month later? W
 reverted? It checks while the evidence exists: GitHub deletes old CI runs, so a claim that is
 not checked when the PR is made often cannot be checked at all later.
 
-> **Status: beta (0.5.0).** The engine, the coding pack, the CLI and the GitHub Action are
+> **Status: beta (0.5).** The engine, the coding pack, the CLI and the GitHub Action are
 > tested (1,000+ tests) and have run live on a sandbox repository with 30 agent pull requests.
 > Interfaces may change before 1.0.
 
