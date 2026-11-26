@@ -60,6 +60,17 @@ Checks are YAML files with CEL expressions in `src/second_source/packs/coding/ch
 an existing one, add scenario tests in `tests/packs/coding/test_checks.py`, and remember the
 rule: missing or stale evidence gives `UNVERIFIABLE`, never `CONTRADICTED`.
 
+## Writing documentation
+
+User documentation lives in `docs/` (indexed in `docs/README.md`); the README stays short and
+links there. When you change behaviour, update the page that describes it in the same commit.
+
+- Name: "Second Source" for the project, `second-source` for the package and the command.
+- Say what something does, plainly, and link to evidence for any claim about accuracy.
+- Sentence-case headings, bold only for a list item's lead, no emoji in headings.
+- Keep one source for reference material: inputs are described in `docs/action.md`, reasons in
+  `docs/claims.md`; other pages link to them.
+
 ## Releasing (maintainers)
 
 `second-source init` writes the Action's moving major tag (`@v0` while 0.x), so every release
