@@ -1,4 +1,4 @@
-"""Wait for CI to finish before giving a final verdict (docs/action.md, section 3).
+"""Wait for CI to finish before giving a final verdict (docs/action.md, "Waiting for CI").
 
 "Tests pass" can only be judged once the PR's CI jobs complete. In check mode the Action
 re-checks with growing pauses until no deciding claim is waiting on CI, or the time budget

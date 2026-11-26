@@ -1,8 +1,7 @@
 # Second Source architecture
 
-This document is for contributors. It describes how the code is organised, the contracts
-between its parts, and the order in which it is being built. Sections marked *(planned)*
-describe parts that do not exist yet.
+This document is for contributors. It describes how the code is organised and the contracts
+between its parts. For what the product does, start with [How it works](how-it-works.md).
 
 ## 1. What we are building
 
@@ -18,7 +17,7 @@ There are three ways to use it, and all of them share one engine:
 | Surface | Who it is for | How it runs | Cost |
 |---|---|---|---|
 | CLI: `second-source check <PR URL>` | Anyone who wants to try it in 10 seconds | Locally via `uvx` / `pipx` | Free |
-| GitHub Action *(planned)* | Repositories that want every agent PR checked | In the repo's own GitHub Actions | Free on public repos |
+| GitHub Action | Repositories that want every agent PR checked | In the repo's own GitHub Actions | Free on public repos |
 | Benchmark (Agent Claim Truth): `second-source bench` | Everyone comparing agents | Batch pipeline; results to be published as a static site and dataset | Free |
 
 ## 2. Design principles
@@ -220,7 +219,7 @@ A pack is a directory containing:
 |---|---|
 | Core check evaluation | `UNVERIFIABLE(ENGINE_ERROR)`; continue with other checks |
 | Source (network, API) | Retries with backoff, then marks affected evidence types as stale |
-| Action *(planned)* | Never fails the user's workflow because of our bugs. Posts a neutral check saying "could not verify" |
+| Action | Never fails the user's workflow because of our bugs. Posts a neutral check saying "could not verify" |
 | CLI | Clear message and a non-zero exit code. `--json` gives machine-readable errors |
 
 ## 8. Testing
@@ -243,20 +242,19 @@ A pack is a directory containing:
   `v1`; `second-source init` writes the one matching its own version) and each pack.
 - Every change is a small, focused commit; `scripts/check.sh` must pass before each one.
 
-## 10. Build plan
+## 10. GitHub Action
 
-Each step is committed as its own commit, one file per commit where possible.
+```
+src/second_source/action/
+  inputs.py    read and validate the Action's inputs from the environment
+  event.py     GitHub event payload -> mode (check, sweep, command, skip) and target PRs
+  wait.py      poll until CI settles or the wait budget ends (injectable clock and sleep)
+  publish.py   check run create/update, conclusion mapping, job summary
+  commands.py  parse /second-source commands, permission check, dispute
+  sweep.py     find recent agent PRs for the daily run
+  setup.py     `second-source init`: the recommended workflow
+  main.py      `second-source action` entrypoint tying the above together
+action.yml     the composite action
+```
 
-| Milestone | Status | Steps |
-|---|---|---|
-| M0 Core engine | done | model → hashing → evidence → expr → checks → aggregate → engine → pack loader → tests (unit, non-coding fixtures, replay) → CI workflow |
-| M1 Coding pack | done | agent detection rules → claim grammar → referenced-commit resolution → checks (tests pass, build/lint, tests added, fixes issue, docs updated, deployed) → durability checks → golden set |
-| M2 GitHub source + CLI | done | API client (auth chain, ETag cache, rate limits) → mappers → `second-source check <PR URL>` → Markdown/JSON reports → recorded fixtures |
-| M3 Benchmark | in progress | AIDev sampling (dataset viewer API, see docs/benchmark.md) → batch runner with cache → statistics (Wilson intervals) → result files |
-| M4 Action | built; release pending | `action.yml` → entrypoint (event parsing, wait-for-CI, check run + job summary) → daily durability mode → dispute command → one-click setup link |
-| M5 Launch | planned | static site → dataset release → README, GIF and docs → open-source hygiene files → Marketplace listing |
-
-## 11. Open decisions
-
-- Docker vs composite Action (start with composite plus `uv` for speed; measure).
-- Whether the benchmark site lives in this repo or a separate one.
+Behaviour visible to users is documented in the [GitHub Action reference](action.md).

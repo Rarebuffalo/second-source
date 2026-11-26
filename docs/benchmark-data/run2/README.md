@@ -13,12 +13,12 @@ How it was made: 1,200 merged agent pull requests drawn from the AIDev dataset (
 Claude Code, Codex, Copilot, Cursor, Devin, Jules; at most 3 per repository), checked against
 GitHub with `second-source bench`, then re-scored offline on one code version (Second Source
 0.1.0, coding pack 0.5.0). 25 PRs were no longer on GitHub, leaving 1,175. Method, caveats and
-findings: [docs/benchmark.md](../../benchmark.md), sections 5, 6 and 11.
+findings: [docs/benchmark.md](../../benchmark.md), sections 5, 6 and 9.
 
 What is deliberately not here: per-PR verdicts. Several agents' PRs are opened by people, and
 a row saying "contradicted" next to a PR names its author; only aggregates are published.
 
-Read the numbers with the caveats in docs/benchmark.md section 11: contradictions are a floor,
+Read the numbers with the caveats in docs/benchmark.md section 9: contradictions are a floor,
 not a rate; only merged PRs were sampled; PRs within one repository are not independent; and
 most older "tests pass" claims could not be checked because GitHub had deleted the CI runs.
 

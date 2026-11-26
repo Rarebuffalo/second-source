@@ -32,7 +32,7 @@ The first public release: a beta. Interfaces may change before 1.0.
 - GitHub Action: one check run per PR, updated as CI finishes; daily durability sweep;
   `/second-source recheck` and `/second-source dispute` commands. Advice by default: never
   fails a check unless `fail-on-contradiction` is set.
-- Benchmark run 2 findings (docs/benchmark.md, section 11).
+- Benchmark run 2 findings (docs/benchmark.md, "Run 2 findings").
 
 - Every check ends with "Evidence at a glance" (CI on the head commit, what the change touched,
   merge and revert state), also on PRs that make no claims; reasons are shown in words.

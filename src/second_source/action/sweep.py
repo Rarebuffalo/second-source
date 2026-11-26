@@ -1,4 +1,4 @@
-"""Daily sweep: find recent agent PRs to re-check (docs/action.md, section 2).
+"""Daily sweep: find recent agent PRs to re-check (docs/action.md, "Events").
 
 Durability claims ("the merge was not reverted", "the issue stayed closed") are judged over the
 30 days after a merge, and pending claims need a later look. A scheduled run re-checks every

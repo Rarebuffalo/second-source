@@ -3,7 +3,7 @@
 The check run is created once per head commit and then updated in place, so later runs (CI
 finished, daily sweep, a recheck command) replace the table instead of piling up checks.
 
-Conclusion rules (docs/action.md, section 4):
+Conclusion rules (docs/action.md, "The check run"):
 
 - CI still running for a claim -> the check stays ``in_progress``, so people see it is not done.
 - a high-confidence claim is contradicted -> ``neutral`` by default (advice, never blocks a

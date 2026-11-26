@@ -1,11 +1,11 @@
-# Benchmark design (milestone M3)
+# Benchmark method
 
 The "Agent Claim Truth" benchmark answers one question with public, reproducible numbers:
 **when a coding agent says something about its pull request, how often is it true?**
 
-This document fixes the method before any code is written. Numbers we publish are only as good
-as the method behind them, so every step here is chosen to be reproducible, cheap (zero cost)
-and conservative (never overstate how often agents are wrong).
+Numbers are only as good as the method behind them, so every step here is chosen to be
+reproducible, cheap (zero cost) and conservative (never overstate how often agents are wrong).
+A summary of the results is in [Accuracy](accuracy.md).
 
 ## 1. Data source
 
@@ -177,19 +177,7 @@ What this benchmark adds: rule-based verdicts with reasons (no model judges the 
 six claim types including issue closure and post-merge durability, abstention reported as
 coverage, and stored evidence snapshots so verdicts stay auditable after GitHub expires CI.
 
-## 7. Build order (one commit per step)
-
-1. This document.
-2. AIDev client (`benchmark/aidev.py`) with tests against a fake API.
-3. Deterministic stratified sampler (`benchmark/sample.py`) with tests.
-4. Labelling guide, the 120-PR real golden set and its gate test.
-5. Extraction fixes driven by the dev split, each fix with a unit test.
-6. `scope=local` extraction and the `CI_FAILED_LOCAL_CLAIM` verdict.
-7. Batch runner (`benchmark/runner.py`) with tests.
-8. Statistics (`benchmark/stats.py`) with tests, then the `bench` CLI commands.
-9. Score the test split once; first small benchmark run.
-
-## 8. Known limits
+## 7. Known limits
 
 - Bodies only: AIDev's `pull_request` table has no author comments, so the golden set covers PR
   bodies. The live pipeline still reads author comments.
@@ -197,19 +185,7 @@ coverage, and stored evidence snapshots so verdicts stay auditable after GitHub 
 - Labels come from careful readers following a guide, not from the agents' authors; the guide
   and the agreement score are published so the labels can be challenged.
 
-## 9. Status after M3
-
-- The real golden set exists (120 PRs, 113/120 labeller agreement). Held-out results are in
-  `tests/packs/coding/golden/real/README.md`: recall roughly doubled, but TESTS_PASS precision
-  on unseen text is 0.75, below the 0.95 target. A larger labelled set (several hundred PRs)
-  is the next step before any published contradiction rate.
-- A first anonymous end-to-end run (8 PRs) worked through sample → run → summarize, with agent
-  detection matching the dataset label on every PR. It exposed the open-ended revert scan
-  (now bounded to the durability window).
-- Until extraction precision meets the target, every "contradicted" result is checked by a
-  person before publication.
-
-## 10. Confidence (after growing the golden set)
+## 8. Confidence
 
 - The golden set grew to 402 PRs (385/402 exact labeller agreement). Rules were scored one by
   one; the 10 that fired at least 5 times on the dev split with precision ≥ 0.95 became
@@ -221,7 +197,7 @@ coverage, and stored evidence snapshots so verdicts stay auditable after GitHub 
   claims are reported as a separate count), and every contradicted claim is still checked by a
   person before publication, because even trusted rules are below 0.95 for some types.
 
-## 11. Run 2 findings
+## 9. Run 2 findings
 
 Run 2 checked 1,200 merged agent PRs from AIDev (200 per agent, at most 3 per repository);
 25 were no longer on GitHub, leaving 1,175. Every result below comes from one code version

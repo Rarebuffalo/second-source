@@ -1,4 +1,4 @@
-# GitHub source design
+# GitHub source
 
 The GitHub source turns a pull request into the inputs the engine needs:
 

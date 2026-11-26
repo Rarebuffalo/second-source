@@ -1,4 +1,4 @@
-# Coding pack design
+# Coding pack
 
 The coding pack teaches the domain-neutral engine about coding agents working through pull
 requests (PRs). It lives in `src/second_source/packs/coding/`.
